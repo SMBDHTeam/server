@@ -81,26 +81,21 @@ jobs:
             set -e
 
             echo "Pull latest dev image"
-            docker pull ${DOCKERHUB_USERNAME}/${DOCKER_IMAGE_NAME}:latest-dev
-
-            echo "Stop old container if exists"
-            docker stop server-dev || true
-
-            echo "Remove old container if exists"
-            docker rm server-dev || true
-
-            echo "Run new container"
-            docker run -d \
-              --name server-dev \
-              --restart unless-stopped \
-              -p 127.0.0.1:8080:8080 \
-              -e SPRING_PROFILES_ACTIVE=dev \
-              -e TZ=Asia/Seoul \
-              ${DOCKERHUB_USERNAME}/${DOCKER_IMAGE_NAME}:latest-dev
-
-            echo "Remove unused Docker images"
-            docker image prune -f
-
-            echo "Check running containers"
-            docker ps
+            sudo docker pull ${DOCKERHUB_USERNAME}/${DOCKER_IMAGE_NAME}:latest-dev
+  
+            sudo docker stop server-dev || true
+            
+            sudo docker rm server-dev || true
+            
+            sudo docker run -d \
+            --name server-dev \
+            --restart unless-stopped \
+            -p 127.0.0.1:8080:8080 \
+            -e SPRING_PROFILES_ACTIVE=dev \
+            -e TZ=Asia/Seoul \
+            ${DOCKERHUB_USERNAME}/${DOCKER_IMAGE_NAME}:latest-dev
+            
+            sudo docker image prune -f
+            
+            sudo docker ps
           EOF
