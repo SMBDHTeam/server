@@ -35,3 +35,20 @@ out/
 
 ### VS Code ###
 .vscode/
+
+
+
+
+src/main/resources/application-prod.yml
+
+.env
+.env.*
+!.env.example
+
+*.pem
+*.key
+
+*.log
+logs/
+
+docker-compose.override.yml
