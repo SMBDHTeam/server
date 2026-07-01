@@ -5,12 +5,24 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.OneToMany;
+import jakarta.persistence.OneToOne;
+import jakarta.persistence.OrderBy;
 import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 
 @Entity
-@Table(name = "places")
+@Table(
+        name = "places",
+        uniqueConstraints = @UniqueConstraint(
+                name = "uk_places_source_external_content_id",
+                columnNames = {"source", "external_content_id"}
+        )
+)
 public class Place {
 
     @Id
@@ -48,6 +60,16 @@ public class Place {
     @Column(name = "updated_at", nullable = false)
     private LocalDateTime updatedAt;
 
+    @OneToOne(mappedBy = "place")
+    private PlaceDetail detail;
+
+    @OneToOne(mappedBy = "place")
+    private PlaceOperatingInfo operatingInfo;
+
+    @OrderBy("displayOrder ASC")
+    @OneToMany(mappedBy = "place")
+    private List<PlaceImage> images = new ArrayList<>();
+
     protected Place() {
     }
 
@@ -79,8 +101,24 @@ public class Place {
         return id;
     }
 
+    public String getExternalContentId() {
+        return externalContentId;
+    }
+
+    public String getContentTypeId() {
+        return contentTypeId;
+    }
+
     public String getName() {
         return name;
+    }
+
+    public String getCategory() {
+        return category;
+    }
+
+    public String getAddress() {
+        return address;
     }
 
     public BigDecimal getLongitude() {
@@ -89,5 +127,33 @@ public class Place {
 
     public BigDecimal getLatitude() {
         return latitude;
+    }
+
+    public String getPrimaryImageUrl() {
+        return primaryImageUrl;
+    }
+
+    public PlaceDetail getDetail() {
+        return detail;
+    }
+
+    public PlaceOperatingInfo getOperatingInfo() {
+        return operatingInfo;
+    }
+
+    public List<PlaceImage> getImages() {
+        return images;
+    }
+
+    public void setDetail(PlaceDetail detail) {
+        this.detail = detail;
+    }
+
+    public void setOperatingInfo(PlaceOperatingInfo operatingInfo) {
+        this.operatingInfo = operatingInfo;
+    }
+
+    public void addImage(PlaceImage image) {
+        this.images.add(image);
     }
 }
