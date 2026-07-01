@@ -1,0 +1,28 @@
+spring:
+  config:
+    activate:
+      on-profile: local
+
+  datasource:
+    url: jdbc:postgresql://${LOCAL_POSTGRES_HOST:localhost}:${LOCAL_POSTGRES_PORT:5433}/${LOCAL_POSTGRES_DB:tour_local}
+    driver-class-name: org.postgresql.Driver
+    username: ${LOCAL_POSTGRES_USER:tour}
+    password: ${LOCAL_POSTGRES_PASSWORD:tour}
+
+  h2:
+    console:
+      enabled: false
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    open-in-view: false
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+
+app:
+  seed:
+    dummy-place:
+      enabled: ${DUMMY_PLACE_SEED_ENABLED:false}
