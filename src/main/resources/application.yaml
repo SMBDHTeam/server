@@ -4,3 +4,11 @@ spring:
 
 server:
   port: 8080
+
+external:
+  kakao:
+    local:
+      base-url: ${KAKAO_LOCAL_BASE_URL:https://dapi.kakao.com}
+      rest-api-key: ${KAKAO_REST_API_KEY:}
+      connect-timeout: 3s
+      read-timeout: 5s
