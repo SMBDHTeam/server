@@ -3,9 +3,45 @@
 - Temurin JDK 17
 - Spring Boot 4.0.6
 - Gradle
-- 개발 DB: H2
-- 운영 또는 추후 개발 DB: RDS MySQL 예정
+- 로컬 DB: Docker PostgreSQL
+- 개발 서버 DB: H2 또는 서버 환경 설정 기준
+- 운영 또는 추후 개발 DB: RDS 예정
 ---
+
+# 로컬 개발 DB
+
+로컬 개발은 `local` profile과 Docker PostgreSQL을 사용한다.
+
+```bash
+docker compose -f docker-compose.local.yml up -d postgres
+./gradlew bootRun --args='--spring.profiles.active=local'
+```
+
+기본 연결 정보는 다음과 같다.
+
+| 항목 | 기본값 |
+| --- | --- |
+| Host | `localhost` |
+| Port | `5433` |
+| Database | `tour_local` |
+| Username | `tour` |
+| Password | `tour` |
+
+`5432` 포트는 다른 로컬 프로젝트에서 이미 사용할 수 있으므로 이 프로젝트의 기본 host port는 `5433`으로 둔다. 필요하면 `.env`에서 `LOCAL_POSTGRES_PORT`를 바꾼다.
+
+환경변수 예시는 `.env.example`을 기준으로 만들고, 실제 `.env`는 Git에 올리지 않는다.
+
+로컬 DB 컨테이너를 중지하려면 다음을 사용한다.
+
+```bash
+docker compose -f docker-compose.local.yml down
+```
+
+데이터 볼륨까지 제거하려면 다음을 사용한다.
+
+```bash
+docker compose -f docker-compose.local.yml down -v
+```
 
 # application-prod.yml
 
