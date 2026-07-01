@@ -262,6 +262,8 @@
 | `items[].id` | integer | O | 내부 두루누비 길 ID |
 | `items[].routeId` | string | O | 두루누비 길 고유번호 |
 | `items[].themeName` | string | O | 길 이름 |
+| `items[].lineMessage` | string | X | 길 한 줄 설명 |
+| `items[].description` | string | X | 길 상세 설명 |
 | `items[].brdDiv` | string | O | 걷기/자전거 구분 |
 | `items[].source` | string | O | `DURUNUBI` |
 
@@ -285,8 +287,14 @@
 | `items[].courseName` | string | O | 코스명 |
 | `items[].level` | integer | X | 난이도 |
 | `items[].distanceKm` | number | X | 코스 거리(km) |
-| `items[].requiredTimeText` | string | X | 예상 소요시간 원문 |
+| `items[].requiredTimeMinutes` | integer | X | 예상 소요시간(분) |
+| `items[].cycle` | string | X | 순환형·비순환형 등 코스 형태 |
 | `items[].summary` | string | X | 코스 설명 요약 |
+| `items[].contents` | string | X | 코스 상세 설명 |
+| `items[].tourInfo` | string | X | 주변 관광정보 |
+| `items[].travelerInfo` | string | X | 교통 및 여행자 안내 |
+| `items[].sigun` | string | X | 시군구 정보 |
+| `items[].gpxPath` | string | X | GPX 파일 경로 |
 | `items[].brdDiv` | string | O | 걷기/자전거 구분 |
 | `items[].source` | string | O | `DURUNUBI` |
 
