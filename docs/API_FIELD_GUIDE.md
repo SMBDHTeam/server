@@ -72,6 +72,8 @@
 | `selectedAnswers[].answerId` | string | O | `answers.id` |
 | `mustVisitPlaceIds` | array | X | 필수 방문 장소 ID 목록 |
 | `mustVisitPlaceIds[]` | integer | O | 내부 `places.id` 한 개 |
+| `preferredDurunubiCourseIds` | array | X | 일정 생성에 참고할 두루누비 코스 ID 목록 |
+| `preferredDurunubiCourseIds[]` | integer | O | 내부 `durunubi_courses.id` 한 개 |
 
 | 응답 필드 | 자료형 | 필수 | 의미 |
 | --- | --- | :---: | --- |
@@ -245,7 +247,50 @@
 | `routeLines[].lineName` | string | X | 노선명 |
 | `routeLines[].coordinates` | array | O | `[경도, 위도]` 좌표 목록 |
 
-## 10. 공유 링크 생성
+## 10. 두루누비 길 조회
+
+`GET /api/v1/durunubi/routes`
+
+| 요청 필드 | 위치 | 자료형 | 필수 | 의미 |
+| --- | --- | --- | :---: | --- |
+| `themeName` | Query | string | X | 길 이름 검색어 |
+| `brdDiv` | Query | string | X | 걷기/자전거 구분. `DNWW`, `DNBW` |
+
+| 응답 필드 | 자료형 | 필수 | 의미 |
+| --- | --- | :---: | --- |
+| `items` | array | O | 두루누비 길 목록 |
+| `items[].id` | integer | O | 내부 두루누비 길 ID |
+| `items[].routeId` | string | O | 두루누비 길 고유번호 |
+| `items[].themeName` | string | O | 길 이름 |
+| `items[].brdDiv` | string | O | 걷기/자전거 구분 |
+| `items[].source` | string | O | `DURUNUBI` |
+
+## 11. 두루누비 코스 조회
+
+`GET /api/v1/durunubi/courses`
+
+| 요청 필드 | 위치 | 자료형 | 필수 | 의미 |
+| --- | --- | --- | :---: | --- |
+| `courseName` | Query | string | X | 코스명 검색어 |
+| `routeId` | Query | string | X | 두루누비 길 고유번호 |
+| `level` | Query | integer | X | 난이도. `1`: 하, `2`: 중, `3`: 상 |
+| `brdDiv` | Query | string | X | 걷기/자전거 구분. `DNWW`, `DNBW` |
+
+| 응답 필드 | 자료형 | 필수 | 의미 |
+| --- | --- | :---: | --- |
+| `items` | array | O | 두루누비 코스 목록 |
+| `items[].id` | integer | O | 내부 두루누비 코스 ID |
+| `items[].courseId` | string | O | 두루누비 코스 고유번호 |
+| `items[].routeId` | string | O | 두루누비 길 고유번호 |
+| `items[].courseName` | string | O | 코스명 |
+| `items[].level` | integer | X | 난이도 |
+| `items[].distanceKm` | number | X | 코스 거리(km) |
+| `items[].requiredTimeText` | string | X | 예상 소요시간 원문 |
+| `items[].summary` | string | X | 코스 설명 요약 |
+| `items[].brdDiv` | string | O | 걷기/자전거 구분 |
+| `items[].source` | string | O | `DURUNUBI` |
+
+## 12. 공유 링크 생성
 
 | 필드 | 자료형 | 필수 | 의미 |
 | --- | --- | :---: | --- |
@@ -256,7 +301,7 @@
 | `url` | string | O | 공유 상대 URL |
 | `expiresAt` | string(datetime) | X | 만료시각 |
 
-## 11. 공유 일정·지도 조회
+## 13. 공유 일정·지도 조회
 
 | 필드 | 자료형 | 필수 | 의미 |
 | --- | --- | :---: | --- |
@@ -268,7 +313,7 @@
 
 공유 지도 응답 필드는 일반 일정 지도 응답과 동일하다.
 
-## 12. 공유 링크 폐기
+## 14. 공유 링크 폐기
 
 `DELETE /api/v1/schedules/{scheduleId}/shares/{shareId}`
 
