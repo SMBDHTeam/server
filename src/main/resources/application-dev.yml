@@ -4,16 +4,25 @@ spring:
       on-profile: dev
 
   datasource:
-    url: jdbc:h2:mem:devdb
-    driver-class-name: org.h2.Driver
-    username: sa
-    password:
+    url: ${SPRING_DATASOURCE_URL}
+    driver-class-name: org.postgresql.Driver
+    username: ${SPRING_DATASOURCE_USERNAME}
+    password: ${SPRING_DATASOURCE_PASSWORD}
 
   h2:
     console:
-      enabled: true
+      enabled: false
 
   jpa:
     hibernate:
       ddl-auto: update
     show-sql: true
+    open-in-view: false
+    properties:
+      hibernate:
+        format_sql: true
+
+app:
+  seed:
+    dummy-place:
+      enabled: ${DUMMY_PLACE_SEED_ENABLED:false}
