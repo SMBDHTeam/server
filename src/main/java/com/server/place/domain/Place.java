@@ -1,6 +1,7 @@
 package com.server.place.domain;
 
 import jakarta.persistence.Column;
+import jakarta.persistence.CascadeType;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
@@ -60,14 +61,14 @@ public class Place {
     @Column(name = "updated_at", nullable = false)
     private LocalDateTime updatedAt;
 
-    @OneToOne(mappedBy = "place")
+    @OneToOne(mappedBy = "place", cascade = CascadeType.ALL, orphanRemoval = true)
     private PlaceDetail detail;
 
-    @OneToOne(mappedBy = "place")
+    @OneToOne(mappedBy = "place", cascade = CascadeType.ALL, orphanRemoval = true)
     private PlaceOperatingInfo operatingInfo;
 
     @OrderBy("displayOrder ASC")
-    @OneToMany(mappedBy = "place")
+    @OneToMany(mappedBy = "place", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<PlaceImage> images = new ArrayList<>();
 
     protected Place() {
@@ -155,5 +156,30 @@ public class Place {
 
     public void addImage(PlaceImage image) {
         this.images.add(image);
+    }
+
+    public void updateBasic(
+            String contentTypeId,
+            String name,
+            String category,
+            String address,
+            BigDecimal longitude,
+            BigDecimal latitude,
+            String primaryImageUrl
+    ) {
+        this.contentTypeId = contentTypeId;
+        this.name = name;
+        this.category = category;
+        this.address = address;
+        this.longitude = longitude;
+        this.latitude = latitude;
+        this.primaryImageUrl = primaryImageUrl;
+        this.updatedAt = LocalDateTime.now();
+    }
+
+    public void replaceImages(List<PlaceImage> images) {
+        this.images.clear();
+        this.images.addAll(images);
+        this.updatedAt = LocalDateTime.now();
     }
 }

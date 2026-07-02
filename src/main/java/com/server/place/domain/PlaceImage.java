@@ -52,6 +52,22 @@ public class PlaceImage {
         place.addImage(this);
     }
 
+    public static PlaceImage of(
+            Place place,
+            String url,
+            String thumbnailUrl,
+            String copyrightType,
+            int displayOrder
+    ) {
+        PlaceImage image = new PlaceImage();
+        image.place = place;
+        image.url = url;
+        image.thumbnailUrl = thumbnailUrl;
+        image.copyrightType = copyrightType;
+        image.displayOrder = displayOrder;
+        return image;
+    }
+
     public String getUrl() {
         return url;
     }

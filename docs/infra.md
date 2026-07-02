@@ -31,6 +31,16 @@ docker compose -f docker-compose.local.yml up -d postgres
 
 환경변수 예시는 `.env.example`을 기준으로 만들고, 실제 `.env`는 Git에 올리지 않는다.
 
+TourAPI 장소 적재는 기본 비활성화 상태다. 로컬 PostgreSQL에 적재하려면 `.env`에 `TOUR_API_KEY`를 설정하고 필요한 페이지 수를 조정한 뒤 실행한다.
+
+```bash
+TOUR_API_PLACE_INGESTION_ENABLED=true \
+TOUR_API_MAX_PAGES=1 \
+./gradlew bootRun --args='--spring.profiles.active=local'
+```
+
+기본값은 부산 `areaCode=6`, content type `12,14,15,28,32,38,39`, 페이지당 100건이다. API Key가 로그나 문서에 남지 않도록 전체 요청 URL을 기록하지 않는다.
+
 로컬 DB 컨테이너를 중지하려면 다음을 사용한다.
 
 ```bash
