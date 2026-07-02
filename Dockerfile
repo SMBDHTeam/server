@@ -30,9 +30,6 @@ WORKDIR /app
 ENV TZ=Asia/Seoul
 
 
-ENV SPRING_PROFILES_ACTIVE=dev
-
-
 ENV JAVA_OPTS="-XX:MaxRAMPercentage=75.0"
 
 
