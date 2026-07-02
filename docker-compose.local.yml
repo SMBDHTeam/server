@@ -1,0 +1,20 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: tour-postgres-local
+    ports:
+      - "${LOCAL_POSTGRES_PORT:-5433}:5432"
+    environment:
+      POSTGRES_DB: ${LOCAL_POSTGRES_DB:-tour_local}
+      POSTGRES_USER: ${LOCAL_POSTGRES_USER:-tour}
+      POSTGRES_PASSWORD: ${LOCAL_POSTGRES_PASSWORD:-tour}
+    volumes:
+      - tour_postgres_local_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  tour_postgres_local_data:

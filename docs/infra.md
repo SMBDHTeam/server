@@ -3,9 +3,55 @@
 - Temurin JDK 17
 - Spring Boot 4.0.6
 - Gradle
-- 개발 DB: H2
-- 운영 또는 추후 개발 DB: RDS MySQL 예정
+- 로컬 DB: Docker PostgreSQL
+- 개발 서버 DB: H2 또는 서버 환경 설정 기준
+- 운영 또는 추후 개발 DB: RDS 예정
 ---
+
+# 로컬 개발 DB
+
+로컬 개발은 `local` profile과 Docker PostgreSQL을 사용한다.
+
+```bash
+docker compose -f docker-compose.local.yml up -d postgres
+./gradlew bootRun --args='--spring.profiles.active=local'
+```
+
+기본 연결 정보는 다음과 같다.
+
+| 항목 | 기본값 |
+| --- | --- |
+| Host | `localhost` |
+| Port | `5433` |
+| Database | `tour_local` |
+| Username | `tour` |
+| Password | `tour` |
+
+`5432` 포트는 다른 로컬 프로젝트에서 이미 사용할 수 있으므로 이 프로젝트의 기본 host port는 `5433`으로 둔다. 필요하면 `.env`에서 `LOCAL_POSTGRES_PORT`를 바꾼다.
+
+환경변수 예시는 `.env.example`을 기준으로 만들고, 실제 `.env`는 Git에 올리지 않는다.
+
+TourAPI 장소 적재는 기본 비활성화 상태다. 로컬 PostgreSQL에 적재하려면 `.env`에 `TOUR_API_KEY`를 설정하고 필요한 페이지 수를 조정한 뒤 실행한다.
+
+```bash
+TOUR_API_PLACE_INGESTION_ENABLED=true \
+TOUR_API_MAX_PAGES=1 \
+./gradlew bootRun --args='--spring.profiles.active=local'
+```
+
+기본값은 부산 `areaCode=6`, content type `12,14,15,28,32,38,39`, 페이지당 100건이다. API Key가 로그나 문서에 남지 않도록 전체 요청 URL을 기록하지 않는다.
+
+로컬 DB 컨테이너를 중지하려면 다음을 사용한다.
+
+```bash
+docker compose -f docker-compose.local.yml down
+```
+
+데이터 볼륨까지 제거하려면 다음을 사용한다.
+
+```bash
+docker compose -f docker-compose.local.yml down -v
+```
 
 # application-prod.yml
 
