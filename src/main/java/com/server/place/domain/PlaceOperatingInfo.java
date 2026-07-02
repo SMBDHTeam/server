@@ -80,4 +80,20 @@ public class PlaceOperatingInfo {
     public boolean isRequiresManualCheck() {
         return requiresManualCheck;
     }
+
+    public void update(
+            String openingHoursText,
+            String closedDaysText,
+            String useFeeText,
+            String parkingText,
+            boolean requiresManualCheck,
+            String rawJson
+    ) {
+        this.openingHoursText = openingHoursText;
+        this.closedDaysText = closedDaysText;
+        this.useFeeText = useFeeText;
+        this.parkingText = parkingText;
+        this.requiresManualCheck = requiresManualCheck;
+        this.rawJson = rawJson;
+    }
 }

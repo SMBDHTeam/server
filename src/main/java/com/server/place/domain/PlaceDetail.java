@@ -44,4 +44,10 @@ public class PlaceDetail {
     public String getOverview() {
         return overview;
     }
+
+    public void update(String overview, String homepage, String rawJson) {
+        this.overview = overview;
+        this.homepage = homepage;
+        this.rawJson = rawJson;
+    }
 }
