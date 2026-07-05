@@ -237,13 +237,15 @@
 | `markers[].name` | string | O | 장소명 |
 | `markers[].longitude` | number | O | 경도 |
 | `markers[].latitude` | number | O | 위도 |
-| `routeLines` | array | O | 대중교통 경로선 |
+| `routeLines` | array | O | 지도 경로선 |
 | `routeLines[].dayNo` | integer | O | 경로 일차 |
 | `routeLines[].routeOrder` | integer | O | 날짜 내 경로 순서 |
 | `routeLines[].lineOrder` | integer | O | 선 조각 순서 |
-| `routeLines[].mode` | string | O | 이동수단 |
+| `routeLines[].mode` | string | O | 이동수단. `WALK`, `BUS`, `SUBWAY` |
 | `routeLines[].lineName` | string | X | 노선명 |
-| `routeLines[].coordinates` | array | O | `[경도, 위도]` 좌표 목록 |
+| `routeLines[].startName` | string | O | 선 조각 출발 지점명. 대중교통은 승차 정류장·역, 도보는 출발지·승하차 지점 |
+| `routeLines[].endName` | string | O | 선 조각 도착 지점명. 대중교통은 하차 정류장·역, 도보는 승하차 지점·목적지 |
+| `routeLines[].coordinates` | array | O | `[경도, 위도]` 좌표 목록. `WALK`는 TMAP 보행자 경로 좌표를 우선 사용하고 실패 시 fallback 좌표를 사용 |
 
 ## 10. 공유 링크 생성
 
