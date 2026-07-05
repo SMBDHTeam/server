@@ -19,6 +19,19 @@ external:
     mobile-app: ${TOUR_API_MOBILE_APP:tour-server}
     connect-timeout: 3s
     read-timeout: 10s
+  odsay:
+    enabled: ${ODSAY_ENABLED:false}
+    base-url: ${ODSAY_BASE_URL:https://api.odsay.com}
+    api-key: ${ODSAY_API_KEY:}
+    connect-timeout: 3s
+    read-timeout: 10s
+  tmap:
+    base-url: ${TMAP_BASE_URL:https://apis.openapi.sk.com}
+    app-key: ${SKT_API_KEY:}
+    connect-timeout: 3s
+    read-timeout: 5s
+    walking:
+      enabled: ${TMAP_WALKING_ENABLED:false}
 
 app:
   place-ingestion:
