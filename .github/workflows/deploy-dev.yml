@@ -81,6 +81,9 @@ jobs:
           SPRING_DATASOURCE_URL: ${{ secrets.SPRING_DATASOURCE_URL }}
           SPRING_DATASOURCE_USERNAME: ${{ secrets.SPRING_DATASOURCE_USERNAME }}
           SPRING_DATASOURCE_PASSWORD: ${{ secrets.SPRING_DATASOURCE_PASSWORD }}
+
+          # TourAPI 적재 스케줄러
+          TOUR_API_KEY: ${{ secrets.TOUR_API_KEY }}
         run: |
           # SSH private key를 GitHub Actions runner 안에 임시 파일로 저장한다.
           mkdir -p ~/.ssh
@@ -100,6 +103,8 @@ jobs:
             printf 'SPRING_DATASOURCE_PASSWORD=%s\n' "$SPRING_DATASOURCE_PASSWORD"
             printf 'DUMMY_PLACE_SEED_ENABLED=false\n'
             printf 'TOUR_API_PLACE_INGESTION_ENABLED=false\n'
+            printf 'TOUR_API_KEY=%s\n' "$TOUR_API_KEY"
+            printf 'TOUR_API_INGESTION_SCHEDULER_ENABLED=true\n'
           } > .env.dev
 
           chmod 600 .env.dev

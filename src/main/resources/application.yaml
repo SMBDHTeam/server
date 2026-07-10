@@ -41,3 +41,6 @@ app:
       content-type-ids: ${TOUR_API_CONTENT_TYPE_IDS:12,14,15,28,32,38,39}
       page-size: ${TOUR_API_PAGE_SIZE:100}
       max-pages: ${TOUR_API_MAX_PAGES:1}
+      scheduler:
+        enabled: ${TOUR_API_INGESTION_SCHEDULER_ENABLED:false}
+        cron: "${TOUR_API_INGESTION_CRON:0 0 4 * * *}"
