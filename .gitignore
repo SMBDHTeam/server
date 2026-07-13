@@ -52,3 +52,7 @@ src/main/resources/application-prod.yml
 logs/
 
 docker-compose.override.yml
+docs/examples/kakao-map-local-config.js
+docs/examples/generated-*
+docs/examples/schedule-map-example*
+docs/examples/schedule-map-route-example.md

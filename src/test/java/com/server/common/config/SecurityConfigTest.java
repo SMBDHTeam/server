@@ -1,6 +1,8 @@
 package com.server.common.config;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -31,6 +33,18 @@ class SecurityConfigTest {
         mockMvc.perform(get("/api/v1/locations/search").param("keyword", "부산역"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.items").isArray());
+    }
+
+    @Test
+    @DisplayName("로컬 Planner 콘솔의 API preflight 요청을 허용한다")
+    void plannerConsoleAllowsCorsPreflight() throws Exception {
+        mockMvc.perform(options("/api/v1/schedules")
+                        .header("Origin", "http://localhost:8080")
+                        .header("Access-Control-Request-Method", "POST")
+                        .header("Access-Control-Request-Headers", "Content-Type"))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Access-Control-Allow-Origin", "http://localhost:8080"))
+                .andExpect(header().string("Access-Control-Allow-Methods", org.hamcrest.Matchers.containsString("POST")));
     }
 
     @TestConfiguration
