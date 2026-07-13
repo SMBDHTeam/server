@@ -26,10 +26,16 @@ public class OdsayTransitRouteProvider implements TransitRouteProvider {
 
     private final OdsayClient odsayClient;
     private final WalkingRouteProvider walkingRouteProvider;
+    private final TransitRealtimeProvider transitRealtimeProvider;
 
-    public OdsayTransitRouteProvider(OdsayClient odsayClient, WalkingRouteProvider walkingRouteProvider) {
+    public OdsayTransitRouteProvider(
+            OdsayClient odsayClient,
+            WalkingRouteProvider walkingRouteProvider,
+            TransitRealtimeProvider transitRealtimeProvider
+    ) {
         this.odsayClient = odsayClient;
         this.walkingRouteProvider = walkingRouteProvider;
+        this.transitRealtimeProvider = transitRealtimeProvider;
     }
 
     @Override
@@ -40,44 +46,176 @@ public class OdsayTransitRouteProvider implements TransitRouteProvider {
                 destination.longitude(),
                 destination.latitude()
         );
-        Map<String, Object> path = bestPath(response);
+        PathWithRealtimeAdjustment selectedPath = bestPath(response);
+        Map<String, Object> path = selectedPath.path();
         List<Map<String, Object>> subPaths = list(path, "subPath");
         if (subPaths.isEmpty()) {
             throw new BusinessException(ErrorCode.TRANSIT_ROUTE_NOT_FOUND);
         }
+        RealtimeAdjustmentSummary realtimeAdjustment = selectedPath.realtimeAdjustment();
 
         return new TransitRouteResult(
-                intValue(map(path, "info"), "totalTime"),
+                intValue(map(path, "info"), "totalTime") + realtimeAdjustment.extraMinutes(),
                 integerValue(map(path, "info"), "payment"),
+                "ODSAY",
+                realtimeAdjustment.extraMinutes() > 0 ? "PARTIAL" : "UNAVAILABLE",
+                false,
+                realtimeAdjustment.extraMinutes() > 0
+                        ? List.of("부산 실시간 버스 도착 지연 보정을 일부 반영했습니다.")
+                        : List.of(),
                 subPaths.stream()
                         .map(this::toSegment)
                         .toList(),
                 routeLines(path, subPaths, origin, destination),
-                rawJson(path)
+                rawJson(path, realtimeAdjustment)
         );
     }
 
-    private Map<String, Object> bestPath(Map<String, Object> response) {
+    private PathWithRealtimeAdjustment bestPath(Map<String, Object> response) {
         List<Map<String, Object>> paths = list(map(response, "result"), "path");
         return paths.stream()
-                .min(Comparator.comparingInt(path -> intValue(map(path, "info"), "totalTime")))
+                .map(path -> new PathWithRealtimeAdjustment(path, realtimeAdjustment(list(path, "subPath"))))
+                .min(Comparator.comparingInt(path -> intValue(map(path.path(), "info"), "totalTime")
+                        + path.realtimeAdjustment().extraMinutes()))
                 .orElseThrow(() -> new BusinessException(ErrorCode.TRANSIT_ROUTE_NOT_FOUND));
     }
 
     private TransitRouteResult.Segment toSegment(Map<String, Object> subPath) {
+        String mode = mode(subPath);
+        String lineName = lineName(subPath);
+        String startName = firstText(subPath, "startName", "startStationName");
+        String endName = firstText(subPath, "endName", "endStationName");
         return new TransitRouteResult.Segment(
-                mode(subPath),
-                lineName(subPath),
-                firstText(subPath, "startName", "startStationName"),
-                firstText(subPath, "endName", "endStationName")
+                mode,
+                lineName,
+                stationId(subPath, "start"),
+                startName,
+                stationId(subPath, "end"),
+                endName,
+                instruction(mode, lineName, startName, endName),
+                intValue(subPath, "sectionTime"),
+                firstInteger(subPath, "distance", "sectionDistance"),
+                stationCount(subPath),
+                0,
+                "UNAVAILABLE"
         );
     }
 
-    private TransitRouteResult.RouteLine toRouteLine(Map<String, Object> subPath) {
+    private String instruction(String mode, String lineName, String startName, String endName) {
+        String start = startName == null || startName.isBlank() ? "출발지" : startName;
+        String end = endName == null || endName.isBlank() ? "도착지" : endName;
+        if ("WALK".equals(mode)) {
+            return start + "에서 " + end + "까지 도보 이동";
+        }
+        String line = lineName == null || lineName.isBlank() ? mode : lineName;
+        return start + "에서 " + line + " 승차 후 " + end + "에서 하차";
+    }
+
+    private Integer stationCount(Map<String, Object> subPath) {
+        Integer stationCount = firstInteger(subPath, "stationCount");
+        if (stationCount != null) {
+            return stationCount;
+        }
+        List<Map<String, Object>> stations = list(map(subPath, "passStopList"), "stations");
+        if (stations.isEmpty()) {
+            stations = list(map(subPath, "passStopList"), "stationList");
+        }
+        return stations.isEmpty() ? null : Math.max(0, stations.size() - 1);
+    }
+
+    private RealtimeAdjustmentSummary realtimeAdjustment(List<Map<String, Object>> subPaths) {
+        int extraMinutes = 0;
+        List<Map<String, Object>> adjustments = new ArrayList<>();
+        for (Map<String, Object> subPath : subPaths) {
+            TransitRealtimeAdjustment adjustment = transitRealtimeProvider.adjustment(new TransitRealtimeRequest(
+                    mode(subPath),
+                    lineName(subPath),
+                    firstText(subPath, "startName", "startStationName"),
+                    firstText(subPath, "endName", "endStationName"),
+                    stationId(subPath, "start"),
+                    stationId(subPath, "end")
+            ));
+            if (!adjustment.hasPenalty()) {
+                continue;
+            }
+            extraMinutes += adjustment.extraMinutes();
+            adjustments.add(Map.of(
+                    "mode", mode(subPath),
+                    "lineName", nullToBlank(lineName(subPath)),
+                    "startStationName", nullToBlank(firstText(subPath, "startName", "startStationName")),
+                    "status", adjustment.status(),
+                    "extraMinutes", adjustment.extraMinutes(),
+                    "detail", nullToBlank(adjustment.detail())
+            ));
+        }
+        return new RealtimeAdjustmentSummary(extraMinutes, adjustments);
+    }
+
+    private String stationId(Map<String, Object> subPath, String prefix) {
+        if ("start".equals(prefix)) {
+            String stationId = firstText(
+                    subPath,
+                    "startID",
+                    "startId",
+                    "startStationID",
+                    "startStationId",
+                    "startLocalStationID",
+                    "startLocalStationId",
+                    "startArsID",
+                    "startArsId"
+            );
+            return stationId == null ? stationIdFromPassStopList(subPath, true) : stationId;
+        }
+        String stationId = firstText(
+                subPath,
+                "endID",
+                "endId",
+                "endStationID",
+                "endStationId",
+                "endLocalStationID",
+                "endLocalStationId",
+                "endArsID",
+                "endArsId"
+        );
+        return stationId == null ? stationIdFromPassStopList(subPath, false) : stationId;
+    }
+
+    private String stationIdFromPassStopList(Map<String, Object> subPath, boolean first) {
+        List<Map<String, Object>> stations = list(map(subPath, "passStopList"), "stations");
+        if (stations.isEmpty()) {
+            stations = list(map(subPath, "passStopList"), "stationList");
+        }
+        if (stations.isEmpty()) {
+            return null;
+        }
+        Map<String, Object> station = first ? stations.get(0) : stations.get(stations.size() - 1);
+        return firstText(
+                station,
+                "stationID",
+                "stationId",
+                "localStationID",
+                "localStationId",
+                "arsID",
+                "arsId",
+                "stationCode",
+                "stationNo"
+        );
+    }
+
+    private TransitRouteResult.RouteLine toRouteLine(Map<String, Object> subPath, boolean fallbackUsed) {
         return new TransitRouteResult.RouteLine(
                 mode(subPath),
                 lineName(subPath),
-                coordinatesJson(subPath)
+                coordinatesJson(subPath),
+                intValue(subPath, "sectionTime"),
+                firstInteger(subPath, "distance", "sectionDistance"),
+                instruction(
+                        mode(subPath),
+                        lineName(subPath),
+                        firstText(subPath, "startName", "startStationName"),
+                        firstText(subPath, "endName", "endStationName")
+                ),
+                fallbackUsed
         );
     }
 
@@ -91,7 +229,7 @@ public class OdsayTransitRouteProvider implements TransitRouteProvider {
         if (transitRouteLines.isEmpty()) {
             transitRouteLines = subPaths.stream()
                     .filter(subPath -> intValue(subPath, "trafficType") != TRAFFIC_TYPE_WALK)
-                    .map(this::toRouteLine)
+                    .map(subPath -> toRouteLine(subPath, true))
                     .filter(routeLine -> routeLine.coordinatesJson() != null)
                     .toList();
         }
@@ -143,17 +281,23 @@ public class OdsayTransitRouteProvider implements TransitRouteProvider {
         if (startCoordinate == null || endCoordinate == null || sameCoordinate(startCoordinate, endCoordinate)) {
             return;
         }
-        String coordinatesJson = walkingRouteProvider.findRoute(
-                        transitPoint("walk-start", startCoordinate),
-                        transitPoint("walk-end", endCoordinate)
-                )
+        var walkingRoute = walkingRouteProvider.findRoute(
+                transitPoint("walk-start", startCoordinate),
+                transitPoint("walk-end", endCoordinate)
+        );
+        boolean fallbackUsed = walkingRoute.isEmpty();
+        String coordinatesJson = walkingRoute
                 .map(WalkingRouteResult::coordinatesJson)
                 .orElseGet(() -> jsonValue(List.of(startCoordinate, endCoordinate)));
 
         routeLines.add(new TransitRouteResult.RouteLine(
                 "WALK",
                 null,
-                coordinatesJson
+                coordinatesJson,
+                null,
+                null,
+                "도보 이동",
+                fallbackUsed
         ));
     }
 
@@ -202,7 +346,16 @@ public class OdsayTransitRouteProvider implements TransitRouteProvider {
                     detailedRouteLines.add(new TransitRouteResult.RouteLine(
                             mode(representativeSubPath),
                             detailedLineName != null ? detailedLineName : lineName(representativeSubPath),
-                            jsonValue(coordinates)
+                            jsonValue(coordinates),
+                            intValue(representativeSubPath, "sectionTime"),
+                            firstInteger(representativeSubPath, "distance", "sectionDistance"),
+                            instruction(
+                                    mode(representativeSubPath),
+                                    detailedLineName != null ? detailedLineName : lineName(representativeSubPath),
+                                    firstText(representativeSubPath, "startName", "startStationName"),
+                                    firstText(representativeSubPath, "endName", "endStationName")
+                            ),
+                            false
                     ));
                 }
             }
@@ -219,7 +372,16 @@ public class OdsayTransitRouteProvider implements TransitRouteProvider {
         return List.of(new TransitRouteResult.RouteLine(
                 mode(representativeSubPath),
                 lineName(representativeSubPath),
-                jsonValue(coordinates)
+                jsonValue(coordinates),
+                intValue(representativeSubPath, "sectionTime"),
+                firstInteger(representativeSubPath, "distance", "sectionDistance"),
+                instruction(
+                        mode(representativeSubPath),
+                        lineName(representativeSubPath),
+                        firstText(representativeSubPath, "startName", "startStationName"),
+                        firstText(representativeSubPath, "endName", "endStationName")
+                ),
+                false
         ));
     }
 
@@ -351,8 +513,18 @@ public class OdsayTransitRouteProvider implements TransitRouteProvider {
         return jsonValue(coordinates);
     }
 
-    private String rawJson(Map<String, Object> value) {
-        return jsonValue(value);
+    private String rawJson(Map<String, Object> value, RealtimeAdjustmentSummary realtimeAdjustment) {
+        if (realtimeAdjustment.extraMinutes() <= 0) {
+            return jsonValue(value);
+        }
+        return "{\"provider\":\"ODsay\",\"path\":"
+                + jsonValue(value)
+                + ",\"realtimeAdjustment\":"
+                + jsonValue(Map.of(
+                "extraMinutes", realtimeAdjustment.extraMinutes(),
+                "segments", realtimeAdjustment.adjustments()
+        ))
+                + "}";
     }
 
     private String jsonValue(Object value) {
@@ -430,6 +602,19 @@ public class OdsayTransitRouteProvider implements TransitRouteProvider {
         return null;
     }
 
+    private Integer firstInteger(Map<String, Object> source, String... keys) {
+        if (source == null) {
+            return null;
+        }
+        for (String key : keys) {
+            Integer value = integerValue(source, key);
+            if (value != null) {
+                return value;
+            }
+        }
+        return null;
+    }
+
     private String firstText(Map<String, Object> source, String... keys) {
         Object value = firstObject(source, keys);
         return value == null ? null : value.toString();
@@ -451,5 +636,21 @@ public class OdsayTransitRouteProvider implements TransitRouteProvider {
     private String text(Map<String, Object> source, String key) {
         Object value = source == null ? null : source.get(key);
         return value == null || value.toString().isBlank() ? null : value.toString();
+    }
+
+    private String nullToBlank(String value) {
+        return value == null ? "" : value;
+    }
+
+    private record PathWithRealtimeAdjustment(
+            Map<String, Object> path,
+            RealtimeAdjustmentSummary realtimeAdjustment
+    ) {
+    }
+
+    private record RealtimeAdjustmentSummary(
+            int extraMinutes,
+            List<Map<String, Object>> adjustments
+    ) {
     }
 }

@@ -22,16 +22,32 @@ public class FakeTransitRouteProvider implements TransitRouteProvider {
         return new TransitRouteResult(
                 minutes,
                 1550,
+                "FAKE",
+                "UNAVAILABLE",
+                false,
+                List.of("개발용 가짜 대중교통 경로입니다."),
                 List.of(new TransitRouteResult.Segment(
                         "BUS",
                         lineName,
+                        null,
                         origin.name(),
-                        destination.name()
+                        null,
+                        destination.name(),
+                        origin.name() + "에서 " + lineName + " 승차 후 " + destination.name() + "에서 하차",
+                        minutes,
+                        null,
+                        null,
+                        0,
+                        "UNAVAILABLE"
                 )),
                 List.of(new TransitRouteResult.RouteLine(
                         "BUS",
                         lineName,
-                        coordinatesJson
+                        coordinatesJson,
+                        minutes,
+                        null,
+                        origin.name() + "에서 " + lineName + " 승차 후 " + destination.name() + "에서 하차",
+                        false
                 )),
                 "{\"provider\":\"FAKE\"}"
         );

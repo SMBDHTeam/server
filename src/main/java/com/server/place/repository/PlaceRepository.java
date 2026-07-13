@@ -8,6 +8,14 @@ import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface PlaceRepository extends JpaRepository<Place, Long> {
 
+    @Override
+    @EntityGraph(attributePaths = {"operatingInfo"})
+    List<Place> findAll();
+
+    @Override
+    @EntityGraph(attributePaths = {"operatingInfo"})
+    List<Place> findAllById(Iterable<Long> ids);
+
     List<Place> findByNameContainingIgnoreCaseOrderByNameAsc(String keyword);
 
     @EntityGraph(attributePaths = {"detail", "operatingInfo", "images"})

@@ -2,6 +2,7 @@ package com.server.external.odsay;
 
 import com.server.common.error.BusinessException;
 import com.server.common.error.ErrorCode;
+import com.server.external.metrics.ExternalCallMetricsCollector;
 import java.math.BigDecimal;
 import java.net.URI;
 import java.net.URLEncoder;
@@ -12,6 +13,7 @@ import java.util.Optional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.core.ParameterizedTypeReference;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClient;
@@ -28,10 +30,21 @@ public class OdsayClient {
 
     private final RestClient restClient;
     private final OdsayProperties properties;
+    private final ExternalCallMetricsCollector metricsCollector;
 
     public OdsayClient(RestClient odsayRestClient, OdsayProperties properties) {
+        this(odsayRestClient, properties, new ExternalCallMetricsCollector());
+    }
+
+    @Autowired
+    public OdsayClient(
+            RestClient odsayRestClient,
+            OdsayProperties properties,
+            ExternalCallMetricsCollector metricsCollector
+    ) {
         this.restClient = odsayRestClient;
         this.properties = properties;
+        this.metricsCollector = metricsCollector;
     }
 
     public Map<String, Object> searchPublicTransitPath(
@@ -44,6 +57,7 @@ public class OdsayClient {
             throw new BusinessException(ErrorCode.EXTERNAL_PROVIDER_UNAVAILABLE);
         }
         try {
+            metricsCollector.recordOdsayPathSearch();
             String uri = UriComponentsBuilder.fromPath("/v1/api/searchPubTransPathT")
                     .queryParam("SX", startLongitude)
                     .queryParam("SY", startLatitude)
@@ -57,9 +71,11 @@ public class OdsayClient {
                     .retrieve()
                     .body(RESPONSE_TYPE);
             if (response == null || response.isEmpty()) {
+                metricsCollector.recordFailure();
                 throw new BusinessException(ErrorCode.EXTERNAL_PROVIDER_UNAVAILABLE);
             }
             if (response.containsKey("error")) {
+                metricsCollector.recordFailure();
                 log.warn("ODsay API returned an error response. code={}, message={}",
                         errorCode(response),
                         errorMessage(response));
@@ -69,9 +85,11 @@ public class OdsayClient {
         } catch (BusinessException exception) {
             throw exception;
         } catch (RestClientResponseException exception) {
+            metricsCollector.recordFailure();
             log.warn("ODsay API request failed. statusCode={}", exception.getStatusCode());
             throw new BusinessException(ErrorCode.EXTERNAL_PROVIDER_UNAVAILABLE, exception);
         } catch (ResourceAccessException | IllegalArgumentException exception) {
+            metricsCollector.recordFailure();
             log.warn("ODsay API request failed. exceptionType={}", exception.getClass().getSimpleName());
             throw new BusinessException(ErrorCode.EXTERNAL_PROVIDER_UNAVAILABLE, exception);
         }
@@ -82,6 +100,7 @@ public class OdsayClient {
             return Optional.empty();
         }
         try {
+            metricsCollector.recordOdsayLoadLane();
             String uri = UriComponentsBuilder.fromPath("/v1/api/loadLane")
                     .queryParam("mapObject", URLEncoder.encode(mapObject, StandardCharsets.UTF_8))
                     .queryParam("apiKey", URLEncoder.encode(properties.apiKey(), StandardCharsets.UTF_8))
@@ -92,9 +111,11 @@ public class OdsayClient {
                     .retrieve()
                     .body(RESPONSE_TYPE);
             if (response == null || response.isEmpty()) {
+                metricsCollector.recordFailure();
                 return Optional.empty();
             }
             if (response.containsKey("error")) {
+                metricsCollector.recordFailure();
                 log.warn("ODsay loadLane returned an error response. code={}, message={}",
                         errorCode(response),
                         errorMessage(response));
@@ -102,9 +123,11 @@ public class OdsayClient {
             }
             return Optional.of(response);
         } catch (RestClientResponseException exception) {
+            metricsCollector.recordFailure();
             log.warn("ODsay loadLane request failed. statusCode={}", exception.getStatusCode());
             return Optional.empty();
         } catch (ResourceAccessException | IllegalArgumentException exception) {
+            metricsCollector.recordFailure();
             log.warn("ODsay loadLane request failed. exceptionType={}", exception.getClass().getSimpleName());
             return Optional.empty();
         }

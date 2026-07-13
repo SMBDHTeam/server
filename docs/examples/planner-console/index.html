@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Tour Planner E2E Console</title>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <header class="app-header">
+    <div>
+      <p class="eyebrow">TOUR SERVER</p>
+      <h1>Planner E2E Console</h1>
+    </div>
+    <div class="connection-bar">
+      <label for="api-base">API</label>
+      <input id="api-base" type="url" value="http://localhost:18080/api/v1" spellcheck="false">
+      <button id="connect-button" class="secondary-button" type="button">연결 확인</button>
+      <span id="connection-status" class="status-dot" data-state="idle">대기</span>
+    </div>
+  </header>
+
+  <main class="app-shell">
+    <aside class="control-panel">
+      <form id="planner-form">
+        <section class="form-section">
+          <div class="section-heading">
+            <h2>여행 기간</h2>
+            <span id="trip-duration">3일</span>
+          </div>
+          <div class="field-grid two-columns">
+            <label>시작일<input id="start-date" name="startDate" type="date" required></label>
+            <label>종료일<input id="end-date" name="endDate" type="date" required></label>
+            <label>기본 시작<input id="daily-start-time" name="dailyStartTime" type="time" value="09:00" required></label>
+            <label>기본 종료<input id="daily-end-time" name="dailyEndTime" type="time" value="19:00" required></label>
+          </div>
+        </section>
+
+        <section class="form-section">
+          <div class="section-heading">
+            <h2>일차별 출발·도착</h2>
+            <button id="reset-days-button" class="text-button" type="button">기본값 적용</button>
+          </div>
+          <div id="day-conditions" class="day-conditions"></div>
+        </section>
+
+        <section class="form-section">
+          <div class="section-heading">
+            <h2>여행 성향</h2>
+            <span id="question-count">연결 필요</span>
+          </div>
+          <div id="questions" class="questions" aria-live="polite">
+            <div class="empty-inline">API 연결 후 질문을 표시합니다.</div>
+          </div>
+        </section>
+
+        <section class="form-section compact-section">
+          <label for="must-visit-ids">필수 방문 장소 ID</label>
+          <input id="must-visit-ids" name="mustVisitPlaceIds" type="text" placeholder="예: 101, 205" inputmode="numeric">
+        </section>
+
+        <div class="form-actions">
+          <button id="generate-button" class="primary-button" type="submit">일정 생성</button>
+          <span id="request-time" class="request-time"></span>
+        </div>
+      </form>
+    </aside>
+
+    <section class="result-panel">
+      <div class="result-toolbar">
+        <div class="view-tabs" role="tablist" aria-label="결과 보기">
+          <button class="view-tab is-active" type="button" data-view="schedule" role="tab" aria-selected="true">일정</button>
+          <button class="view-tab" type="button" data-view="map" role="tab" aria-selected="false">지도</button>
+          <button class="view-tab" type="button" data-view="json" role="tab" aria-selected="false">JSON</button>
+        </div>
+        <span id="schedule-id" class="schedule-id">생성 결과 없음</span>
+      </div>
+
+      <div id="result-empty" class="result-empty">
+        <div class="empty-map-graphic" aria-hidden="true">
+          <span class="map-road road-a"></span>
+          <span class="map-road road-b"></span>
+          <span class="map-pin pin-a"></span>
+          <span class="map-pin pin-b"></span>
+          <span class="map-pin pin-c"></span>
+        </div>
+        <strong>일정 생성 결과가 여기에 표시됩니다.</strong>
+      </div>
+
+      <div id="result-content" class="result-content" hidden>
+        <div id="schedule-view" class="view-pane is-active" data-view-pane="schedule">
+          <div id="summary-strip" class="summary-strip"></div>
+          <div id="evaluation-panel" class="evaluation-panel"></div>
+          <div id="day-tabs" class="day-tabs" role="tablist" aria-label="일차 선택"></div>
+          <div id="timeline" class="timeline"></div>
+        </div>
+
+        <div id="map-view" class="view-pane map-pane" data-view-pane="map">
+          <div id="map-canvas" class="map-canvas" aria-label="일정 경로 지도"></div>
+          <div id="map-legend" class="map-legend"></div>
+        </div>
+
+        <div id="json-view" class="view-pane json-pane" data-view-pane="json">
+          <div class="json-toolbar">
+            <button class="json-tab is-active" type="button" data-json="request">요청</button>
+            <button class="json-tab" type="button" data-json="schedule">일정 응답</button>
+            <button class="json-tab" type="button" data-json="map">지도 응답</button>
+          </div>
+          <pre id="json-output"></pre>
+        </div>
+      </div>
+
+      <div id="error-panel" class="error-panel" hidden>
+        <strong id="error-title">요청 실패</strong>
+        <p id="error-message"></p>
+        <pre id="error-details"></pre>
+      </div>
+    </section>
+  </main>
+
+  <template id="day-condition-template">
+    <fieldset class="day-condition">
+      <legend></legend>
+      <div class="field-grid two-columns">
+        <label>시작 시각<input data-field="startTime" type="time" required></label>
+        <label>종료 시각<input data-field="endTime" type="time" required></label>
+      </div>
+      <div class="location-editor" data-location="startLocation">
+        <label>출발지<input data-field="name" type="text" required></label>
+        <label>경도<input data-field="longitude" type="number" step="0.000001" required></label>
+        <label>위도<input data-field="latitude" type="number" step="0.000001" required></label>
+      </div>
+      <div class="location-editor" data-location="endLocation">
+        <label>도착지<input data-field="name" type="text" required></label>
+        <label>경도<input data-field="longitude" type="number" step="0.000001" required></label>
+        <label>위도<input data-field="latitude" type="number" step="0.000001" required></label>
+      </div>
+    </fieldset>
+  </template>
+
+  <script src="../kakao-map-local-config.js"></script>
+  <script type="module" src="./app.js"></script>
+</body>
+</html>

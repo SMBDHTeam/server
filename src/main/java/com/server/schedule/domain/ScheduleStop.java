@@ -38,6 +38,12 @@ public class ScheduleStop {
     @Column(name = "stay_minutes", nullable = false)
     private int stayMinutes;
 
+    @Column(name = "selection_reasons_json", nullable = false, columnDefinition = "text")
+    private String selectionReasonsJson = "[]";
+
+    @Column(name = "warnings_json", nullable = false, columnDefinition = "text")
+    private String warningsJson = "[]";
+
     @OneToOne(mappedBy = "scheduleStop")
     private TransitRoute inboundTransit;
 
@@ -51,6 +57,22 @@ public class ScheduleStop {
         this.stopOrder = stopOrder;
         this.stayMinutes = stayMinutes;
         scheduleDay.addStop(this);
+    }
+
+    public void updateDeliveryInfo(String selectionReasonsJson, String warningsJson) {
+        this.selectionReasonsJson = selectionReasonsJson == null || selectionReasonsJson.isBlank()
+                ? "[]"
+                : selectionReasonsJson;
+        this.warningsJson = warningsJson == null || warningsJson.isBlank()
+                ? "[]"
+                : warningsJson;
+    }
+
+    public void updateStayMinutes(int stayMinutes) {
+        if (stayMinutes <= 0) {
+            throw new IllegalArgumentException("stayMinutes must be positive");
+        }
+        this.stayMinutes = stayMinutes;
     }
 
     public void setInboundTransit(TransitRoute inboundTransit) {
@@ -71,6 +93,14 @@ public class ScheduleStop {
 
     public int getStayMinutes() {
         return stayMinutes;
+    }
+
+    public String getSelectionReasonsJson() {
+        return selectionReasonsJson;
+    }
+
+    public String getWarningsJson() {
+        return warningsJson;
     }
 
     public TransitRoute getInboundTransit() {

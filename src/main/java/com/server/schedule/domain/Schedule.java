@@ -126,6 +126,14 @@ public class Schedule {
         return endDate;
     }
 
+    public LocalTime getDailyStartTime() {
+        return dailyStartTime;
+    }
+
+    public LocalTime getDailyEndTime() {
+        return dailyEndTime;
+    }
+
     public String getStyleSummary() {
         return styleSummary;
     }
