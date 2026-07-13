@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-APP_NAME="server"
+APP_NAME="hackathon-dev"
 APP_DIR="/opt/${APP_NAME}"
 NGINX_CONF_SOURCE="./deploy/nginx/default.conf"
 NGINX_CONF_TARGET="/etc/nginx/sites-available/${APP_NAME}"
