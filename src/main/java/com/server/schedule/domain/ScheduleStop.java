@@ -75,6 +75,15 @@ public class ScheduleStop {
         this.stayMinutes = stayMinutes;
     }
 
+    public void reassign(ScheduleDay scheduleDay, int stopOrder, int stayMinutes) {
+        if (scheduleDay == null || stopOrder <= 0 || stayMinutes <= 0) {
+            throw new IllegalArgumentException("scheduleDay, stopOrder and stayMinutes must be valid");
+        }
+        this.scheduleDay = scheduleDay;
+        this.stopOrder = stopOrder;
+        this.stayMinutes = stayMinutes;
+    }
+
     public void setInboundTransit(TransitRoute inboundTransit) {
         this.inboundTransit = inboundTransit;
     }

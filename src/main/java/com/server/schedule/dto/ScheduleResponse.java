@@ -1,5 +1,6 @@
 package com.server.schedule.dto;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalTime;
@@ -15,7 +16,7 @@ public record ScheduleResponse(
         LocalTime dailyEndTime,
         String styleSummary,
         List<Day> days,
-        ScheduleEvaluationReport evaluation
+        @JsonInclude(JsonInclude.Include.NON_NULL) ScheduleEvaluationReport evaluation
 ) {
     public ScheduleResponse(
             UUID id,

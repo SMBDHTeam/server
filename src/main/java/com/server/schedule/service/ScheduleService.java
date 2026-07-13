@@ -13,8 +13,10 @@ import com.server.schedule.domain.TransitRouteLine;
 import com.server.schedule.domain.TransitSegment;
 import com.server.schedule.dto.ScheduleCreateRequest;
 import com.server.schedule.dto.ScheduleEvaluationReport;
+import com.server.schedule.dto.ScheduleListResponse;
 import com.server.schedule.dto.ScheduleMapResponse;
 import com.server.schedule.dto.ScheduleResponse;
+import com.server.schedule.dto.ScheduleUpdateRequest;
 import com.server.schedule.evaluation.ScheduleHardGateEvaluator;
 import com.server.schedule.evaluation.ScheduleHardGateResult;
 import com.server.schedule.evaluation.ScheduleScoreEvaluator;
@@ -71,6 +73,7 @@ public class ScheduleService {
     );
 
     private final ScheduleRepository scheduleRepository;
+    private final PlaceRepository placeRepository;
     private final TransitRouteProvider transitRouteProvider;
     private final ScheduleRequestValidator requestValidator;
     private final DayRouteOptimizer dayRouteOptimizer;
@@ -122,6 +125,7 @@ public class ScheduleService {
             ExternalCallMetricsCollector externalCallMetricsCollector
     ) {
         this.scheduleRepository = scheduleRepository;
+        this.placeRepository = placeRepository;
         this.transitRouteProvider = transitRouteProvider;
         this.requestValidator = requestValidator;
         this.dayRouteOptimizer = dayRouteOptimizer;
@@ -190,9 +194,83 @@ public class ScheduleService {
     }
 
     @Transactional(readOnly = true)
+    public ScheduleListResponse getAll() {
+        return new ScheduleListResponse(scheduleRepository.findAll()
+                .stream()
+                .map(this::toResponse)
+                .toList());
+    }
+
+    @Transactional(readOnly = true)
+    public ScheduleResponse get(UUID scheduleId) {
+        return toResponse(findSchedule(scheduleId));
+    }
+
+    @Transactional
+    public ScheduleResponse update(UUID scheduleId, ScheduleUpdateRequest request) {
+        Schedule schedule = findSchedule(scheduleId);
+        Map<Integer, ScheduleDay> dayByNumber = schedule.getDays().stream()
+                .collect(Collectors.toMap(ScheduleDay::getDayNo, Function.identity()));
+        Map<UUID, ScheduleStop> existingStopById = schedule.getDays().stream()
+                .flatMap(day -> day.getStops().stream())
+                .collect(Collectors.toMap(ScheduleStop::getId, Function.identity()));
+        validateUpdateRequest(request, dayByNumber, existingStopById);
+
+        Map<UUID, ScheduleDay> currentDayByStopId = new HashMap<>();
+        schedule.getDays().forEach(day -> day.getStops()
+                .forEach(stop -> currentDayByStopId.put(stop.getId(), day)));
+        schedule.getDays().forEach(ScheduleDay::clearTransitRoutes);
+
+        int temporaryOrder = Integer.MAX_VALUE;
+        for (ScheduleDay day : schedule.getDays()) {
+            for (ScheduleStop stop : day.getStops()) {
+                stop.reassign(day, temporaryOrder--, stop.getStayMinutes());
+            }
+        }
+        scheduleRepository.flush();
+
+        Set<UUID> retainedStopIds = request.stops().stream()
+                .map(ScheduleUpdateRequest.Stop::stopId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        schedule.getDays().forEach(day -> List.copyOf(day.getStops()).stream()
+                .filter(stop -> !retainedStopIds.contains(stop.getId()))
+                .forEach(day::removeStop));
+        scheduleRepository.flush();
+
+        Map<Long, Place> placeById = placesForUpdate(request);
+        for (ScheduleUpdateRequest.Stop item : request.stops()) {
+            ScheduleDay targetDay = dayByNumber.get(item.dayNo());
+            if (item.stopId() != null) {
+                ScheduleStop stop = existingStopById.get(item.stopId());
+                ScheduleDay currentDay = currentDayByStopId.get(item.stopId());
+                if (currentDay != targetDay) {
+                    currentDay.removeStop(stop);
+                    targetDay.addStop(stop);
+                }
+                stop.reassign(targetDay, item.order(), item.stayMinutes());
+            } else {
+                ScheduleStop stop = new ScheduleStop(
+                        targetDay,
+                        placeById.get(item.placeId()),
+                        item.order(),
+                        item.stayMinutes()
+                );
+                stop.updateDeliveryInfo(
+                        jsonArray(List.of("사용자가 일정 수정에서 추가한 장소입니다.")),
+                        "[]"
+                );
+            }
+        }
+        schedule.getDays().forEach(ScheduleDay::sortStops);
+        recalculateRoutes(schedule);
+        schedule.touch();
+        return toResponse(schedule);
+    }
+
+    @Transactional(readOnly = true)
     public ScheduleMapResponse getMap(UUID scheduleId, Integer dayNo) {
-        Schedule schedule = scheduleRepository.findById(scheduleId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.SCHEDULE_NOT_FOUND));
+        Schedule schedule = findSchedule(scheduleId);
         List<ScheduleDay> days = schedule.getDays()
                 .stream()
                 .filter(day -> dayNo == null || day.getDayNo() == dayNo)
@@ -225,6 +303,94 @@ public class ScheduleService {
                                 .flatMap(route -> toRouteLines(schedule, day, route).stream()))
                         .toList()
         );
+    }
+
+    private Schedule findSchedule(UUID scheduleId) {
+        return scheduleRepository.findById(scheduleId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.SCHEDULE_NOT_FOUND));
+    }
+
+    private void validateUpdateRequest(
+            ScheduleUpdateRequest request,
+            Map<Integer, ScheduleDay> dayByNumber,
+            Map<UUID, ScheduleStop> existingStopById
+    ) {
+        Set<UUID> stopIds = new HashSet<>();
+        Set<String> dayOrders = new HashSet<>();
+        Map<Integer, Set<Integer>> ordersByDay = new HashMap<>();
+        for (ScheduleUpdateRequest.Stop item : request.stops()) {
+            boolean validReference = (item.stopId() == null) != (item.placeId() == null)
+                    && (item.placeId() == null || item.placeId() > 0);
+            if (!validReference
+                    || item.dayNo() <= 0
+                    || item.order() <= 0
+                    || item.stayMinutes() < 30
+                    || !dayByNumber.containsKey(item.dayNo())
+                    || !dayOrders.add(item.dayNo() + ":" + item.order())
+                    || (item.stopId() != null
+                    && (!existingStopById.containsKey(item.stopId()) || !stopIds.add(item.stopId())))) {
+                throw new BusinessException(ErrorCode.INVALID_SCHEDULE_CONDITION);
+            }
+            ordersByDay.computeIfAbsent(item.dayNo(), ignored -> new HashSet<>()).add(item.order());
+        }
+        for (Integer dayNo : dayByNumber.keySet()) {
+            Set<Integer> orders = ordersByDay.get(dayNo);
+            if (orders == null || orders.isEmpty() || orders.size() > MAX_STOPS_PER_DAY) {
+                throw new BusinessException(ErrorCode.INVALID_SCHEDULE_CONDITION);
+            }
+            for (int order = 1; order <= orders.size(); order++) {
+                if (!orders.contains(order)) {
+                    throw new BusinessException(ErrorCode.INVALID_SCHEDULE_CONDITION);
+                }
+            }
+        }
+    }
+
+    private Map<Long, Place> placesForUpdate(ScheduleUpdateRequest request) {
+        Set<Long> placeIds = request.stops().stream()
+                .map(ScheduleUpdateRequest.Stop::placeId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+        if (placeIds.isEmpty()) {
+            return Map.of();
+        }
+        Map<Long, Place> placeById = placeRepository.findAllById(placeIds).stream()
+                .collect(Collectors.toMap(Place::getId, Function.identity()));
+        if (!placeById.keySet().containsAll(placeIds)) {
+            throw new BusinessException(ErrorCode.PLACE_NOT_FOUND);
+        }
+        return placeById;
+    }
+
+    private void recalculateRoutes(Schedule schedule) {
+        Map<RouteKey, TransitRouteResult> routeCache = new HashMap<>();
+        PlannerExecutionMetrics executionMetrics = new PlannerExecutionMetrics();
+        for (ScheduleDay day : schedule.getDays()) {
+            TransitPoint previous = new TransitPoint(
+                    day.getStartPlaceName(), day.getStartLongitude(), day.getStartLatitude());
+            for (ScheduleStop stop : day.getStops()) {
+                TransitPoint destination = new TransitPoint(
+                        stop.getPlace().getName(),
+                        stop.getPlace().getLongitude(),
+                        stop.getPlace().getLatitude()
+                );
+                TransitRouteResult route = resolveRoute(
+                        routeCache, executionMetrics, previous, destination);
+                createRoute(day, stop, "INBOUND", stop.getStopOrder(), route);
+                previous = destination;
+            }
+            TransitRouteResult finalRoute = resolveRoute(
+                    routeCache,
+                    executionMetrics,
+                    previous,
+                    new TransitPoint(
+                            day.getEndPlaceName(), day.getEndLongitude(), day.getEndLatitude())
+            );
+            createRoute(day, null, "FINAL", day.getStops().size() + 1, finalRoute);
+            if (!feasibilityChecker.fitWithinAvailableTime(day)) {
+                throw new BusinessException(ErrorCode.INVALID_SCHEDULE_CONDITION);
+            }
+        }
     }
 
     private int tripDays(ScheduleCreateRequest request) {

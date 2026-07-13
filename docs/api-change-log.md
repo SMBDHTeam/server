@@ -16,6 +16,24 @@ API 계약이 변경될 때마다 최신 항목을 위에 추가한다.
 - 관련 PR 또는 이슈:
 ```
 
+## 2026-07-13
+
+- API: `GET /api/v1/schedules`, `PATCH /api/v1/schedules/{scheduleId}`
+- 구분: 추가
+- 이전: API 문서에 일정 목록과 수정 계약만 있고 Controller·Service 구현이 없음
+- 이후: 전체 일정 목록을 반환하고, 전체 방문 계획 기준으로 장소 추가·삭제·일차·순서·체류시간 변경 후 전체 대중교통 경로를 재계산
+- 이유: 생성된 일정을 다시 조회하고 사용자가 편집할 수 있는 1차 스프린트 흐름 완성
+- 호환성 파괴: 아니오
+- 관련 PR 또는 이슈: 없음
+
+- API: `POST /api/v1/schedules/{scheduleId}/shares`, `GET /api/v1/shared-schedules/{token}`, `GET /api/v1/shared-schedules/{token}/map`, `DELETE /api/v1/schedules/{scheduleId}/shares/{shareId}`
+- 구분: 추가
+- 이전: API 문서와 ERD에 공유 계약만 있고 구현이 없음
+- 이후: 32바이트 공유 토큰 생성, SHA-256 해시 저장, 읽기 전용 일정·지도 조회, 만료·폐기 검증과 링크 폐기를 지원
+- 이유: 인증 없이 특정 일정을 안전하게 읽기 전용으로 전달하는 1차 스프린트 공유 흐름 완성
+- 호환성 파괴: 아니오
+- 관련 PR 또는 이슈: 없음
+
 ## 2026-07-12
 
 - API: `POST /api/v1/schedules`

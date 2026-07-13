@@ -123,8 +123,25 @@ public class ScheduleDay {
         this.stops.add(stop);
     }
 
+    public void removeStop(ScheduleStop stop) {
+        this.stops.remove(stop);
+    }
+
+    public void sortStops() {
+        this.stops.sort(java.util.Comparator.comparingInt(ScheduleStop::getStopOrder));
+    }
+
     public void addTransitRoute(TransitRoute transitRoute) {
         this.transitRoutes.add(transitRoute);
+    }
+
+    public void clearTransitRoutes() {
+        this.transitRoutes.forEach(route -> {
+            if (route.getScheduleStop() != null) {
+                route.getScheduleStop().setInboundTransit(null);
+            }
+        });
+        this.transitRoutes.clear();
     }
 
     public UUID getId() {

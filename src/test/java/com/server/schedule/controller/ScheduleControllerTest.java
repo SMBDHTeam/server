@@ -3,6 +3,7 @@ package com.server.schedule.controller;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -12,6 +13,7 @@ import com.server.common.error.GlobalExceptionHandler;
 import com.server.common.web.TraceIdFilter;
 import com.server.schedule.dto.ScheduleCreateRequest;
 import com.server.schedule.dto.ScheduleEvaluationReport;
+import com.server.schedule.dto.ScheduleListResponse;
 import com.server.schedule.dto.ScheduleMapResponse;
 import com.server.schedule.dto.ScheduleResponse;
 import com.server.schedule.service.ScheduleService;
@@ -155,6 +157,67 @@ class ScheduleControllerTest {
                 .andExpect(jsonPath("$.routeLines[0].coordinates[0][0]").value(129.039323));
     }
 
+    @Test
+    @DisplayName("전체 일정 목록을 조회한다")
+    void getAllReturnsSchedules() throws Exception {
+        when(scheduleService.getAll()).thenReturn(new ScheduleListResponse(List.of(responseWithoutEvaluation())));
+
+        mockMvc.perform(get("/api/v1/schedules"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items[0].status").value("CONFIRMED"))
+                .andExpect(jsonPath("$.items[0].days[0].stops[0].place.id").value(101))
+                .andExpect(jsonPath("$.items[0].evaluation").doesNotExist());
+    }
+
+    @Test
+    @DisplayName("전체 방문 계획을 반영해 일정을 수정한다")
+    void updateReturnsRecalculatedSchedule() throws Exception {
+        UUID scheduleId = UUID.fromString("00000000-0000-0000-0000-000000000001");
+        when(scheduleService.update(Mockito.eq(scheduleId), any())).thenReturn(response());
+
+        mockMvc.perform(patch("/api/v1/schedules/{scheduleId}", scheduleId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "stops": [
+                                    {
+                                      "stopId": "00000000-0000-0000-0000-000000000101",
+                                      "dayNo": 1,
+                                      "order": 1,
+                                      "stayMinutes": 70
+                                    }
+                                  ]
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("CONFIRMED"))
+                .andExpect(jsonPath("$.days[0].finalTransit.totalMinutes").value(25));
+    }
+
+    @Test
+    @DisplayName("수정 항목에 stopId와 placeId를 함께 전달하면 400을 반환한다")
+    void updateRejectsAmbiguousStopReference() throws Exception {
+        UUID scheduleId = UUID.fromString("00000000-0000-0000-0000-000000000001");
+
+        mockMvc.perform(patch("/api/v1/schedules/{scheduleId}", scheduleId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "stops": [
+                                    {
+                                      "stopId": "00000000-0000-0000-0000-000000000101",
+                                      "placeId": 205,
+                                      "dayNo": 1,
+                                      "order": 1,
+                                      "stayMinutes": 70
+                                    }
+                                  ]
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_SCHEDULE_CONDITION"));
+    }
+
     private ScheduleResponse response() {
         return new ScheduleResponse(
                 UUID.fromString("00000000-0000-0000-0000-000000000001"),
@@ -207,6 +270,21 @@ class ScheduleControllerTest {
                                 4, 0, 0, 100, 10, 0, List.of("ODSAY")
                         )
                 )
+        );
+    }
+
+    private ScheduleResponse responseWithoutEvaluation() {
+        ScheduleResponse response = response();
+        return new ScheduleResponse(
+                response.id(),
+                response.status(),
+                response.startDate(),
+                response.endDate(),
+                response.dailyStartTime(),
+                response.dailyEndTime(),
+                response.styleSummary(),
+                response.days(),
+                null
         );
     }
 

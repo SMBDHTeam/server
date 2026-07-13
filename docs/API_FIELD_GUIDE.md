@@ -196,7 +196,7 @@
 
 `GET /api/v1/schedules`
 
-요청값은 없으며 전체 일정 목록을 반환한다. 응답의 일정 객체는 일정 생성 응답과 같은 의미를 가진다.
+요청값은 없으며 전체 일정 목록을 반환한다. 응답의 일정 객체는 일정 생성 응답과 같은 의미를 가지며 생성 시점의 `evaluation`은 생략한다.
 
 | 응답 필드 | 자료형 | 필수 | 의미 |
 | --- | --- | :---: | --- |
@@ -220,9 +220,9 @@
 | `stops[].placeId` | Body | integer | 조건부 | 새로 추가할 내부 장소 |
 | `stops[].dayNo` | Body | integer | O | 배치할 여행 일차 |
 | `stops[].order` | Body | integer | O | 해당 일차의 방문 순서 |
-| `stops[].stayMinutes` | Body | integer | O | 체류시간(분) |
+| `stops[].stayMinutes` | Body | integer | O | 체류시간(분). 최소 `30` |
 
-`stopId`와 `placeId`는 하나만 전달한다. `version`은 사용하지 않는다.
+`stopId`와 `placeId`는 하나만 전달한다. 모든 여행 일차에 방문 장소가 1~3개 있어야 하며 일차별 `order`는 `1`부터 중복과 누락 없이 연속되어야 한다. `version`은 사용하지 않는다.
 
 | 응답 필드 | 자료형 | 필수 | 의미 |
 | --- | --- | :---: | --- |
@@ -347,11 +347,11 @@
 | 필드 | 자료형 | 필수 | 의미 |
 | --- | --- | :---: | --- |
 | `scheduleId` | string(UUID) | O | 공유할 일정 |
-| `expiresInDays` | integer | X | 유효기간(일) |
+| `expiresInDays` | integer | X | 유효기간(일). `1~365` |
 | `id` | string(UUID) | O | 공유 링크 관리 ID |
 | `token` | string | O | 공유 URL 토큰 |
 | `url` | string | O | 공유 상대 URL |
-| `expiresAt` | string(datetime) | X | 만료시각 |
+| `expiresAt` | string(datetime) | X | `Asia/Seoul` 오프셋을 포함한 ISO-8601 만료시각 |
 
 ## 11. 공유 일정·지도 조회
 
@@ -364,6 +364,7 @@
 | `days` | array | O | 날짜별 일정 |
 
 공유 지도 응답 필드는 일반 일정 지도 응답과 동일하다.
+만료되거나 폐기된 토큰은 `404 SHARE_LINK_NOT_FOUND`를 반환한다.
 
 ## 12. 공유 링크 폐기
 
