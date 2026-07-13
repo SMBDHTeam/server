@@ -24,7 +24,7 @@ permissions:
 env:
   MAX_DIFF_BYTES: "60000"
 
-  GEMINI_MODEL: "gemini-2.5-flash"
+  GEMINI_MODEL: "gemini-3.5-flash"
 
   REVIEW_PROMPT: |
     당신은 Java, Spring Boot, Next.js, Docker, AWS 및 GitHub Actions 경험이 풍부한 시니어 코드 리뷰어입니다.
