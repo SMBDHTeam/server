@@ -1,14 +1,12 @@
 name: Discord Notify
 
 on:
-  # PR 생성, 다시 열림, 닫힘 이벤트 감지
+
   pull_request:
     types:
-      - opened
-      - reopened
       - closed
 
-  # GitHub Actions 화면에서 수동 테스트할 수 있게 함
+
   workflow_dispatch:
 
 permissions:
@@ -21,7 +19,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # Discord Webhook Secret이 등록되어 있는지 확인한다.
+      # Discord Webhook Secret 등록 여부 확인
       - name: Check Discord webhook secret
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
@@ -40,8 +38,10 @@ jobs:
           ACTOR: ${{ github.actor }}
         run: |
           MESSAGE="🧪 **Discord 알림 테스트**
-          📦 ${REPOSITORY}
-          👤 실행자: ${ACTOR}
+
+          📦 저장소 : ${REPOSITORY}
+          👤 실행자 : ${ACTOR}
+
           ✅ Webhook 연결 테스트 성공"
 
           jq -n --arg content "$MESSAGE" '{content: $content}' \
@@ -49,32 +49,9 @@ jobs:
                 -H "Content-Type: application/json" \
                 -d @- "$DISCORD_WEBHOOK_URL"
 
-      # PR 생성 / 다시 열림 알림
-      - name: Notify pull request opened
-        if: github.event_name == 'pull_request' && github.event.action != 'closed'
-        env:
-          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
-          ACTOR: ${{ github.actor }}
-          PR_TITLE: ${{ github.event.pull_request.title }}
-          PR_URL: ${{ github.event.pull_request.html_url }}
-          HEAD_BRANCH: ${{ github.event.pull_request.head.ref }}
-          BASE_BRANCH: ${{ github.event.pull_request.base.ref }}
-          ACTION_NAME: ${{ github.event.action }}
-        run: |
-          MESSAGE="🟡 **PR ${ACTION_NAME}**
-          🌿 ${HEAD_BRANCH} → ${BASE_BRANCH}
-          👤 작성자: ${ACTOR}
-          📝 제목: ${PR_TITLE}
-          🔗 <${PR_URL}>"
-
-          jq -n --arg content "$MESSAGE" '{content: $content}' \
-            | curl --fail-with-body -sS \
-                -H "Content-Type: application/json" \
-                -d @- "$DISCORD_WEBHOOK_URL"
-
-      # PR merge 알림
+      # PR merge 완료 알림
       - name: Notify pull request merged
-        if: github.event_name == 'pull_request' && github.event.action == 'closed' && github.event.pull_request.merged == true
+        if: github.event_name == 'pull_request' && github.event.pull_request.merged == true
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
           ACTOR: ${{ github.actor }}
@@ -82,12 +59,19 @@ jobs:
           PR_URL: ${{ github.event.pull_request.html_url }}
           HEAD_BRANCH: ${{ github.event.pull_request.head.ref }}
           BASE_BRANCH: ${{ github.event.pull_request.base.ref }}
+          MERGE_COMMIT_SHA: ${{ github.event.pull_request.merge_commit_sha }}
         run: |
+          COMMIT_URL="${{ github.server_url }}/${{ github.repository }}/commit/${MERGE_COMMIT_SHA}"
+
           MESSAGE="✅ **PR Merge 완료**
-          🌿 ${HEAD_BRANCH} → ${BASE_BRANCH}
-          👤 Merge: ${ACTOR}
-          📝 제목: ${PR_TITLE}
-          🔗 <${PR_URL}>"
+
+          🌿 브랜치 : ${HEAD_BRANCH} → ${BASE_BRANCH}
+          👤 작성자 : ${ACTOR}
+          📝 제목 : ${PR_TITLE}
+
+          🔗 PR 링크 : <${PR_URL}>
+          
+          🔗 커밋 링크 : <${COMMIT_URL}>"
 
           jq -n --arg content "$MESSAGE" '{content: $content}' \
             | curl --fail-with-body -sS \
