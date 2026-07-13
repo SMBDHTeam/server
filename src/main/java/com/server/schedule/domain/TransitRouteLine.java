@@ -38,6 +38,18 @@ public class TransitRouteLine {
     @Column(name = "coordinates_json", nullable = false, columnDefinition = "text")
     private String coordinatesJson;
 
+    @Column(name = "duration_minutes")
+    private Integer durationMinutes;
+
+    @Column(name = "distance_meters")
+    private Integer distanceMeters;
+
+    @Column(name = "instruction", columnDefinition = "text")
+    private String instruction;
+
+    @Column(name = "fallback_used", nullable = false)
+    private boolean fallbackUsed;
+
     protected TransitRouteLine() {
     }
 
@@ -48,12 +60,30 @@ public class TransitRouteLine {
             String lineName,
             String coordinatesJson
     ) {
+        this(transitRoute, lineOrder, mode, lineName, coordinatesJson, null, null, null, false);
+    }
+
+    public TransitRouteLine(
+            TransitRoute transitRoute,
+            int lineOrder,
+            String mode,
+            String lineName,
+            String coordinatesJson,
+            Integer durationMinutes,
+            Integer distanceMeters,
+            String instruction,
+            boolean fallbackUsed
+    ) {
         this.id = UUID.randomUUID();
         this.transitRoute = transitRoute;
         this.lineOrder = lineOrder;
         this.mode = mode;
         this.lineName = lineName;
         this.coordinatesJson = coordinatesJson;
+        this.durationMinutes = durationMinutes;
+        this.distanceMeters = distanceMeters;
+        this.instruction = instruction;
+        this.fallbackUsed = fallbackUsed;
         transitRoute.addRouteLine(this);
     }
 
@@ -71,5 +101,21 @@ public class TransitRouteLine {
 
     public String getCoordinatesJson() {
         return coordinatesJson;
+    }
+
+    public Integer getDurationMinutes() {
+        return durationMinutes;
+    }
+
+    public Integer getDistanceMeters() {
+        return distanceMeters;
+    }
+
+    public String getInstruction() {
+        return instruction;
+    }
+
+    public boolean isFallbackUsed() {
+        return fallbackUsed;
     }
 }

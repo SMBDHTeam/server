@@ -20,7 +20,12 @@ class OdsayTransitRouteProviderTest {
 
     private final OdsayClient odsayClient = Mockito.mock(OdsayClient.class);
     private final WalkingRouteProvider walkingRouteProvider = Mockito.mock(WalkingRouteProvider.class);
-    private final OdsayTransitRouteProvider provider = new OdsayTransitRouteProvider(odsayClient, walkingRouteProvider);
+    private final TransitRealtimeProvider transitRealtimeProvider = Mockito.mock(TransitRealtimeProvider.class);
+    private final OdsayTransitRouteProvider provider = new OdsayTransitRouteProvider(
+            odsayClient,
+            walkingRouteProvider,
+            transitRealtimeProvider
+    );
 
     @Test
     @DisplayName("가장 빠른 경로를 내부 대중교통 경로로 변환한다")
@@ -35,6 +40,8 @@ class OdsayTransitRouteProviderTest {
         )).thenReturn(response());
         when(odsayClient.loadLane("0:0@2823889:1:66:103")).thenReturn(Optional.empty());
         when(walkingRouteProvider.findRoute(Mockito.any(), Mockito.any())).thenReturn(Optional.empty());
+        when(transitRealtimeProvider.adjustment(Mockito.any()))
+                .thenReturn(TransitRealtimeAdjustment.none());
 
         TransitRouteResult result = provider.findRoute(origin, destination);
 
@@ -47,7 +54,9 @@ class OdsayTransitRouteProviderTest {
         assertThat(result.segments().get(2).mode()).isEqualTo("WALK");
         assertThat(result.routeLines()).hasSize(2);
         assertThat(result.routeLines().get(0).coordinatesJson()).contains("129.0403", "35.1151");
+        assertThat(result.routeLines().get(0).fallbackUsed()).isTrue();
         assertThat(result.routeLines().get(1).mode()).isEqualTo("WALK");
+        assertThat(result.routeLines().get(1).fallbackUsed()).isTrue();
         assertThat(result.routeLines().get(1).coordinatesJson()).contains("128.8294", "35.0241");
         assertThat(result.rawJson()).contains("\"totalTime\":42");
     }
@@ -73,6 +82,8 @@ class OdsayTransitRouteProviderTest {
                 )))
         )));
         when(walkingRouteProvider.findRoute(Mockito.any(), Mockito.any())).thenReturn(Optional.empty());
+        when(transitRealtimeProvider.adjustment(Mockito.any()))
+                .thenReturn(TransitRealtimeAdjustment.none());
 
         TransitRouteResult result = provider.findRoute(origin, destination);
 
@@ -80,7 +91,9 @@ class OdsayTransitRouteProviderTest {
         assertThat(result.routeLines().get(0).lineName()).isEqualTo("1009");
         assertThat(result.routeLines().get(0).coordinatesJson())
                 .contains("129.0100", "35.1000");
+        assertThat(result.routeLines().get(0).fallbackUsed()).isFalse();
         assertThat(result.routeLines().get(1).mode()).isEqualTo("WALK");
+        assertThat(result.routeLines().get(1).fallbackUsed()).isTrue();
         assertThat(result.routeLines().get(1).coordinatesJson()).contains("128.8294", "35.0241");
     }
 
@@ -102,6 +115,8 @@ class OdsayTransitRouteProviderTest {
                         200,
                         "[[128.8300,35.0250],[128.8298,35.0245],[128.8294,35.0241]]"
                 )));
+        when(transitRealtimeProvider.adjustment(Mockito.any()))
+                .thenReturn(TransitRealtimeAdjustment.none());
 
         TransitRouteResult result = provider.findRoute(origin, destination);
 
@@ -109,6 +124,8 @@ class OdsayTransitRouteProviderTest {
         assertThat(result.routeLines().get(1).mode()).isEqualTo("WALK");
         assertThat(result.routeLines().get(1).coordinatesJson())
                 .contains("128.8298", "35.0245");
+        assertThat(result.routeLines().get(0).fallbackUsed()).isTrue();
+        assertThat(result.routeLines().get(1).fallbackUsed()).isFalse();
     }
 
     @Test
@@ -127,6 +144,35 @@ class OdsayTransitRouteProviderTest {
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.TRANSIT_ROUTE_NOT_FOUND);
+    }
+
+    @Test
+    @DisplayName("실시간 대기 보정이 있으면 보정 후 가장 빠른 경로를 선택한다")
+    void findRouteSelectsRealtimeAdjustedFastestPath() {
+        TransitPoint origin = point("부산역", "129.0403", "35.1151");
+        TransitPoint destination = point("광안리", "129.1187", "35.1532");
+        when(odsayClient.searchPublicTransitPath(
+                origin.longitude(),
+                origin.latitude(),
+                destination.longitude(),
+                destination.latitude()
+        )).thenReturn(realtimeResponse());
+        when(odsayClient.loadLane(Mockito.any())).thenReturn(Optional.empty());
+        when(walkingRouteProvider.findRoute(Mockito.any(), Mockito.any())).thenReturn(Optional.empty());
+        when(transitRealtimeProvider.adjustment(Mockito.any()))
+                .thenAnswer(invocation -> {
+                    TransitRealtimeRequest request = invocation.getArgument(0);
+                    if ("1001".equals(request.lineName())) {
+                        return new TransitRealtimeAdjustment(20, "LONG_WAIT", "waitMinutes=27");
+                    }
+                    return TransitRealtimeAdjustment.none();
+                });
+
+        TransitRouteResult result = provider.findRoute(origin, destination);
+
+        assertThat(result.totalMinutes()).isEqualTo(34);
+        assertThat(result.segments().get(0).lineName()).isEqualTo("40");
+        assertThat(result.rawJson()).contains("\"totalTime\":34");
     }
 
     private Map<String, Object> response() {
@@ -151,6 +197,39 @@ class OdsayTransitRouteProviderTest {
                                 ),
                                 Map.of("trafficType", 3, "sectionTime", 7)
                         )
+                )
+        )));
+    }
+
+    private Map<String, Object> realtimeResponse() {
+        return Map.of("result", Map.of("path", List.of(
+                Map.of(
+                        "info", Map.of("totalTime", 20, "payment", 1550, "mapObj", "1:1:1001"),
+                        "subPath", List.of(Map.of(
+                                "trafficType", 2,
+                                "lane", List.of(Map.of("busNo", "1001")),
+                                "startName", "부산역",
+                                "startID", "12345",
+                                "endName", "광안리",
+                                "passStopList", Map.of("stations", List.of(
+                                        Map.of("x", "129.0403", "y", "35.1151"),
+                                        Map.of("x", "129.1187", "y", "35.1532")
+                                ))
+                        ))
+                ),
+                Map.of(
+                        "info", Map.of("totalTime", 34, "payment", 1550, "mapObj", "1:1:40"),
+                        "subPath", List.of(Map.of(
+                                "trafficType", 2,
+                                "lane", List.of(Map.of("busNo", "40")),
+                                "startName", "부산역",
+                                "startID", "12345",
+                                "endName", "광안리",
+                                "passStopList", Map.of("stations", List.of(
+                                        Map.of("x", "129.0403", "y", "35.1151"),
+                                        Map.of("x", "129.1187", "y", "35.1532")
+                                ))
+                        ))
                 )
         )));
     }

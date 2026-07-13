@@ -25,6 +25,12 @@ external:
     api-key: ${ODSAY_API_KEY:}
     connect-timeout: 3s
     read-timeout: 10s
+  busan-bims:
+    enabled: ${BUSAN_BIMS_ENABLED:false}
+    base-url: ${BUSAN_BIMS_BASE_URL:https://apis.data.go.kr/6260000/BusanBIMS}
+    service-key: ${BUSAN_BIMS_API_KEY:}
+    connect-timeout: 3s
+    read-timeout: 5s
   tmap:
     base-url: ${TMAP_BASE_URL:https://apis.openapi.sk.com}
     app-key: ${SKT_API_KEY:}

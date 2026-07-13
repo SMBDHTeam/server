@@ -11,15 +11,18 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.server.common.error.GlobalExceptionHandler;
 import com.server.common.web.TraceIdFilter;
 import com.server.schedule.dto.ScheduleCreateRequest;
+import com.server.schedule.dto.ScheduleEvaluationReport;
 import com.server.schedule.dto.ScheduleMapResponse;
 import com.server.schedule.dto.ScheduleResponse;
 import com.server.schedule.service.ScheduleService;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.LocalTime;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
@@ -59,6 +62,22 @@ class ScheduleControllerTest {
                                     "longitude": 129.0403,
                                     "latitude": 35.1151
                                   },
+                                  "days": [
+                                    {
+                                      "dayNo": 1,
+                                      "startTime": "10:00",
+                                      "endTime": "20:00",
+                                      "startLocation": {"name": "부산역", "longitude": 129.0403, "latitude": 35.1151},
+                                      "endLocation": {"name": "숙소 A", "longitude": 129.158, "latitude": 35.159}
+                                    },
+                                    {
+                                      "dayNo": 2,
+                                      "startTime": "09:00",
+                                      "endTime": "17:00",
+                                      "startLocation": {"name": "숙소 A", "longitude": 129.158, "latitude": 35.159},
+                                      "endLocation": {"name": "김해국제공항", "longitude": 128.9485, "latitude": 35.1732}
+                                    }
+                                  ],
                                   "selectedAnswers": [
                                     {
                                       "questionId": "COMPANION",
@@ -71,10 +90,27 @@ class ScheduleControllerTest {
                 .andExpect(status().isCreated())
                 .andExpect(header().string("X-Trace-Id", "trace-test"))
                 .andExpect(jsonPath("$.status").value("CONFIRMED"))
+                .andExpect(jsonPath("$.dailyStartTime").value("09:00:00"))
                 .andExpect(jsonPath("$.days[0].stops[0].place.id").value(101))
+                .andExpect(jsonPath("$.days[0].stops[0].arriveAt").value("09:25:00"))
+                .andExpect(jsonPath("$.days[0].stops[0].selectionReasons[0]").value("사용자가 반드시 방문할 장소로 선택했습니다."))
                 .andExpect(jsonPath("$.days[0].stops[0].inboundTransit.totalMinutes").value(25))
+                .andExpect(jsonPath("$.days[0].stops[0].inboundTransit.transferCount").value(0))
                 .andExpect(jsonPath("$.days[0].stops[0].inboundTransit.segments[0].mode").value("BUS"))
-                .andExpect(jsonPath("$.days[0].finalTransit.totalMinutes").value(25));
+                .andExpect(jsonPath("$.days[0].stops[0].inboundTransit.segments[0].instruction").value("부산역에서 26 승차 후 남부민2동에서 하차"))
+                .andExpect(jsonPath("$.days[0].finalTransit.totalMinutes").value(25))
+                .andExpect(jsonPath("$.evaluation.hardGate.passed").value(true))
+                .andExpect(jsonPath("$.evaluation.qualityScore.totalScore").value(95))
+                .andExpect(jsonPath("$.evaluation.operations.providerCallCount").value(4))
+                .andExpect(jsonPath("$.evaluation.operations.externalHttpCallCount").value(12))
+                .andExpect(jsonPath("$.evaluation.operations.geometryFallbackLineCount").value(0));
+
+        ArgumentCaptor<ScheduleCreateRequest> captor = ArgumentCaptor.forClass(ScheduleCreateRequest.class);
+        Mockito.verify(scheduleService).create(captor.capture());
+        ScheduleCreateRequest captured = captor.getValue();
+        org.assertj.core.api.Assertions.assertThat(captured.daysOrEmpty()).hasSize(2);
+        org.assertj.core.api.Assertions.assertThat(captured.daysOrEmpty().get(0).endLocation().name()).isEqualTo("숙소 A");
+        org.assertj.core.api.Assertions.assertThat(captured.daysOrEmpty().get(1).startLocation().name()).isEqualTo("숙소 A");
     }
 
     @Test
@@ -110,9 +146,12 @@ class ScheduleControllerTest {
                 .andExpect(header().string("X-Trace-Id", "trace-test"))
                 .andExpect(jsonPath("$.startMarker.name").value("부산역"))
                 .andExpect(jsonPath("$.markers[0].placeId").value(101))
+                .andExpect(jsonPath("$.markers[0].arriveAt").value("09:25:00"))
+                .andExpect(jsonPath("$.markers[0].subtitle").value("관광지 · 체류 60분"))
                 .andExpect(jsonPath("$.routeLines[0].mode").value("SUBWAY"))
                 .andExpect(jsonPath("$.routeLines[0].startName").value("부산역"))
                 .andExpect(jsonPath("$.routeLines[0].endName").value("중앙역"))
+                .andExpect(jsonPath("$.routeLines[0].instruction").value("부산역에서 부산 1호선 승차 후 중앙역에서 하차"))
                 .andExpect(jsonPath("$.routeLines[0].coordinates[0][0]").value(129.039323));
     }
 
@@ -122,32 +161,88 @@ class ScheduleControllerTest {
                 "CONFIRMED",
                 LocalDate.parse("2026-06-23"),
                 LocalDate.parse("2026-06-24"),
+                LocalTime.parse("09:00"),
+                LocalTime.parse("19:00"),
                 "COMPANION:COMPANION_PARENTS",
                 List.of(new ScheduleResponse.Day(
                         1,
                         LocalDate.parse("2026-06-23"),
+                        LocalTime.parse("09:00"),
+                        LocalTime.parse("19:00"),
+                        "부산역 출발 → 이송도전망대 → 부산역 도착",
                         List.of(new ScheduleResponse.Stop(
                                 UUID.fromString("00000000-0000-0000-0000-000000000101"),
                                 1,
+                                LocalTime.parse("09:25"),
+                                LocalTime.parse("10:25"),
                                 60,
                                 new ScheduleResponse.Place(
                                         101L,
                                         "이송도전망대",
+                                        "관광지",
+                                        "부산",
                                         new BigDecimal("129.047956"),
-                                        new BigDecimal("35.075519")
+                                        new BigDecimal("35.075519"),
+                                        null,
+                                        null
                                 ),
-                                transit()
+                                transit(),
+                                List.of("사용자가 반드시 방문할 장소로 선택했습니다."),
+                                List.of()
                         )),
                         transit()
-                ))
+                )),
+                new ScheduleEvaluationReport(
+                        new ScheduleEvaluationReport.HardGate(true, List.of()),
+                        new ScheduleEvaluationReport.QualityScore(
+                                95,
+                                100,
+                                List.of(new ScheduleEvaluationReport.Metric(
+                                        "TIME_FIT", "일정 시간 적합성", 30, 30, "일별 가용 시간 안에 들어옴"
+                                ))
+                        ),
+                        new ScheduleEvaluationReport.Operations(
+                                1200, 6, 2, 4, 0,
+                                12, 0, 4, 4, 4,
+                                4, 0, 0, 100, 10, 0, List.of("ODSAY")
+                        )
+                )
         );
     }
 
     private ScheduleResponse.Transit transit() {
         return new ScheduleResponse.Transit(
+                "INBOUND",
+                1,
+                "부산역",
+                "이송도전망대",
+                "26",
+                LocalTime.parse("09:00"),
+                LocalTime.parse("09:25"),
                 25,
+                0,
+                0,
+                0,
                 1550,
-                List.of(new ScheduleResponse.Segment("BUS", "26", "부산역", "남부민2동"))
+                "ODSAY",
+                "UNAVAILABLE",
+                false,
+                List.of(new ScheduleResponse.Segment(
+                        1,
+                        "BUS",
+                        "26",
+                        null,
+                        "부산역",
+                        null,
+                        "남부민2동",
+                        "부산역에서 26 승차 후 남부민2동에서 하차",
+                        25,
+                        null,
+                        null,
+                        0,
+                        "UNAVAILABLE"
+                )),
+                List.of()
         );
     }
 
@@ -160,6 +255,10 @@ class ScheduleControllerTest {
                         1,
                         101L,
                         "부산타워",
+                        LocalTime.parse("09:25"),
+                        LocalTime.parse("10:25"),
+                        "관광지 · 체류 60분",
+                        "NORMAL",
                         new BigDecimal("129.032338"),
                         new BigDecimal("35.101243")
                 )),
@@ -171,6 +270,10 @@ class ScheduleControllerTest {
                         "부산 1호선",
                         "부산역",
                         "중앙역",
+                        11,
+                        null,
+                        "부산역에서 부산 1호선 승차 후 중앙역에서 하차",
+                        false,
                         List.of(List.of(new BigDecimal("129.039323"), new BigDecimal("35.114494")))
                 ))
         );
