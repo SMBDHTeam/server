@@ -1,11 +1,10 @@
-name: Discord Notify
+name: Discord Merge Notify
 
 on:
 
   pull_request:
     types:
       - closed
-
 
   workflow_dispatch:
 
@@ -15,11 +14,17 @@ permissions:
 
 jobs:
   notify:
-    name: Send Discord Notification
+    name: Send Discord Merge Notification
+
+
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      github.event.pull_request.merged == true
+
     runs-on: ubuntu-latest
 
     steps:
-      # Discord Webhook Secret 등록 여부 확인
+
       - name: Check Discord webhook secret
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
@@ -29,51 +34,137 @@ jobs:
             exit 1
           fi
 
-      # 수동 테스트 알림
-      - name: Notify manual test
+      - name: Send manual test notification
         if: github.event_name == 'workflow_dispatch'
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
           REPOSITORY: ${{ github.repository }}
           ACTOR: ${{ github.actor }}
+          REPOSITORY_URL: ${{ github.server_url }}/${{ github.repository }}
         run: |
-          MESSAGE="🧪 **Discord 알림 테스트**
+          jq -n \
+            --arg repository "$REPOSITORY" \
+            --arg actor "$ACTOR" \
+            --arg repository_url "$REPOSITORY_URL" \
+            '{
+              username: "GitHub Server Notify",
+              embeds: [
+                {
+                  title: "🧪 Discord 알림 테스트",
+                  url: $repository_url,
+                  description: "Discord Webhook 연결이 정상적으로 완료되었습니다.",
+                  color: 3447003,
+                  fields: [
+                    {
+                      name: "📦 Repository",
+                      value: $repository,
+                      inline: false
+                    },
+                    {
+                      name: "👤 실행자",
+                      value: $actor,
+                      inline: false
+                    }
+                  ],
+                  footer: {
+                    text: "GitHub Actions · Discord Notification"
+                  }
+                }
+              ]
+            }' \
+          | curl --fail-with-body -sS \
+              -H "Content-Type: application/json" \
+              -X POST \
+              -d @- \
+              "$DISCORD_WEBHOOK_URL"
 
-          📦 저장소 : ${REPOSITORY}
-          👤 실행자 : ${ACTOR}
-
-          ✅ Webhook 연결 테스트 성공"
-
-          jq -n --arg content "$MESSAGE" '{content: $content}' \
-            | curl --fail-with-body -sS \
-                -H "Content-Type: application/json" \
-                -d @- "$DISCORD_WEBHOOK_URL"
-
-      # PR merge 완료 알림
-      - name: Notify pull request merged
-        if: github.event_name == 'pull_request' && github.event.pull_request.merged == true
+      # 실제 PR Merge 알림
+      - name: Send pull request merge notification
+        if: >
+          github.event_name == 'pull_request' &&
+          github.event.pull_request.merged == true
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
-          ACTOR: ${{ github.actor }}
+
+          REPOSITORY: ${{ github.repository }}
+
+          # PR 정보
+          PR_NUMBER: ${{ github.event.pull_request.number }}
           PR_TITLE: ${{ github.event.pull_request.title }}
           PR_URL: ${{ github.event.pull_request.html_url }}
+
+          # PR 작성자와 실제 Merge 수행자
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+          MERGED_BY: ${{ github.event.pull_request.merged_by.login }}
+
+          # 브랜치 정보
           HEAD_BRANCH: ${{ github.event.pull_request.head.ref }}
           BASE_BRANCH: ${{ github.event.pull_request.base.ref }}
+
+          # Merge 결과 커밋
           MERGE_COMMIT_SHA: ${{ github.event.pull_request.merge_commit_sha }}
         run: |
+          # 화면에는 전체 SHA 대신 앞 7자리만 표시한다.
+          SHORT_SHA="${MERGE_COMMIT_SHA:0:7}"
+
+          # Merge Commit 상세 페이지 주소
           COMMIT_URL="${{ github.server_url }}/${{ github.repository }}/commit/${MERGE_COMMIT_SHA}"
 
-          MESSAGE="✅ **PR Merge 완료**
-
-          🌿 브랜치 : ${HEAD_BRANCH} → ${BASE_BRANCH}
-          👤 작성자 : ${ACTOR}
-          📝 제목 : ${PR_TITLE}
-
-          🔗 PR 링크 : <${PR_URL}>
-          
-          🔗 커밋 링크 : <${COMMIT_URL}>"
-
-          jq -n --arg content "$MESSAGE" '{content: $content}' \
-            | curl --fail-with-body -sS \
-                -H "Content-Type: application/json" \
-                -d @- "$DISCORD_WEBHOOK_URL"
+          # Discord Embed JSON 생성 후 전송
+          jq -n \
+            --arg repository "$REPOSITORY" \
+            --arg pr_number "$PR_NUMBER" \
+            --arg pr_title "$PR_TITLE" \
+            --arg pr_url "$PR_URL" \
+            --arg pr_author "$PR_AUTHOR" \
+            --arg merged_by "$MERGED_BY" \
+            --arg head_branch "$HEAD_BRANCH" \
+            --arg base_branch "$BASE_BRANCH" \
+            --arg short_sha "$SHORT_SHA" \
+            --arg commit_url "$COMMIT_URL" \
+            '{
+              username: "GitHub Server Notify",
+              embeds: [
+                {
+                  title: ("✅ [" + $repository + "] PR Merge 완료 · #" + $pr_number),
+                  url: $pr_url,
+                  description: ("### " + $pr_title),
+                  color: 5763719,
+                  fields: [
+                    {
+                      name: "🌿 브랜치",
+                      value: ("`" + $head_branch + "` → `" + $base_branch + "`"),
+                      inline: false
+                    },
+                    {
+                      name: "👤 작성자",
+                      value: $pr_author,
+                      inline: true
+                    },
+                    {
+                      name: "🔀 Merge 담당자",
+                      value: $merged_by,
+                      inline: true
+                    },
+                    {
+                      name: "📝 Merge Commit",
+                      value: ("[`" + $short_sha + "`](" + $commit_url + ")"),
+                      inline: false
+                    },
+                    {
+                      name: "🔗 Pull Request",
+                      value: ("[PR #" + $pr_number + " 확인하기](" + $pr_url + ")"),
+                      inline: false
+                    }
+                  ],
+                  footer: {
+                    text: "GitHub Actions · Merge Notification"
+                  }
+                }
+              ]
+            }' \
+          | curl --fail-with-body -sS \
+              -H "Content-Type: application/json" \
+              -X POST \
+              -d @- \
+              "$DISCORD_WEBHOOK_URL"
