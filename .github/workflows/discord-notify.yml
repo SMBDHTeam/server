@@ -1,14 +1,6 @@
-# - PR 생성, PR merge, main push 시 Discord 알링ㄻ
-
 name: Discord Notify
 
 on:
-  # main 브랜치에 push될 때 알림
-  # 보통 PR merge 후 main에 반영되면 이벤트 발생
-  push:
-    branches:
-      - main
-
   # PR 생성, 다시 열림, 닫힘 이벤트 감지
   pull_request:
     types:
@@ -48,34 +40,13 @@ jobs:
           ACTOR: ${{ github.actor }}
         run: |
           MESSAGE="🧪 **Discord 알림 테스트**
-          Repository: ${REPOSITORY}
-          Actor: ${ACTOR}
-          Status: Webhook 연결 테스트 성공"
+          📦 ${REPOSITORY}
+          👤 실행자: ${ACTOR}
+          ✅ Webhook 연결 테스트 성공"
 
           jq -n --arg content "$MESSAGE" '{content: $content}' \
-            | curl -sS -H "Content-Type: application/json" \
-                -d @- "$DISCORD_WEBHOOK_URL"
-
-      # main push 알림
-      - name: Notify main push
-        if: github.event_name == 'push'
-        env:
-          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
-          REPOSITORY: ${{ github.repository }}
-          BRANCH_NAME: ${{ github.ref_name }}
-          ACTOR: ${{ github.actor }}
-          COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
-          COMMIT_URL: ${{ github.event.head_commit.url }}
-        run: |
-          MESSAGE="🚀 **main 브랜치 push 발생**
-          Repository: ${REPOSITORY}
-          Branch: ${BRANCH_NAME}
-          Actor: ${ACTOR}
-          Commit: ${COMMIT_MESSAGE}
-          URL: ${COMMIT_URL}"
-
-          jq -n --arg content "$MESSAGE" '{content: $content}' \
-            | curl -sS -H "Content-Type: application/json" \
+            | curl --fail-with-body -sS \
+                -H "Content-Type: application/json" \
                 -d @- "$DISCORD_WEBHOOK_URL"
 
       # PR 생성 / 다시 열림 알림
@@ -83,7 +54,6 @@ jobs:
         if: github.event_name == 'pull_request' && github.event.action != 'closed'
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
-          REPOSITORY: ${{ github.repository }}
           ACTOR: ${{ github.actor }}
           PR_TITLE: ${{ github.event.pull_request.title }}
           PR_URL: ${{ github.event.pull_request.html_url }}
@@ -91,16 +61,15 @@ jobs:
           BASE_BRANCH: ${{ github.event.pull_request.base.ref }}
           ACTION_NAME: ${{ github.event.action }}
         run: |
-          MESSAGE="🟡 **Pull Request ${ACTION_NAME}**
-          Repository: ${REPOSITORY}
-          From: ${HEAD_BRANCH}
-          To: ${BASE_BRANCH}
-          Actor: ${ACTOR}
-          Title: ${PR_TITLE}
-          URL: ${PR_URL}"
+          MESSAGE="🟡 **PR ${ACTION_NAME}**
+          🌿 ${HEAD_BRANCH} → ${BASE_BRANCH}
+          👤 작성자: ${ACTOR}
+          📝 제목: ${PR_TITLE}
+          🔗 <${PR_URL}>"
 
           jq -n --arg content "$MESSAGE" '{content: $content}' \
-            | curl -sS -H "Content-Type: application/json" \
+            | curl --fail-with-body -sS \
+                -H "Content-Type: application/json" \
                 -d @- "$DISCORD_WEBHOOK_URL"
 
       # PR merge 알림
@@ -108,21 +77,19 @@ jobs:
         if: github.event_name == 'pull_request' && github.event.action == 'closed' && github.event.pull_request.merged == true
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
-          REPOSITORY: ${{ github.repository }}
           ACTOR: ${{ github.actor }}
           PR_TITLE: ${{ github.event.pull_request.title }}
           PR_URL: ${{ github.event.pull_request.html_url }}
           HEAD_BRANCH: ${{ github.event.pull_request.head.ref }}
           BASE_BRANCH: ${{ github.event.pull_request.base.ref }}
         run: |
-          MESSAGE="✅ **Pull Request Merge 완료**
-          Repository: ${REPOSITORY}
-          From: ${HEAD_BRANCH}
-          To: ${BASE_BRANCH}
-          Merged by: ${ACTOR}
-          Title: ${PR_TITLE}
-          URL: ${PR_URL}"
+          MESSAGE="✅ **PR Merge 완료**
+          🌿 ${HEAD_BRANCH} → ${BASE_BRANCH}
+          👤 Merge: ${ACTOR}
+          📝 제목: ${PR_TITLE}
+          🔗 <${PR_URL}>"
 
           jq -n --arg content "$MESSAGE" '{content: $content}' \
-            | curl -sS -H "Content-Type: application/json" \
+            | curl --fail-with-body -sS \
+                -H "Content-Type: application/json" \
                 -d @- "$DISCORD_WEBHOOK_URL"
