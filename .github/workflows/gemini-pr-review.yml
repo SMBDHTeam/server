@@ -194,7 +194,7 @@ jobs:
 
       - name: Run Gemini review
         id: gemini
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GEMINI_API_KEY_BACKUP: ${{ secrets.GEMINI_API_KEY_BACKUP }}
@@ -317,7 +317,7 @@ jobs:
                 "GEMINI_API_KEY"
               );
             } catch (primaryError) {
-              console.warning(
+              console.warn(
                 `Primary Gemini 호출 실패: ${primaryError.message}`
               );
 
@@ -344,7 +344,7 @@ jobs:
             );
 
       - name: Create or update PR review comment
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         env:
           DIFF_TRUNCATED: ${{ steps.diff.outputs.diff_truncated }}
           USED_KEY: ${{ steps.gemini.outputs.used_key }}
