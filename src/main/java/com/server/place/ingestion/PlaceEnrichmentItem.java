@@ -1,17 +1,8 @@
 package com.server.place.ingestion;
 
-import java.math.BigDecimal;
 import java.util.List;
 
-record PlaceIngestionItem(
-        String externalContentId,
-        String contentTypeId,
-        String name,
-        String category,
-        String address,
-        BigDecimal longitude,
-        BigDecimal latitude,
-        String primaryImageUrl,
+record PlaceEnrichmentItem(
         String overview,
         String homepage,
         String detailRawJson,
@@ -23,15 +14,18 @@ record PlaceIngestionItem(
         String operatingRawJson,
         List<Image> images
 ) {
-
-    PlaceIngestionItem {
+    PlaceEnrichmentItem {
         images = images == null ? List.of() : List.copyOf(images);
     }
 
-    record Image(
-            String url,
-            String thumbnailUrl,
-            String copyrightType
-    ) {
+    boolean hasDetail() {
+        return detailRawJson != null;
+    }
+
+    boolean hasOperatingInfo() {
+        return operatingRawJson != null;
+    }
+
+    record Image(String url, String thumbnailUrl, String copyrightType) {
     }
 }

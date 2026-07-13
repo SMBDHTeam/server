@@ -3,6 +3,7 @@ package com.server.schedule.domain;
 import com.server.place.domain.Place;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.FetchType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
@@ -24,11 +25,11 @@ public class ScheduleStop {
     @Id
     private UUID id;
 
-    @ManyToOne
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "schedule_day_id", nullable = false)
     private ScheduleDay scheduleDay;
 
-    @ManyToOne
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "place_id", nullable = false)
     private Place place;
 
@@ -44,7 +45,7 @@ public class ScheduleStop {
     @Column(name = "warnings_json", nullable = false, columnDefinition = "text")
     private String warningsJson = "[]";
 
-    @OneToOne(mappedBy = "scheduleStop")
+    @OneToOne(mappedBy = "scheduleStop", fetch = FetchType.LAZY)
     private TransitRoute inboundTransit;
 
     protected ScheduleStop() {

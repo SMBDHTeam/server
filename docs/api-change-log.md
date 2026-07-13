@@ -18,6 +18,14 @@ API 계약이 변경될 때마다 최신 항목을 위에 추가한다.
 
 ## 2026-07-13
 
+- API: `POST /api/v1/schedules`
+- 구분: 변경
+- 이전: 여행 기간과 필수 방문 장소 수에 명시적인 상한이 없어 다일 최적화 탐색 시간이 급증할 수 있음
+- 이후: 여행 기간은 최대 4일, `mustVisitPlaceIds`는 중복 없이 여행 일수당 최대 3개로 제한하고 초과 시 `400 INVALID_SCHEDULE_CONDITION` 반환
+- 이유: 정확 탐색 Planner의 조합 수와 외부 경로 API 호출량을 예측 가능한 범위로 제한
+- 호환성 파괴: 예. 상한을 넘거나 중복 필수 방문지를 포함한 기존 요청은 거절됨
+- 관련 PR 또는 이슈: 없음
+
 - API: `GET /api/v1/schedules`, `PATCH /api/v1/schedules/{scheduleId}`
 - 구분: 추가
 - 이전: API 문서에 일정 목록과 수정 계약만 있고 Controller·Service 구현이 없음

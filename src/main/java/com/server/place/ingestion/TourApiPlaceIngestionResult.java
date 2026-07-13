@@ -2,19 +2,16 @@ package com.server.place.ingestion;
 
 public record TourApiPlaceIngestionResult(
         int fetched,
-        int saved,
-        int skipped
+        int discovered,
+        int enriched,
+        int unchanged,
+        int pending,
+        int failed,
+        int skipped,
+        int apiRequests,
+        boolean lockSkipped
 ) {
-
-    public TourApiPlaceIngestionResult plus(TourApiPlaceIngestionResult other) {
-        return new TourApiPlaceIngestionResult(
-                fetched + other.fetched(),
-                saved + other.saved(),
-                skipped + other.skipped()
-        );
-    }
-
-    public static TourApiPlaceIngestionResult empty() {
-        return new TourApiPlaceIngestionResult(0, 0, 0);
+    public static TourApiPlaceIngestionResult locked() {
+        return new TourApiPlaceIngestionResult(0, 0, 0, 0, 0, 0, 0, 0, true);
     }
 }

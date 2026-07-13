@@ -9,7 +9,8 @@ public record TourApiPlaceIngestionProperties(
         String areaCode,
         List<String> contentTypeIds,
         int pageSize,
-        int maxPages
+        int maxPages,
+        int maxRequestsPerDay
 ) {
 
     public TourApiPlaceIngestionProperties {
@@ -26,6 +27,9 @@ public record TourApiPlaceIngestionProperties(
         }
         if (maxPages <= 0) {
             maxPages = 1;
+        }
+        if (maxRequestsPerDay <= 0 || maxRequestsPerDay > 1000) {
+            maxRequestsPerDay = 900;
         }
     }
 }

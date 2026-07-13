@@ -28,6 +28,7 @@ import com.server.transit.service.TransitRouteProvider;
 import com.server.transit.service.TransitRouteResult;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.List;
 import java.util.Map;
@@ -198,6 +199,28 @@ class ScheduleServiceTest {
                 .contains("사용자가 반드시 방문할 장소로 선택했습니다.");
         assertThat(response.days().get(0).stops().get(1).selectionReasons())
                 .contains("출발지와 도착지 기준 동선 점수가 높은 장소입니다.");
+    }
+
+    @Test
+    @DisplayName("자동 추천은 상세 동기화가 완료된 장소만 사용한다")
+    void createExcludesPlacesPendingIngestion() {
+        Place mustVisit = place(101L, "필수 장소", "12", "129.0200", "35.1000");
+        Place syncedRecommendation = place(102L, "동기화된 추천 장소", "15", "129.0500", "35.1300");
+        Place pendingRecommendation = place(103L, "적재 대기 장소", "39", "129.0800", "35.1600");
+        pendingRecommendation.markNewDiscovery(LocalDateTime.now(), LocalDateTime.now());
+        when(placeRepository.findAllById(List.of(101L))).thenReturn(List.of(mustVisit));
+        when(placeRepository.findAll()).thenReturn(List.of(mustVisit, syncedRecommendation, pendingRecommendation));
+        when(transitRouteProvider.findRoute(Mockito.any(TransitPoint.class), Mockito.any(TransitPoint.class)))
+                .thenReturn(route());
+        when(scheduleRepository.save(Mockito.any(Schedule.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        ScheduleResponse response = scheduleService.create(oneDayRequest(List.of(101L)));
+
+        assertThat(response.days().get(0).stops())
+                .extracting(stop -> stop.place().id())
+                .contains(101L, 102L)
+                .doesNotContain(103L);
     }
 
     @Test

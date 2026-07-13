@@ -25,13 +25,23 @@ public class TourApiPlaceIngestionScheduler {
             zone = "Asia/Seoul"
     )
     public void ingestDaily() {
-        try{
+        try {
             TourApiPlaceIngestionResult result = ingestionService.ingestConfigured();
-            log.info("Scheduled TourAPI place ingestion finished. fetched={}, saved={}, skipped={}",
-                    result.fetched(), result.saved(), result.skipped());
-        } catch (RuntimeException exception){
+            log.info(
+                    "Scheduled TourAPI place ingestion finished. fetched={}, discovered={}, enriched={}, unchanged={}, "
+                            + "pending={}, failed={}, skipped={}, apiRequests={}, lockSkipped={}",
+                    result.fetched(),
+                    result.discovered(),
+                    result.enriched(),
+                    result.unchanged(),
+                    result.pending(),
+                    result.failed(),
+                    result.skipped(),
+                    result.apiRequests(),
+                    result.lockSkipped()
+            );
+        } catch (RuntimeException exception) {
             log.error("Scheduled TourAPI place ingestion failed. Next run will continue.", exception);
         }
     }
 }
-

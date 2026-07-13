@@ -18,7 +18,6 @@ public interface PlaceRepository extends JpaRepository<Place, Long> {
 
     List<Place> findByNameContainingIgnoreCaseOrderByNameAsc(String keyword);
 
-    @EntityGraph(attributePaths = {"detail", "operatingInfo", "images"})
     Optional<Place> findBySourceAndExternalContentId(String source, String externalContentId);
 
     @Override

@@ -73,11 +73,13 @@ public class OdsayTransitRouteProvider implements TransitRouteProvider {
 
     private PathWithRealtimeAdjustment bestPath(Map<String, Object> response) {
         List<Map<String, Object>> paths = list(map(response, "result"), "path");
-        return paths.stream()
-                .map(path -> new PathWithRealtimeAdjustment(path, realtimeAdjustment(list(path, "subPath"))))
-                .min(Comparator.comparingInt(path -> intValue(map(path.path(), "info"), "totalTime")
-                        + path.realtimeAdjustment().extraMinutes()))
+        Map<String, Object> selectedPath = paths.stream()
+                .min(Comparator.comparingInt(path -> intValue(map(path, "info"), "totalTime")))
                 .orElseThrow(() -> new BusinessException(ErrorCode.TRANSIT_ROUTE_NOT_FOUND));
+        return new PathWithRealtimeAdjustment(
+                selectedPath,
+                realtimeAdjustment(list(selectedPath, "subPath"))
+        );
     }
 
     private TransitRouteResult.Segment toSegment(Map<String, Object> subPath) {

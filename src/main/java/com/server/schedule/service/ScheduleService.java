@@ -874,12 +874,14 @@ public class ScheduleService {
 
     private ScheduleResponse.Day toDayResponse(Schedule schedule, ScheduleDay day) {
         List<ScheduleResponse.Stop> stops = new ArrayList<>();
+        Map<UUID, TransitRoute> inboundRouteByStopId = inboundRouteByStopId(day);
         LocalTime cursor = day.getStartTime();
         for (ScheduleStop stop : day.getStops()) {
             ScheduleResponse.Transit inboundTransit = null;
-            if (stop.getInboundTransit() != null) {
-                inboundTransit = toTransitResponse(schedule, day, stop.getInboundTransit(), cursor);
-                cursor = cursor.plusMinutes(stop.getInboundTransit().getTotalMinutes());
+            TransitRoute inboundRoute = inboundRouteByStopId.get(stop.getId());
+            if (inboundRoute != null) {
+                inboundTransit = toTransitResponse(schedule, day, inboundRoute, cursor);
+                cursor = cursor.plusMinutes(inboundRoute.getTotalMinutes());
             }
             LocalTime arriveAt = cursor;
             LocalTime departAt = arriveAt.plusMinutes(stop.getStayMinutes());
@@ -914,6 +916,15 @@ public class ScheduleService {
                 stops,
                 finalTransit
         );
+    }
+
+    private Map<UUID, TransitRoute> inboundRouteByStopId(ScheduleDay day) {
+        return day.getTransitRoutes().stream()
+                .filter(route -> route.getScheduleStop() != null)
+                .collect(Collectors.toMap(
+                        route -> route.getScheduleStop().getId(),
+                        Function.identity()
+                ));
     }
 
     private ScheduleResponse.Stop toStopResponse(
@@ -1287,10 +1298,12 @@ public class ScheduleService {
 
     private Map<UUID, StopTime> stopTimes(Schedule schedule, ScheduleDay day) {
         Map<UUID, StopTime> times = new HashMap<>();
+        Map<UUID, TransitRoute> inboundRouteByStopId = inboundRouteByStopId(day);
         LocalTime cursor = day.getStartTime();
         for (ScheduleStop stop : day.getStops()) {
-            if (stop.getInboundTransit() != null) {
-                cursor = cursor.plusMinutes(stop.getInboundTransit().getTotalMinutes());
+            TransitRoute inboundRoute = inboundRouteByStopId.get(stop.getId());
+            if (inboundRoute != null) {
+                cursor = cursor.plusMinutes(inboundRoute.getTotalMinutes());
             }
             LocalTime arriveAt = cursor;
             LocalTime departAt = arriveAt.plusMinutes(stop.getStayMinutes());

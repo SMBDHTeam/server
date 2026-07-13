@@ -36,10 +36,34 @@ TourAPI 장소 적재는 기본 비활성화 상태다. 로컬 PostgreSQL에 적
 ```bash
 TOUR_API_PLACE_INGESTION_ENABLED=true \
 TOUR_API_MAX_PAGES=1 \
+TOUR_API_MAX_REQUESTS_PER_DAY=900 \
 ./gradlew bootRun --args='--spring.profiles.active=local'
 ```
 
-기본값은 부산 `areaCode=6`, content type `12,14,15,28,32,38,39`, 페이지당 100건이다. API Key가 로그나 문서에 남지 않도록 전체 요청 URL을 기록하지 않는다.
+기본값은 부산 `areaCode=6`, content type `12,14,15,28,32,38,39`, 페이지당 100건이다. 일일 요청 한도 1,000건 중 100건을 운영 여유로 남기고 적재에는 최대 900건을 예약한다. API Key가 로그나 문서에 남지 않도록 전체 요청 URL을 기록하지 않는다.
+
+장소 적재는 매일 전체 상세정보를 다시 저장하지 않는다. 먼저 `areaBasedList2`의 `modifiedtime`과 기본정보를 확인하고 신규·변경·재시도 시각이 도래한 실패 장소만 `detailCommon2`, `detailIntro2`, `detailImage2`로 보강한다. 변경 없는 장소는 `last_seen_at`만 갱신한다. 상세 동기화 실패는 1일, 2일, 4일, 최대 7일 간격으로 재시도한다. 날짜별 요청 사용량은 DB에 원자적으로 예약하므로 같은 날 재시작하거나 작업이 재실행되어도 설정된 한도를 넘지 않는다.
+
+개발 서버는 시작 시 적재인 `TOUR_API_PLACE_INGESTION_ENABLED`를 끄고, `TOUR_API_INGESTION_SCHEDULER_ENABLED=true`로 매일 04:00 KST 증분 동기화만 실행한다. 시작 시 적재를 켜면 배포할 때마다 일일 예산을 사용할 수 있으므로 개발 배포에서는 사용하지 않는다.
+
+## TourAPI 공급자 계약
+
+연동 기준은 공공데이터포털의 `한국관광공사_국문 관광정보 서비스_GW`와
+`https://apis.data.go.kr/B551011/KorService2` 계약이다.
+
+| 오퍼레이션 | 필수 조회 조건 | 현재 사용하는 선택 조건 |
+| --- | --- | --- |
+| `areaBasedList2` | `serviceKey`, `MobileOS`, `MobileApp` | `_type`, `areaCode`, `contentTypeId`, `pageNo`, `numOfRows`, `arrange` |
+| `detailCommon2` | `serviceKey`, `MobileOS`, `MobileApp`, `contentId` | `_type` |
+| `detailIntro2` | `serviceKey`, `MobileOS`, `MobileApp`, `contentId`, `contentTypeId` | `_type` |
+| `detailImage2` | `serviceKey`, `MobileOS`, `MobileApp`, `contentId` | `_type`, `imageYN` |
+
+`detailCommon2`에는 구 계약의 `contentTypeId`, `defaultYN`, `firstImageYN`,
+`areacodeYN`, `catcodeYN`, `addrinfoYN`, `mapinfoYN`, `overviewYN`을 전달하지 않는다.
+`detailImage2`에는 구 계약의 `subImageYN`을 전달하지 않는다.
+
+공급자 오류는 정상 응답의 `response.header.resultCode` 또는 요청 검증 오류의 최상위
+`resultCode`로 반환될 수 있다. 두 형식 모두 `0000`만 성공으로 처리한다.
 
 로컬 DB 컨테이너를 중지하려면 다음을 사용한다.
 

@@ -5,7 +5,9 @@ import com.server.place.domain.PlaceDetail;
 import com.server.place.domain.PlaceImage;
 import com.server.place.domain.PlaceOperatingInfo;
 import com.server.place.repository.PlaceRepository;
+import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Objects;
 import java.util.stream.IntStream;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
@@ -22,19 +24,37 @@ public class TourApiPlaceWriter {
     }
 
     @Transactional
-    public void upsert(PlaceIngestionItem item) {
-        Place place = placeRepository.findBySourceAndExternalContentId(SOURCE, item.externalContentId())
-                .map(existing -> updatePlace(existing, item))
-                .orElseGet(() -> createPlace(item));
+    public PlaceSyncCandidate discover(PlaceDiscoveryItem item, LocalDateTime seenAt) {
+        return placeRepository.findBySourceAndExternalContentId(SOURCE, item.externalContentId())
+                .map(existing -> updateDiscovery(existing, item, seenAt))
+                .orElseGet(() -> createDiscovery(item, seenAt));
+    }
 
-        upsertDetail(place, item);
-        upsertOperatingInfo(place, item);
-        replaceImages(place, item.images());
+    @Transactional
+    public void completeEnrichment(String externalContentId, PlaceEnrichmentItem item, LocalDateTime syncedAt) {
+        Place place = requiredPlace(externalContentId);
+        if (item.hasDetail()) {
+            upsertDetail(place, item);
+        }
+        if (item.hasOperatingInfo()) {
+            upsertOperatingInfo(place, item);
+        }
+        if (!sameImages(place.getImages(), item.images())) {
+            replaceImages(place, item.images());
+        }
+        place.markIngestionSynced(syncedAt);
         placeRepository.save(place);
     }
 
-    private Place createPlace(PlaceIngestionItem item) {
-        return new Place(
+    @Transactional
+    public void markFailed(String externalContentId, String errorCode, LocalDateTime failedAt) {
+        Place place = requiredPlace(externalContentId);
+        place.markIngestionFailed(errorCode, failedAt);
+        placeRepository.save(place);
+    }
+
+    private PlaceSyncCandidate createDiscovery(PlaceDiscoveryItem item, LocalDateTime seenAt) {
+        Place place = new Place(
                 SOURCE,
                 item.externalContentId(),
                 item.contentTypeId(),
@@ -45,22 +65,33 @@ public class TourApiPlaceWriter {
                 item.latitude(),
                 item.primaryImageUrl()
         );
+        place.markNewDiscovery(item.sourceModifiedAt(), seenAt);
+        placeRepository.save(place);
+        return new PlaceSyncCandidate(item.externalContentId(), item.contentTypeId(), true, true);
     }
 
-    private Place updatePlace(Place place, PlaceIngestionItem item) {
-        place.updateBasic(
+    private PlaceSyncCandidate updateDiscovery(Place place, PlaceDiscoveryItem item, LocalDateTime seenAt) {
+        boolean enrichmentRequired = place.recordDiscovery(
                 item.contentTypeId(),
                 item.name(),
                 item.category(),
                 item.address(),
                 item.longitude(),
                 item.latitude(),
-                item.primaryImageUrl()
+                item.primaryImageUrl(),
+                item.sourceModifiedAt(),
+                seenAt
         );
-        return place;
+        placeRepository.save(place);
+        return new PlaceSyncCandidate(item.externalContentId(), item.contentTypeId(), enrichmentRequired, false);
     }
 
-    private void upsertDetail(Place place, PlaceIngestionItem item) {
+    private Place requiredPlace(String externalContentId) {
+        return placeRepository.findBySourceAndExternalContentId(SOURCE, externalContentId)
+                .orElseThrow(() -> new IllegalStateException("Discovered place is missing"));
+    }
+
+    private void upsertDetail(Place place, PlaceEnrichmentItem item) {
         if (place.getDetail() == null) {
             new PlaceDetail(place, item.overview(), item.homepage(), item.detailRawJson());
             return;
@@ -68,7 +99,7 @@ public class TourApiPlaceWriter {
         place.getDetail().update(item.overview(), item.homepage(), item.detailRawJson());
     }
 
-    private void upsertOperatingInfo(Place place, PlaceIngestionItem item) {
+    private void upsertOperatingInfo(Place place, PlaceEnrichmentItem item) {
         if (place.getOperatingInfo() == null) {
             new PlaceOperatingInfo(
                     place,
@@ -91,18 +122,42 @@ public class TourApiPlaceWriter {
         );
     }
 
-    private void replaceImages(Place place, List<PlaceIngestionItem.Image> images) {
+    private boolean sameImages(List<PlaceImage> current, List<PlaceEnrichmentItem.Image> incoming) {
+        if (current.size() != incoming.size()) {
+            return false;
+        }
+        for (int index = 0; index < current.size(); index++) {
+            PlaceImage currentImage = current.get(index);
+            PlaceEnrichmentItem.Image incomingImage = incoming.get(index);
+            if (!Objects.equals(currentImage.getUrl(), incomingImage.url())
+                    || !Objects.equals(currentImage.getThumbnailUrl(), incomingImage.thumbnailUrl())
+                    || !Objects.equals(currentImage.getCopyrightType(), incomingImage.copyrightType())) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private void replaceImages(Place place, List<PlaceEnrichmentItem.Image> images) {
         place.replaceImages(IntStream.range(0, images.size())
                 .mapToObj(index -> {
-                    PlaceIngestionItem.Image image = images.get(index);
+                    PlaceEnrichmentItem.Image image = images.get(index);
                     return PlaceImage.of(
-                        place,
-                        image.url(),
-                        image.thumbnailUrl(),
-                        image.copyrightType(),
-                        index + 1
+                            place,
+                            image.url(),
+                            image.thumbnailUrl(),
+                            image.copyrightType(),
+                            index + 1
                     );
                 })
                 .toList());
+    }
+
+    public record PlaceSyncCandidate(
+            String externalContentId,
+            String contentTypeId,
+            boolean enrichmentRequired,
+            boolean created
+    ) {
     }
 }

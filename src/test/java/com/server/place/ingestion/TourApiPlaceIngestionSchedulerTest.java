@@ -14,7 +14,7 @@ public class TourApiPlaceIngestionSchedulerTest {
     @Test
     void 스케줄이_실행되면_적재_서비스를_호출한다() {
         given(ingestionService.ingestConfigured())
-                .willReturn(new TourApiPlaceIngestionResult(10, 8, 2));
+                .willReturn(new TourApiPlaceIngestionResult(10, 8, 8, 0, 0, 0, 2, 34, false));
 
         scheduler.ingestDaily();
 
@@ -29,4 +29,3 @@ public class TourApiPlaceIngestionSchedulerTest {
         assertThatCode(scheduler::ingestDaily).doesNotThrowAnyException();
     }
 }
-

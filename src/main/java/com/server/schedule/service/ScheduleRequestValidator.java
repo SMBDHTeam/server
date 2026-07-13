@@ -19,6 +19,8 @@ import org.springframework.stereotype.Component;
 @Component
 public class ScheduleRequestValidator {
 
+    private static final int MAX_TRIP_DAYS = 4;
+    private static final int MAX_STOPS_PER_DAY = 3;
     private static final BigDecimal MIN_LONGITUDE = new BigDecimal("-180");
     private static final BigDecimal MAX_LONGITUDE = new BigDecimal("180");
     private static final BigDecimal MIN_LATITUDE = new BigDecimal("-90");
@@ -36,7 +38,7 @@ public class ScheduleRequestValidator {
     }
 
     public void validate(ScheduleCreateRequest request) {
-        validateDateAndDayConditions(request);
+        int tripDays = validateDateAndDayConditions(request);
         validateLocation(request.startLocation());
         validateLocation(request.endLocation());
         request.daysOrEmpty().forEach(day -> {
@@ -44,18 +46,22 @@ public class ScheduleRequestValidator {
             validateLocation(day.endLocation());
         });
         validateSelectedAnswers(request.selectedAnswers());
-        validateMustVisitPlaceIds(request.mustVisitPlaceIdsOrEmpty());
+        validateMustVisitPlaceIds(request.mustVisitPlaceIdsOrEmpty(), tripDays);
     }
 
-    private void validateDateAndDayConditions(ScheduleCreateRequest request) {
+    private int validateDateAndDayConditions(ScheduleCreateRequest request) {
         if (request.endDate().isBefore(request.startDate())
                 || !request.dailyEndTime().isAfter(request.dailyStartTime())) {
             invalid();
         }
-        if (request.daysOrEmpty().isEmpty()) {
-            return;
+        long tripDayCount = ChronoUnit.DAYS.between(request.startDate(), request.endDate()) + 1;
+        if (tripDayCount > MAX_TRIP_DAYS) {
+            invalid();
         }
-        int tripDays = (int) ChronoUnit.DAYS.between(request.startDate(), request.endDate()) + 1;
+        int tripDays = (int) tripDayCount;
+        if (request.daysOrEmpty().isEmpty()) {
+            return tripDays;
+        }
         Set<Integer> dayNumbers = new HashSet<>();
         for (ScheduleCreateRequest.DayCondition day : request.daysOrEmpty()) {
             if (!day.endTime().isAfter(day.startTime())
@@ -67,6 +73,7 @@ public class ScheduleRequestValidator {
         if (dayNumbers.size() != tripDays) {
             invalid();
         }
+        return tripDays;
     }
 
     private void validateLocation(ScheduleCreateRequest.Location location) {
@@ -113,8 +120,10 @@ public class ScheduleRequestValidator {
                 .anyMatch(answer -> answer.getId().equals(answerId));
     }
 
-    private void validateMustVisitPlaceIds(List<Long> placeIds) {
-        if (placeIds.stream().anyMatch(placeId -> placeId == null || placeId <= 0)) {
+    private void validateMustVisitPlaceIds(List<Long> placeIds, int tripDays) {
+        if (placeIds.size() > tripDays * MAX_STOPS_PER_DAY
+                || placeIds.stream().anyMatch(placeId -> placeId == null || placeId <= 0)
+                || new HashSet<>(placeIds).size() != placeIds.size()) {
             invalid();
         }
     }

@@ -89,6 +89,54 @@ class ScheduleRequestValidatorTest {
         ));
     }
 
+    @Test
+    void rejectsTripsLongerThanFourDays() {
+        ScheduleCreateRequest request = validRequest();
+
+        assertInvalid(new ScheduleCreateRequest(
+                request.startDate(),
+                request.startDate().plusDays(4),
+                request.dailyStartTime(),
+                request.dailyEndTime(),
+                request.startLocation(),
+                request.endLocation(),
+                request.selectedAnswers(),
+                request.mustVisitPlaceIds()
+        ));
+    }
+
+    @Test
+    void rejectsMoreThanThreeMustVisitPlacesPerDay() {
+        ScheduleCreateRequest request = validRequest();
+
+        assertInvalid(new ScheduleCreateRequest(
+                request.startDate(),
+                request.endDate(),
+                request.dailyStartTime(),
+                request.dailyEndTime(),
+                request.startLocation(),
+                request.endLocation(),
+                request.selectedAnswers(),
+                List.of(1L, 2L, 3L, 4L)
+        ));
+    }
+
+    @Test
+    void rejectsDuplicateMustVisitPlaces() {
+        ScheduleCreateRequest request = validRequest();
+
+        assertInvalid(new ScheduleCreateRequest(
+                request.startDate(),
+                request.endDate(),
+                request.dailyStartTime(),
+                request.dailyEndTime(),
+                request.startLocation(),
+                request.endLocation(),
+                request.selectedAnswers(),
+                List.of(1L, 1L)
+        ));
+    }
+
     private void assertInvalid(ScheduleCreateRequest request) {
         assertThatThrownBy(() -> validator.validate(request))
                 .isInstanceOf(BusinessException.class)

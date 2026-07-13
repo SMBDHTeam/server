@@ -20,6 +20,7 @@ public record TourApiPlaceListResponse(
             String longitude,
             String latitude,
             String firstImage,
+            String modifiedTime,
             String rawJson
     ) {
     }

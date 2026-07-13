@@ -3,6 +3,7 @@ package com.server.schedule.planner;
 import com.server.common.error.BusinessException;
 import com.server.common.error.ErrorCode;
 import com.server.place.domain.Place;
+import com.server.place.domain.PlaceIngestionStatus;
 import com.server.place.repository.PlaceRepository;
 import com.server.schedule.dto.ScheduleCreateRequest;
 import java.util.ArrayList;
@@ -144,7 +145,8 @@ public class PlaceCandidateProvider {
 
     private boolean usable(Place place) {
         return place.getId() != null && place.getLongitude() != null && place.getLatitude() != null
-                && place.getName() != null && !place.getName().contains("테스트");
+                && place.getName() != null && !place.getName().contains("테스트")
+                && place.getIngestionStatus() == PlaceIngestionStatus.SYNCED;
     }
 
     private ScheduleCreateRequest.Location overallStart(ScheduleCreateRequest request) {
