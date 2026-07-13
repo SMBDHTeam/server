@@ -19,6 +19,7 @@ import com.server.schedule.domain.TransitSegment;
 import com.server.schedule.dto.ScheduleCreateRequest;
 import com.server.schedule.dto.ScheduleMapResponse;
 import com.server.schedule.dto.ScheduleResponse;
+import com.server.schedule.dto.ScheduleUpdateRequest;
 import com.server.schedule.evaluation.ScheduleScoreEvaluator;
 import com.server.schedule.evaluation.ScheduleScoreResult;
 import com.server.schedule.repository.ScheduleRepository;
@@ -699,6 +700,28 @@ class ScheduleServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.SCHEDULE_NOT_FOUND);
+    }
+
+    @Test
+    @DisplayName("일정 수정에서 하루 3곳을 초과하면 거부한다")
+    void updateRejectsMoreThanThreeStopsPerDay() {
+        UUID scheduleId = UUID.randomUUID();
+        Schedule schedule = schedule();
+        new ScheduleDay(schedule, 1, LocalDate.parse("2026-06-23"));
+        when(scheduleRepository.findById(scheduleId)).thenReturn(Optional.of(schedule));
+        ScheduleUpdateRequest request = new ScheduleUpdateRequest(List.of(
+                new ScheduleUpdateRequest.Stop(null, 1L, 1, 1, 60),
+                new ScheduleUpdateRequest.Stop(null, 2L, 1, 2, 60),
+                new ScheduleUpdateRequest.Stop(null, 3L, 1, 3, 60),
+                new ScheduleUpdateRequest.Stop(null, 4L, 1, 4, 60)
+        ));
+
+        assertThatThrownBy(() -> scheduleService.update(scheduleId, request))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.INVALID_SCHEDULE_CONDITION);
+        verify(placeRepository, never()).findAllById(Mockito.any());
+        verify(transitRouteProvider, never()).findRoute(Mockito.any(), Mockito.any());
     }
 
     private ScheduleCreateRequest request(List<Long> mustVisitPlaceIds) {

@@ -110,6 +110,10 @@ public class Schedule {
         this.days.add(day);
     }
 
+    public void touch() {
+        this.updatedAt = LocalDateTime.now();
+    }
+
     public UUID getId() {
         return id;
     }
