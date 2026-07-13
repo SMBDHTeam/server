@@ -19,10 +19,17 @@ public class TourApiPlaceIngestionRunner {
             try {
                 TourApiPlaceIngestionResult result = ingestionService.ingestConfigured();
                 log.info(
-                        "TourAPI place ingestion finished. fetched={}, saved={}, skipped={}",
+                        "TourAPI place ingestion finished. fetched={}, discovered={}, enriched={}, unchanged={}, "
+                                + "pending={}, failed={}, skipped={}, apiRequests={}, lockSkipped={}",
                         result.fetched(),
-                        result.saved(),
-                        result.skipped()
+                        result.discovered(),
+                        result.enriched(),
+                        result.unchanged(),
+                        result.pending(),
+                        result.failed(),
+                        result.skipped(),
+                        result.apiRequests(),
+                        result.lockSkipped()
                 );
             } catch (RuntimeException exception) {
                 log.error("TourAPI place ingestion failed. Server startup will continue.", exception);

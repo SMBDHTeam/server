@@ -21,7 +21,7 @@ class TourApiPlaceIngestionRunnerTest {
     @DisplayName("적재 성공 결과를 로그로 남기고 종료한다")
     void runnerLogsSuccessfulIngestionResult() throws Exception {
         when(ingestionService.ingestConfigured())
-                .thenReturn(new TourApiPlaceIngestionResult(1, 1, 0));
+                .thenReturn(new TourApiPlaceIngestionResult(1, 1, 1, 0, 0, 0, 0, 4, false));
         ApplicationRunner runner = runnerConfig.ingestTourApiPlaces(ingestionService);
 
         runner.run(null);

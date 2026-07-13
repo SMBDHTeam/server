@@ -56,7 +56,7 @@
 | 요청 필드 | 자료형 | 필수 | 의미 |
 | --- | --- | :---: | --- |
 | `startDate` | string(date) | O | 여행 시작일 |
-| `endDate` | string(date) | O | 여행 종료일 |
+| `endDate` | string(date) | O | 여행 종료일. 시작일 포함 최대 4일 |
 | `dailyStartTime` | string(time) | O | 매일 일정 시작시각 |
 | `dailyEndTime` | string(time) | O | 매일 일정 종료시각 |
 | `startLocation` | object | O | 첫날 출발 위치 |
@@ -70,7 +70,7 @@
 | `selectedAnswers` | array | O | 선택한 질문과 답변 목록 |
 | `selectedAnswers[].questionId` | string | O | `questions.id` |
 | `selectedAnswers[].answerId` | string | O | `answers.id` |
-| `mustVisitPlaceIds` | array | X | 필수 방문 장소 ID 목록 |
+| `mustVisitPlaceIds` | array | X | 중복 없는 필수 방문 장소 ID 목록. 여행 일수당 최대 3개 |
 | `mustVisitPlaceIds[]` | integer | O | 내부 `places.id` 한 개 |
 | `days` | array | X | 일차별 출발·도착·시간 조건. 전달 시 전체 일차 필수 |
 | `days[].dayNo` | integer | O | 1부터 시작하는 여행 일차. 중복 불가 |

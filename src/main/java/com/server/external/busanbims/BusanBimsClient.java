@@ -1,28 +1,36 @@
 package com.server.external.busanbims;
 
+import java.io.StringReader;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import javax.xml.parsers.DocumentBuilderFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.stereotype.Component;
-import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestClientResponseException;
 import org.springframework.web.util.UriComponentsBuilder;
+import org.w3c.dom.Element;
+import org.w3c.dom.Node;
+import org.w3c.dom.NodeList;
+import org.xml.sax.InputSource;
+import tools.jackson.core.type.TypeReference;
+import tools.jackson.databind.ObjectMapper;
 
 @Component
 public class BusanBimsClient {
 
     private static final Logger log = LoggerFactory.getLogger(BusanBimsClient.class);
-    private static final ParameterizedTypeReference<Map<String, Object>> RESPONSE_TYPE =
-            new ParameterizedTypeReference<>() {
-            };
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+    private static final TypeReference<Map<String, Object>> RESPONSE_TYPE = new TypeReference<>() {
+    };
 
     private final RestClient restClient;
     private final BusanBimsProperties properties;
@@ -38,16 +46,17 @@ public class BusanBimsClient {
         }
 
         try {
-            String uri = UriComponentsBuilder.fromPath("/busStopArrByBstopid")
+            String uri = UriComponentsBuilder.fromPath("/stopArrByBstopid")
                     .queryParam("serviceKey", URLEncoder.encode(properties.serviceKey(), StandardCharsets.UTF_8))
                     .queryParam("bstopid", busStopId)
                     .queryParam("resultType", "json")
                     .build(true)
                     .toUriString();
-            Map<String, Object> response = restClient.get()
+            String responseBody = restClient.get()
                     .uri(URI.create(baseUrl() + uri))
                     .retrieve()
-                    .body(RESPONSE_TYPE);
+                    .body(String.class);
+            Map<String, Object> response = decodeResponse(responseBody);
             if (response == null || response.isEmpty()) {
                 return Optional.empty();
             }
@@ -55,10 +64,52 @@ public class BusanBimsClient {
         } catch (RestClientResponseException exception) {
             log.warn("Busan BIMS arrival request failed. statusCode={}", exception.getStatusCode());
             return Optional.empty();
-        } catch (ResourceAccessException | IllegalArgumentException exception) {
+        } catch (RestClientException | IllegalArgumentException exception) {
             log.warn("Busan BIMS arrival request failed. exceptionType={}", exception.getClass().getSimpleName());
             return Optional.empty();
         }
+    }
+
+    private Map<String, Object> decodeResponse(String responseBody) {
+        if (responseBody == null || responseBody.isBlank()) {
+            return Map.of();
+        }
+        try {
+            String trimmed = responseBody.trim();
+            if (trimmed.startsWith("<")) {
+                return decodeXml(trimmed);
+            }
+            return OBJECT_MAPPER.readValue(trimmed, RESPONSE_TYPE);
+        } catch (Exception exception) {
+            throw new IllegalArgumentException("Unsupported Busan BIMS response", exception);
+        }
+    }
+
+    private Map<String, Object> decodeXml(String responseBody) throws Exception {
+        DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
+        factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
+        factory.setFeature("http://xml.org/sax/features/external-general-entities", false);
+        factory.setFeature("http://xml.org/sax/features/external-parameter-entities", false);
+        factory.setXIncludeAware(false);
+        factory.setExpandEntityReferences(false);
+
+        NodeList itemNodes = factory.newDocumentBuilder()
+                .parse(new InputSource(new StringReader(responseBody)))
+                .getElementsByTagName("item");
+        List<Map<String, Object>> items = new ArrayList<>();
+        for (int itemIndex = 0; itemIndex < itemNodes.getLength(); itemIndex++) {
+            Element itemElement = (Element) itemNodes.item(itemIndex);
+            Map<String, Object> item = new LinkedHashMap<>();
+            NodeList children = itemElement.getChildNodes();
+            for (int childIndex = 0; childIndex < children.getLength(); childIndex++) {
+                Node child = children.item(childIndex);
+                if (child.getNodeType() == Node.ELEMENT_NODE) {
+                    item.put(child.getNodeName(), child.getTextContent());
+                }
+            }
+            items.add(item);
+        }
+        return Map.of("items", items);
     }
 
     private Optional<BusanBimsArrivalEstimate> arrivalEstimate(Map<String, Object> response, String lineName) {

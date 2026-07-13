@@ -3,6 +3,7 @@ package com.server.transit.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.verify;
 
 import com.server.common.error.BusinessException;
 import com.server.common.error.ErrorCode;
@@ -147,8 +148,8 @@ class OdsayTransitRouteProviderTest {
     }
 
     @Test
-    @DisplayName("실시간 대기 보정이 있으면 보정 후 가장 빠른 경로를 선택한다")
-    void findRouteSelectsRealtimeAdjustedFastestPath() {
+    @DisplayName("기본 최단 경로를 선택한 뒤 선택 경로에만 실시간 대기 보정을 적용한다")
+    void findRouteAdjustsOnlySelectedFastestPath() {
         TransitPoint origin = point("부산역", "129.0403", "35.1151");
         TransitPoint destination = point("광안리", "129.1187", "35.1532");
         when(odsayClient.searchPublicTransitPath(
@@ -170,9 +171,10 @@ class OdsayTransitRouteProviderTest {
 
         TransitRouteResult result = provider.findRoute(origin, destination);
 
-        assertThat(result.totalMinutes()).isEqualTo(34);
-        assertThat(result.segments().get(0).lineName()).isEqualTo("40");
-        assertThat(result.rawJson()).contains("\"totalTime\":34");
+        assertThat(result.totalMinutes()).isEqualTo(40);
+        assertThat(result.segments().get(0).lineName()).isEqualTo("1001");
+        assertThat(result.rawJson()).contains("\"totalTime\":20");
+        verify(transitRealtimeProvider).adjustment(Mockito.argThat(request -> "1001".equals(request.lineName())));
     }
 
     private Map<String, Object> response() {

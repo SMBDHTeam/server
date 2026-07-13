@@ -49,6 +49,7 @@ class TourApiClientTest {
         assertThat(item.longitude()).isEqualTo("129.047956");
         assertThat(item.latitude()).isEqualTo("35.075519");
         assertThat(item.firstImage()).isEqualTo("https://example.com/image.jpg");
+        assertThat(item.modifiedTime()).isEqualTo("20260713040000");
         assertThat(item.rawJson()).contains("\"contentid\":\"126508\"");
     }
 
@@ -63,7 +64,7 @@ class TourApiClientTest {
 
         TourApiClient client = createClient("test-api-key");
 
-        TourApiPlaceDetailResponse detail = client.getCommonDetail("126508", "12");
+        TourApiPlaceDetailResponse detail = client.getCommonDetail("126508");
         TourApiPlaceIntroResponse intro = client.getIntro("126508", "12");
         TourApiPlaceImageResponse images = client.getImages("126508");
 
@@ -115,6 +116,27 @@ class TourApiClientTest {
         TourApiClient client = createClient("test-api-key");
 
         assertThatThrownBy(() -> client.searchPlaces("6", "12", 1, 100))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.EXTERNAL_PROVIDER_UNAVAILABLE);
+    }
+
+    @Test
+    @DisplayName("TourAPI 최상위 실패 코드는 Provider 장애로 변환한다")
+    void tourApiTopLevelFailureResultCodeThrowsProviderUnavailable() throws IOException {
+        server = HttpServer.create(new InetSocketAddress(0), 0);
+        server.createContext("/detailCommon2", exchange -> respond(exchange, """
+                {
+                  "responseTime": "2026-07-13T21:33:17.391",
+                  "resultCode": "10",
+                  "resultMsg": "INVALID_REQUEST_PARAMETER_ERROR"
+                }
+                """));
+        server.start();
+
+        TourApiClient client = createClient("test-api-key");
+
+        assertThatThrownBy(() -> client.getCommonDetail("126508"))
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.EXTERNAL_PROVIDER_UNAVAILABLE);
@@ -175,7 +197,8 @@ class TourApiClientTest {
                             "addr2": "620-53",
                             "mapx": "129.047956",
                             "mapy": "35.075519",
-                            "firstimage": "https://example.com/image.jpg"
+                            "firstimage": "https://example.com/image.jpg",
+                            "modifiedtime": "20260713040000"
                           }
                         ]
                       }
@@ -186,7 +209,22 @@ class TourApiClientTest {
     }
 
     private void handleDetailCommon(HttpExchange exchange) throws IOException {
-        assertThat(exchange.getRequestURI().getQuery()).contains("contentId=126508", "overviewYN=Y");
+        assertThat(exchange.getRequestURI().getQuery())
+                .contains(
+                        "serviceKey=test-api-key",
+                        "MobileOS=ETC",
+                        "MobileApp=tour-server-test",
+                        "_type=json",
+                        "contentId=126508"
+                )
+                .doesNotContain(
+                        "contentTypeId=",
+                        "defaultYN=",
+                        "firstImageYN=",
+                        "addrinfoYN=",
+                        "mapinfoYN=",
+                        "overviewYN="
+                );
         respond(exchange, """
                 {
                   "response": {
@@ -225,7 +263,9 @@ class TourApiClientTest {
     }
 
     private void handleDetailImage(HttpExchange exchange) throws IOException {
-        assertThat(exchange.getRequestURI().getQuery()).contains("contentId=126508", "imageYN=Y", "subImageYN=Y");
+        assertThat(exchange.getRequestURI().getQuery())
+                .contains("contentId=126508", "imageYN=Y")
+                .doesNotContain("subImageYN=");
         respond(exchange, """
                 {
                   "response": {

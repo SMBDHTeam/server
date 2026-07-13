@@ -3,6 +3,9 @@ package com.server.place.domain;
 import jakarta.persistence.Column;
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
@@ -15,6 +18,7 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 
 @Entity
 @Table(
@@ -61,10 +65,32 @@ public class Place {
     @Column(name = "updated_at", nullable = false)
     private LocalDateTime updatedAt;
 
-    @OneToOne(mappedBy = "place", cascade = CascadeType.ALL, orphanRemoval = true)
+    @Column(name = "source_modified_at")
+    private LocalDateTime sourceModifiedAt;
+
+    @Column(name = "last_seen_at", nullable = false)
+    private LocalDateTime lastSeenAt;
+
+    @Column(name = "last_synced_at")
+    private LocalDateTime lastSyncedAt;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "ingestion_status", nullable = false)
+    private PlaceIngestionStatus ingestionStatus;
+
+    @Column(name = "ingestion_retry_count", nullable = false)
+    private int ingestionRetryCount;
+
+    @Column(name = "ingestion_last_error", columnDefinition = "text")
+    private String ingestionLastError;
+
+    @Column(name = "ingestion_next_retry_at")
+    private LocalDateTime ingestionNextRetryAt;
+
+    @OneToOne(mappedBy = "place", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     private PlaceDetail detail;
 
-    @OneToOne(mappedBy = "place", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OneToOne(mappedBy = "place", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     private PlaceOperatingInfo operatingInfo;
 
     @OrderBy("displayOrder ASC")
@@ -96,6 +122,9 @@ public class Place {
         this.primaryImageUrl = primaryImageUrl;
         this.createdAt = LocalDateTime.now();
         this.updatedAt = this.createdAt;
+        this.lastSeenAt = this.createdAt;
+        this.lastSyncedAt = this.createdAt;
+        this.ingestionStatus = PlaceIngestionStatus.SYNCED;
     }
 
     public Long getId() {
@@ -146,6 +175,34 @@ public class Place {
         return images;
     }
 
+    public LocalDateTime getSourceModifiedAt() {
+        return sourceModifiedAt;
+    }
+
+    public LocalDateTime getLastSeenAt() {
+        return lastSeenAt;
+    }
+
+    public LocalDateTime getLastSyncedAt() {
+        return lastSyncedAt;
+    }
+
+    public PlaceIngestionStatus getIngestionStatus() {
+        return ingestionStatus;
+    }
+
+    public int getIngestionRetryCount() {
+        return ingestionRetryCount;
+    }
+
+    public String getIngestionLastError() {
+        return ingestionLastError;
+    }
+
+    public LocalDateTime getIngestionNextRetryAt() {
+        return ingestionNextRetryAt;
+    }
+
     public void setDetail(PlaceDetail detail) {
         this.detail = detail;
     }
@@ -181,5 +238,101 @@ public class Place {
         this.images.clear();
         this.images.addAll(images);
         this.updatedAt = LocalDateTime.now();
+    }
+
+    public void markNewDiscovery(LocalDateTime sourceModifiedAt, LocalDateTime seenAt) {
+        this.sourceModifiedAt = sourceModifiedAt;
+        this.lastSeenAt = seenAt;
+        this.ingestionStatus = PlaceIngestionStatus.PENDING;
+        this.lastSyncedAt = null;
+        this.ingestionLastError = null;
+        this.ingestionNextRetryAt = null;
+    }
+
+    public boolean recordDiscovery(
+            String contentTypeId,
+            String name,
+            String category,
+            String address,
+            BigDecimal longitude,
+            BigDecimal latitude,
+            String primaryImageUrl,
+            LocalDateTime incomingSourceModifiedAt,
+            LocalDateTime seenAt
+    ) {
+        boolean basicChanged = !sameBasic(
+                contentTypeId,
+                name,
+                category,
+                address,
+                longitude,
+                latitude,
+                primaryImageUrl
+        );
+        boolean sourceChanged = incomingSourceModifiedAt != null
+                && !Objects.equals(sourceModifiedAt, incomingSourceModifiedAt);
+
+        if (basicChanged) {
+            updateBasic(contentTypeId, name, category, address, longitude, latitude, primaryImageUrl);
+        }
+        if (incomingSourceModifiedAt != null) {
+            this.sourceModifiedAt = incomingSourceModifiedAt;
+        }
+        this.lastSeenAt = seenAt;
+
+        if (basicChanged || sourceChanged) {
+            this.ingestionStatus = PlaceIngestionStatus.PENDING;
+            this.ingestionLastError = null;
+            this.ingestionRetryCount = 0;
+            this.ingestionNextRetryAt = null;
+        }
+        return this.ingestionStatus != PlaceIngestionStatus.SYNCED
+                && (this.ingestionNextRetryAt == null || !seenAt.isBefore(this.ingestionNextRetryAt));
+    }
+
+    public void markIngestionSynced(LocalDateTime syncedAt) {
+        this.ingestionStatus = PlaceIngestionStatus.SYNCED;
+        this.lastSyncedAt = syncedAt;
+        this.ingestionRetryCount = 0;
+        this.ingestionLastError = null;
+        this.ingestionNextRetryAt = null;
+        this.updatedAt = syncedAt;
+    }
+
+    public void markIngestionFailed(String errorCode, LocalDateTime failedAt) {
+        this.ingestionStatus = PlaceIngestionStatus.FAILED;
+        this.ingestionRetryCount++;
+        this.ingestionLastError = errorCode;
+        this.ingestionNextRetryAt = failedAt.plusDays(retryDelayDays(ingestionRetryCount));
+        this.updatedAt = failedAt;
+    }
+
+    private int retryDelayDays(int retryCount) {
+        return Math.min(7, 1 << Math.min(3, Math.max(0, retryCount - 1)));
+    }
+
+    private boolean sameBasic(
+            String contentTypeId,
+            String name,
+            String category,
+            String address,
+            BigDecimal longitude,
+            BigDecimal latitude,
+            String primaryImageUrl
+    ) {
+        return Objects.equals(this.contentTypeId, contentTypeId)
+                && Objects.equals(this.name, name)
+                && Objects.equals(this.category, category)
+                && Objects.equals(this.address, address)
+                && sameDecimal(this.longitude, longitude)
+                && sameDecimal(this.latitude, latitude)
+                && Objects.equals(this.primaryImageUrl, primaryImageUrl);
+    }
+
+    private boolean sameDecimal(BigDecimal left, BigDecimal right) {
+        if (left == null || right == null) {
+            return left == right;
+        }
+        return left.compareTo(right) == 0;
     }
 }

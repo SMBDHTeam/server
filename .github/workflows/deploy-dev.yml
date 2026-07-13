@@ -111,6 +111,7 @@ jobs:
             printf 'TOUR_API_PLACE_INGESTION_ENABLED=false\n'
             printf 'TOUR_API_KEY=%s\n' "$TOUR_API_KEY"
             printf 'TOUR_API_INGESTION_SCHEDULER_ENABLED=true\n'
+            printf 'TOUR_API_MAX_REQUESTS_PER_DAY=900\n'
             printf 'KAKAO_REST_API_KEY=%s\n' "$KAKAO_REST_API_KEY"
             printf 'ODSAY_ENABLED=true\n'
             printf 'ODSAY_API_KEY=%s\n' "$ODSAY_API_KEY"

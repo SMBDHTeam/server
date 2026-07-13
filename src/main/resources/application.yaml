@@ -1,6 +1,12 @@
 spring:
   application:
     name: server
+  flyway:
+    enabled: false
+  jpa:
+    properties:
+      hibernate:
+        default_batch_fetch_size: 100
 
 server:
   port: 8080
@@ -47,6 +53,7 @@ app:
       content-type-ids: ${TOUR_API_CONTENT_TYPE_IDS:12,14,15,28,32,38,39}
       page-size: ${TOUR_API_PAGE_SIZE:100}
       max-pages: ${TOUR_API_MAX_PAGES:1}
+      max-requests-per-day: ${TOUR_API_MAX_REQUESTS_PER_DAY:900}
       scheduler:
         enabled: ${TOUR_API_INGESTION_SCHEDULER_ENABLED:false}
         cron: "${TOUR_API_INGESTION_CRON:0 0 4 * * *}"

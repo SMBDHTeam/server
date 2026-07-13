@@ -6,6 +6,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClient;
@@ -53,7 +54,7 @@ public class TourApiClient {
         );
     }
 
-    public TourApiPlaceDetailResponse getCommonDetail(String contentId, String contentTypeId) {
+    public TourApiPlaceDetailResponse getCommonDetail(String contentId) {
         Map<String, Object> root = execute(() -> restClient.get()
                 .uri(uriBuilder -> uriBuilder
                         .path("/detailCommon2")
@@ -62,12 +63,6 @@ public class TourApiClient {
                         .queryParam("MobileApp", properties.mobileApp())
                         .queryParam("_type", "json")
                         .queryParam("contentId", contentId)
-                        .queryParam("contentTypeId", contentTypeId)
-                        .queryParam("defaultYN", "Y")
-                        .queryParam("firstImageYN", "Y")
-                        .queryParam("addrinfoYN", "Y")
-                        .queryParam("mapinfoYN", "Y")
-                        .queryParam("overviewYN", "Y")
                         .build())
                 .retrieve()
                 .body(Map.class));
@@ -121,7 +116,6 @@ public class TourApiClient {
                         .queryParam("_type", "json")
                         .queryParam("contentId", contentId)
                         .queryParam("imageYN", "Y")
-                        .queryParam("subImageYN", "Y")
                         .build())
                 .retrieve()
                 .body(Map.class));
@@ -158,8 +152,9 @@ public class TourApiClient {
 
     private void validateResultCode(Map<String, Object> root) {
         Map<String, Object> header = map(map(root, "response"), "header");
-        String resultCode = text(header, "resultCode");
-        if (resultCode != null && !"0000".equals(resultCode)) {
+        String resultCode = Optional.ofNullable(text(root, "resultCode"))
+                .orElseGet(() -> text(header, "resultCode"));
+        if (!"0000".equals(resultCode)) {
             throw new BusinessException(ErrorCode.EXTERNAL_PROVIDER_UNAVAILABLE);
         }
     }
@@ -174,6 +169,7 @@ public class TourApiClient {
                 text(item, "mapx"),
                 text(item, "mapy"),
                 text(item, "firstimage"),
+                text(item, "modifiedtime"),
                 rawJson(item)
         );
     }
