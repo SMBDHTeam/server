@@ -84,6 +84,12 @@ jobs:
 
           # TourAPI 적재 스케줄러
           TOUR_API_KEY: ${{ secrets.TOUR_API_KEY }}
+
+          # 장소 검색 및 대중교통 경로 Provider
+          KAKAO_REST_API_KEY: ${{ secrets.KAKAO_REST_API_KEY }}
+          ODSAY_API_KEY: ${{ secrets.ODSAY_API_KEY }}
+          BUSAN_BIMS_API_KEY: ${{ secrets.BUSAN_BIMS_API_KEY }}
+          SKT_API_KEY: ${{ secrets.SKT_API_KEY }}
         run: |
           # SSH private key를 GitHub Actions runner 안에 임시 파일로 저장한다.
           mkdir -p ~/.ssh
@@ -105,6 +111,13 @@ jobs:
             printf 'TOUR_API_PLACE_INGESTION_ENABLED=false\n'
             printf 'TOUR_API_KEY=%s\n' "$TOUR_API_KEY"
             printf 'TOUR_API_INGESTION_SCHEDULER_ENABLED=true\n'
+            printf 'KAKAO_REST_API_KEY=%s\n' "$KAKAO_REST_API_KEY"
+            printf 'ODSAY_ENABLED=true\n'
+            printf 'ODSAY_API_KEY=%s\n' "$ODSAY_API_KEY"
+            printf 'BUSAN_BIMS_ENABLED=true\n'
+            printf 'BUSAN_BIMS_API_KEY=%s\n' "$BUSAN_BIMS_API_KEY"
+            printf 'TMAP_WALKING_ENABLED=true\n'
+            printf 'SKT_API_KEY=%s\n' "$SKT_API_KEY"
           } > .env.dev
 
           chmod 600 .env.dev
