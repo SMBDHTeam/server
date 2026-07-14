@@ -15,6 +15,7 @@
 | `docs/api-change-log.md` | API 계약 변경 이력 |
 | `docs/planner-performance-baseline.md` | 일정 Planner Hard Gate, 품질 점수, Iteration 기준선 |
 | `docs/examples/planner-console/README.md` | 일정 생성 API 로컬 E2E 콘솔 실행과 검증 절차 |
+| `docs/infra.md` | 로컬 PostgreSQL, Swagger UI와 환경별 실행 절차 |
 
 서로 충돌할 경우 실제 기능 계약은 `docs/API_SPEC.md`, 데이터 설계는 `docs/ERD.md`를 우선한다. 문서가 잘못되었거나 불완전하면 임의로 구현하지 말고 문서와 변경 이력을 함께 수정한다.
 

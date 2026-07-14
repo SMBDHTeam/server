@@ -31,6 +31,27 @@ docker compose -f docker-compose.local.yml up -d postgres
 
 환경변수 예시는 `.env.example`을 기준으로 만들고, 실제 `.env`는 Git에 올리지 않는다.
 
+## 로컬 Swagger
+
+Swagger UI와 OpenAPI JSON은 `local` profile에서만 활성화한다. 로컬 DB가 비어 있으면
+기본값으로 일정 생성용 장소 fixture 8개를 적재하고, 질문과 답변 seed도 함께 준비한다.
+
+```bash
+docker compose -f docker-compose.local.yml up -d postgres
+./gradlew bootRun --args='--spring.profiles.active=local'
+```
+
+- Swagger UI: `http://localhost:8080/swagger-ui.html`
+- OpenAPI JSON: `http://localhost:8080/v3/api-docs`
+
+Swagger의 `POST /api/v1/schedules`에는 자동 추천 1일 일정과 현재 로컬 장소 ID를
+동적으로 연결한 3박 4일 일정 예제가 있다. `mustVisitPlaceIds`에 장소를 직접 지정하려면 먼저
+`GET /api/v1/places`를 실행해 현재 로컬 DB의 장소 ID를 사용한다. 기존 장소 데이터가
+있으면 fixture를 추가 적재하지 않는다. 더미 장소를 끄려면
+`DUMMY_PLACE_SEED_ENABLED=false`를 설정한다.
+
+백엔드를 `18080` 포트로 실행하면 Swagger URL의 포트도 `18080`으로 변경한다.
+
 TourAPI 장소 적재는 기본 비활성화 상태다. 로컬 PostgreSQL에 적재하려면 `.env`에 `TOUR_API_KEY`를 설정하고 필요한 페이지 수를 조정한 뒤 실행한다.
 
 ```bash
