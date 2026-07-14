@@ -1,0 +1,50 @@
+#!/bin/sh
+
+# 현재 체크아웃한 브랜치 이름을 확인한다.
+current_branch=$(git rev-parse --abbrev-ref HEAD)
+
+# main 브랜치에서 직접 push하는 것을 차단
+if [ "$current_branch" = "main" ]; then
+  echo ""
+  echo "=================================================="
+  echo "main 브랜치에는 직접 push할 수 없음"
+  echo ""
+  echo "작업 브랜치에서 push한 뒤 PR로 머지하셈"
+  echo "예: feature/login, fix/header, chore/config"
+  echo "=================================================="
+  echo ""
+  exit 1
+fi
+
+# 원격 main의 최신 정보를 가져옴
+if ! git fetch origin main --quiet; then
+  echo ""
+  echo "origin/main의 최신 상태를 확인하지 못해 push를 중단함"
+  echo "네트워크와 원격 저장소 상태를 확인한 뒤 다시 시도하자"
+  echo ""
+  exit 1
+fi
+
+# 현재 작업 브랜치에 최신 origin/main이 포함되어 있는지 확인
+if git merge-base --is-ancestor origin/main HEAD; then
+  echo ""
+  echo "최신 main이 반영되어 있음. push를 진행함"
+  echo ""
+else
+  echo ""
+  echo "=================================================="
+  echo "최신 main이 반영되지 않아 push를 중단합니다."
+  echo ""
+  echo "수지 또는 동준이 먼저 main에 머지한 커밋이 있음"
+  echo "아래 명령으로 최신 main을 반영하셈"
+  echo ""
+  echo "  git pull --rebase origin main"
+  echo ""
+  echo "충돌이 나면 해결한 뒤 다시 push하셈"
+  echo "=================================================="
+  echo ""
+  exit 1
+fi
+
+# 모든 검사를 통과하면 push를 허용한다.
+exit 0
