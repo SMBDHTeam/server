@@ -29,6 +29,7 @@ import com.server.schedule.planner.PlaceCandidateProvider;
 import com.server.schedule.planner.MultiDayPlanOptimizer;
 import com.server.schedule.repository.ScheduleRepository;
 import com.server.transit.service.TransitPoint;
+import com.server.transit.service.TransitRouteEstimate;
 import com.server.transit.service.TransitRouteProvider;
 import com.server.transit.service.TransitRouteResult;
 import java.math.BigDecimal;
@@ -363,7 +364,7 @@ public class ScheduleService {
     }
 
     private void recalculateRoutes(Schedule schedule) {
-        Map<RouteKey, TransitRouteResult> routeCache = new HashMap<>();
+        Map<RouteKey, TransitRouteEstimate> routeCache = new HashMap<>();
         PlannerExecutionMetrics executionMetrics = new PlannerExecutionMetrics();
         for (ScheduleDay day : schedule.getDays()) {
             TransitPoint previous = new TransitPoint(
@@ -375,7 +376,13 @@ public class ScheduleService {
                         stop.getPlace().getLatitude()
                 );
                 TransitRouteResult route = resolveRoute(
-                        routeCache, executionMetrics, previous, destination);
+                        routeCache,
+                        executionMetrics,
+                        previous,
+                        destination,
+                        RouteResolutionMode.DETAILED,
+                        null
+                ).route();
                 createRoute(day, stop, "INBOUND", stop.getStopOrder(), route);
                 previous = destination;
             }
@@ -384,8 +391,10 @@ public class ScheduleService {
                     executionMetrics,
                     previous,
                     new TransitPoint(
-                            day.getEndPlaceName(), day.getEndLongitude(), day.getEndLatitude())
-            );
+                            day.getEndPlaceName(), day.getEndLongitude(), day.getEndLatitude()),
+                    RouteResolutionMode.DETAILED,
+                    null
+            ).route();
             createRoute(day, null, "FINAL", day.getStops().size() + 1, finalRoute);
             if (!feasibilityChecker.fitWithinAvailableTime(day)) {
                 throw new BusinessException(ErrorCode.INVALID_SCHEDULE_CONDITION);
@@ -483,23 +492,32 @@ public class ScheduleService {
                 request
         );
 
-        Map<RouteKey, TransitRouteResult> routeCache = new HashMap<>();
+        Map<RouteKey, TransitRouteEstimate> estimateCache = new HashMap<>();
+        Map<RouteKey, TransitRouteEstimate> detailedCache = new HashMap<>();
         for (int dayIndex = 0; dayIndex < days.size(); dayIndex++) {
             ScheduleDay day = days.get(dayIndex);
             DayRouteOptimizer.OptimizedDayRoute optimizedRoute = dayRouteOptimizer.optimize(
                     day,
                     placesByDay.get(dayIndex),
                     (origin, destination) -> resolveRoute(
-                            routeCache,
+                            estimateCache,
                             executionMetrics,
                             origin,
-                            destination
-                    ),
+                            destination,
+                            RouteResolutionMode.ESTIMATE,
+                            null
+                    ).route(),
                     optimizationPreference(request)
             );
             List<ScheduleStop> stops = new ArrayList<>();
+            TransitPoint previous = new TransitPoint(
+                    day.getStartPlaceName(), day.getStartLongitude(), day.getStartLatitude());
             for (int stopIndex = 0; stopIndex < optimizedRoute.places().size(); stopIndex++) {
                 Place place = optimizedRoute.places().get(stopIndex);
+                TransitPoint destination = new TransitPoint(
+                        place.getName(), place.getLongitude(), place.getLatitude());
+                TransitRouteResult inboundRoute = selectedRoute(
+                        estimateCache, detailedCache, executionMetrics, previous, destination);
                 ScheduleStop stop = new ScheduleStop(day, place, stopIndex + 1, stayMinutes(place));
                 stop.updateDeliveryInfo(
                         jsonArray(selectionReasons(
@@ -510,29 +528,66 @@ public class ScheduleService {
                         jsonArray(stopWarnings(place, request))
                 );
                 stops.add(stop);
-                createRoute(day, stop, "INBOUND", stopIndex + 1, optimizedRoute.inboundRoutes().get(stopIndex));
+                createRoute(day, stop, "INBOUND", stopIndex + 1, inboundRoute);
+                previous = destination;
             }
-            if (optimizedRoute.finalRoute() != null) {
-                createRoute(day, null, "FINAL", stops.size() + 1, optimizedRoute.finalRoute());
+            if (!optimizedRoute.places().isEmpty()) {
+                TransitRouteResult finalRoute = selectedRoute(
+                        estimateCache,
+                        detailedCache,
+                        executionMetrics,
+                        previous,
+                        new TransitPoint(day.getEndPlaceName(), day.getEndLongitude(), day.getEndLatitude())
+                );
+                createRoute(day, null, "FINAL", stops.size() + 1, finalRoute);
             }
             feasibilityChecker.fitWithinAvailableTime(day);
         }
     }
 
-    private TransitRouteResult resolveRoute(
-            Map<RouteKey, TransitRouteResult> routeCache,
+    private TransitRouteResult selectedRoute(
+            Map<RouteKey, TransitRouteEstimate> estimateCache,
+            Map<RouteKey, TransitRouteEstimate> detailedCache,
             PlannerExecutionMetrics executionMetrics,
             TransitPoint origin,
             TransitPoint destination
     ) {
+        TransitRouteEstimate estimate = estimateCache.get(new RouteKey(origin, destination));
+        if (estimate != null && !estimate.requiresDetail()) {
+            return estimate.route();
+        }
+        return resolveRoute(
+                detailedCache,
+                executionMetrics,
+                origin,
+                destination,
+                RouteResolutionMode.DETAILED,
+                estimate
+        ).route();
+    }
+
+    private TransitRouteEstimate resolveRoute(
+            Map<RouteKey, TransitRouteEstimate> routeCache,
+            PlannerExecutionMetrics executionMetrics,
+            TransitPoint origin,
+            TransitPoint destination,
+            RouteResolutionMode resolutionMode,
+            TransitRouteEstimate estimate
+    ) {
         executionMetrics.routeResolutionCount++;
         RouteKey key = new RouteKey(origin, destination);
-        TransitRouteResult cached = routeCache.get(key);
+        TransitRouteEstimate cached = routeCache.get(key);
         if (cached != null) {
             executionMetrics.routeCacheHitCount++;
             return cached;
         }
-        TransitRouteResult result = routeBetween(origin, destination, executionMetrics);
+        TransitRouteEstimate result = routeBetween(
+                origin,
+                destination,
+                executionMetrics,
+                resolutionMode,
+                estimate
+        );
         routeCache.put(key, result);
         return result;
     }
@@ -625,10 +680,12 @@ public class ScheduleService {
         }
     }
 
-    private TransitRouteResult routeBetween(
+    private TransitRouteEstimate routeBetween(
             TransitPoint origin,
             TransitPoint destination,
-            PlannerExecutionMetrics executionMetrics
+            PlannerExecutionMetrics executionMetrics,
+            RouteResolutionMode resolutionMode,
+            TransitRouteEstimate estimate
     ) {
         int distanceMeters = distanceMeters(
                 origin.longitude(),
@@ -637,15 +694,21 @@ public class ScheduleService {
                 destination.latitude()
         );
         if (distanceMeters <= CLOSE_WALK_THRESHOLD_METERS) {
-            return walkRoute(origin, destination, distanceMeters, false);
+            return TransitRouteEstimate.detailed(walkRoute(origin, destination, distanceMeters, false));
         }
         try {
             executionMetrics.providerCallCount++;
-            return transitRouteProvider.findRoute(origin, destination);
+            if (resolutionMode == RouteResolutionMode.ESTIMATE) {
+                return transitRouteProvider.findRouteEstimate(origin, destination);
+            }
+            TransitRouteResult detailedRoute = estimate == null
+                    ? transitRouteProvider.findRoute(origin, destination)
+                    : transitRouteProvider.findRouteDetail(origin, destination, estimate);
+            return TransitRouteEstimate.detailed(detailedRoute);
         } catch (BusinessException exception) {
             executionMetrics.providerFailureCount++;
             if (isFallbackEligible(exception) && distanceMeters <= PROVIDER_FAILURE_WALK_FALLBACK_METERS) {
-                return walkRoute(origin, destination, distanceMeters, true);
+                return TransitRouteEstimate.detailed(walkRoute(origin, destination, distanceMeters, true));
             }
             throw exception;
         }
@@ -1350,6 +1413,11 @@ public class ScheduleService {
         private int routeCacheHitCount;
         private int providerCallCount;
         private int providerFailureCount;
+    }
+
+    private enum RouteResolutionMode {
+        ESTIMATE,
+        DETAILED
     }
 
     private record RouteKey(TransitPoint origin, TransitPoint destination) {

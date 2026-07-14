@@ -13,6 +13,7 @@ import com.server.place.domain.Place;
 import com.server.place.repository.PlaceRepository;
 import jakarta.persistence.EntityManager;
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -22,6 +23,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.transaction.annotation.Transactional;
@@ -29,6 +31,7 @@ import org.springframework.transaction.annotation.Transactional;
 @SpringBootTest
 @AutoConfigureMockMvc
 @Transactional
+@ActiveProfiles("test")
 @DisplayName("일정 생명주기 E2E")
 class ScheduleLifecycleE2ETest {
 
@@ -67,6 +70,12 @@ class ScheduleLifecycleE2ETest {
                 .andExpect(jsonPath("$.evaluation.hardGate.passed").value(true))
                 .andReturn();
         String created = createResult.getResponse().getContentAsString();
+        ScheduleE2EAssertions.assertSuccessfulCreate(
+                created,
+                LocalDate.parse("2026-08-10"),
+                1,
+                List.of(places.get(0).getId())
+        );
         String scheduleId = JsonPath.read(created, "$.id");
         List<String> stopIds = JsonPath.read(created, "$.days[0].stops[*].id");
         List<Integer> scheduledPlaceIds = JsonPath.read(created, "$.days[0].stops[*].place.id");
@@ -133,6 +142,37 @@ class ScheduleLifecycleE2ETest {
     }
 
     @Test
+    @DisplayName("2박 3일의 일차별 출발지와 도착지를 독립적으로 적용한다")
+    void createsMultiDayScheduleWithDifferentDailyEndpoints() throws Exception {
+        List<Long> mustVisitPlaceIds = List.of(
+                places.get(0).getId(),
+                places.get(2).getId(),
+                places.get(4).getId()
+        );
+
+        String created = mockMvc.perform(post("/api/v1/schedules")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(multiDayCreateRequest(mustVisitPlaceIds)))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.days[0].startLocation.name").value("부산역"))
+                .andExpect(jsonPath("$.days[0].endLocation.name").value("광안리 숙소"))
+                .andExpect(jsonPath("$.days[1].startLocation.name").value("광안리 숙소"))
+                .andExpect(jsonPath("$.days[1].endLocation.name").value("남포동 숙소"))
+                .andExpect(jsonPath("$.days[2].startLocation.name").value("남포동 숙소"))
+                .andExpect(jsonPath("$.days[2].endLocation.name").value("김해국제공항"))
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+
+        ScheduleE2EAssertions.assertSuccessfulCreate(
+                created,
+                LocalDate.parse("2026-08-10"),
+                3,
+                mustVisitPlaceIds
+        );
+    }
+
+    @Test
     @DisplayName("잘못된 수정 요청은 400을 반환하고 기존 일정을 보존한다")
     void invalidUpdateRollsBack() throws Exception {
         String created = mockMvc.perform(post("/api/v1/schedules")
@@ -188,6 +228,54 @@ class ScheduleLifecycleE2ETest {
                   "mustVisitPlaceIds":[%d]
                 }
                 """.formatted(mustVisitPlaceId);
+    }
+
+    private String multiDayCreateRequest(List<Long> mustVisitPlaceIds) {
+        return """
+                {
+                  "startDate":"2026-08-10",
+                  "endDate":"2026-08-12",
+                  "dailyStartTime":"09:00",
+                  "dailyEndTime":"19:00",
+                  "startLocation":{"name":"부산역","longitude":129.0403,"latitude":35.1151},
+                  "endLocation":{"name":"김해국제공항","longitude":128.9485,"latitude":35.1732},
+                  "selectedAnswers":[
+                    {"questionId":"COMPANION","answerId":"COMPANION_PARENTS"},
+                    {"questionId":"PACE","answerId":"PACE_BALANCED"},
+                    {"questionId":"THEME","answerId":"THEME_LOCAL"},
+                    {"questionId":"MOBILITY","answerId":"MOBILITY_LOW_WALK"},
+                    {"questionId":"TRANSIT","answerId":"TRANSIT_SIMPLE"}
+                  ],
+                  "mustVisitPlaceIds":[%d,%d,%d],
+                  "days":[
+                    {
+                      "dayNo":1,
+                      "startTime":"09:00",
+                      "endTime":"19:00",
+                      "startLocation":{"name":"부산역","longitude":129.0403,"latitude":35.1151},
+                      "endLocation":{"name":"광안리 숙소","longitude":129.1186,"latitude":35.1532}
+                    },
+                    {
+                      "dayNo":2,
+                      "startTime":"09:00",
+                      "endTime":"19:00",
+                      "startLocation":{"name":"광안리 숙소","longitude":129.1186,"latitude":35.1532},
+                      "endLocation":{"name":"남포동 숙소","longitude":129.0320,"latitude":35.1000}
+                    },
+                    {
+                      "dayNo":3,
+                      "startTime":"09:00",
+                      "endTime":"17:00",
+                      "startLocation":{"name":"남포동 숙소","longitude":129.0320,"latitude":35.1000},
+                      "endLocation":{"name":"김해국제공항","longitude":128.9485,"latitude":35.1732}
+                    }
+                  ]
+                }
+                """.formatted(
+                mustVisitPlaceIds.get(0),
+                mustVisitPlaceIds.get(1),
+                mustVisitPlaceIds.get(2)
+        );
     }
 
     private Place place(String externalId, String name, String longitude, String latitude) {

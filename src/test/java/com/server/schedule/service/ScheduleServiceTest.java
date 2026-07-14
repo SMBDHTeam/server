@@ -24,6 +24,7 @@ import com.server.schedule.evaluation.ScheduleScoreEvaluator;
 import com.server.schedule.evaluation.ScheduleScoreResult;
 import com.server.schedule.repository.ScheduleRepository;
 import com.server.transit.service.TransitPoint;
+import com.server.transit.service.TransitRouteEstimate;
 import com.server.transit.service.TransitRouteProvider;
 import com.server.transit.service.TransitRouteResult;
 import java.math.BigDecimal;
@@ -45,7 +46,10 @@ class ScheduleServiceTest {
 
     private final ScheduleRepository scheduleRepository = Mockito.mock(ScheduleRepository.class);
     private final PlaceRepository placeRepository = Mockito.mock(PlaceRepository.class);
-    private final TransitRouteProvider transitRouteProvider = Mockito.mock(TransitRouteProvider.class);
+    private final TransitRouteProvider transitRouteProvider = Mockito.mock(
+            TransitRouteProvider.class,
+            Mockito.CALLS_REAL_METHODS
+    );
     private final ScheduleService scheduleService = new ScheduleService(
             scheduleRepository,
             placeRepository,
@@ -133,6 +137,33 @@ class ScheduleServiceTest {
         assertThat(response.evaluation().operations().routeCacheHitCount()).isZero();
         assertThat(response.evaluation().operations().providerCallCount()).isEqualTo(6);
         verify(transitRouteProvider, Mockito.times(6)).findRoute(Mockito.any(), Mockito.any());
+    }
+
+    @Test
+    @DisplayName("방문 순서 비교는 경량 경로를 사용하고 선택된 경로만 상세화한다")
+    void createUsesEstimateDuringOptimizationAndDetailsSelectedRoutes() {
+        Place firstPlace = place(101L, "A", "129.0800", "35.1500");
+        Place secondPlace = place(102L, "B", "129.1200", "35.1800");
+        TransitRouteEstimate.DetailContext detailContext = new TransitRouteEstimate.DetailContext() {
+        };
+        TransitRouteEstimate estimate = TransitRouteEstimate.estimated(estimateRoute(25), detailContext);
+        when(placeRepository.findAllById(List.of(101L, 102L))).thenReturn(List.of(firstPlace, secondPlace));
+        Mockito.doReturn(estimate)
+                .when(transitRouteProvider)
+                .findRouteEstimate(Mockito.any(), Mockito.any());
+        when(transitRouteProvider.findRoute(Mockito.any(), Mockito.any()))
+                .thenReturn(route());
+        when(scheduleRepository.save(Mockito.any(Schedule.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        ScheduleResponse response = scheduleService.create(oneDayRequest(List.of(101L, 102L)));
+
+        assertThat(response.days().get(0).stops()).hasSize(2);
+        assertThat(response.evaluation().operations().routeResolutionCount()).isEqualTo(9);
+        verify(transitRouteProvider, Mockito.times(6)).findRouteEstimate(Mockito.any(), Mockito.any());
+        verify(transitRouteProvider, Mockito.times(3))
+                .findRouteDetail(Mockito.any(), Mockito.any(), Mockito.same(estimate));
+        verify(transitRouteProvider, Mockito.times(3)).findRoute(Mockito.any(), Mockito.any());
     }
 
     @Test
@@ -883,6 +914,16 @@ class ScheduleServiceTest {
                 List.of(new TransitRouteResult.Segment("BUS", "26", "부산역", "남부민2동")),
                 List.of(new TransitRouteResult.RouteLine("BUS", "26", "[[129.0,35.0],[129.1,35.1]]")),
                 "{\"provider\":\"FAKE\"}"
+        );
+    }
+
+    private TransitRouteResult estimateRoute(int totalMinutes) {
+        return new TransitRouteResult(
+                totalMinutes,
+                1550,
+                List.of(new TransitRouteResult.Segment("BUS", "26", "부산역", "남부민2동")),
+                List.of(),
+                "{\"provider\":\"ESTIMATE\"}"
         );
     }
 }

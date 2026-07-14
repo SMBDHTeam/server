@@ -16,6 +16,16 @@ API 계약이 변경될 때마다 최신 항목을 위에 추가한다.
 - 관련 PR 또는 이슈:
 ```
 
+## 2026-07-14
+
+- API: `POST /api/v1/schedules`
+- 구분: 수정
+- 이전: 장소 방문 순서를 비교하는 모든 경로 해석에서 최종 저장용 상세 경로 Provider를 호출
+- 이후: 후보 순서 비교에서는 경량 경로를 사용하고, 선택된 방문 순서는 기존 ODsay 검색 결과를 재사용해 상세 선형·실시간·도보 정보만 보강. 응답 필드는 유지하며 `evaluation.operations.providerCallCount`, `routeResolutionCount`, `routeCacheHitCount`는 탐색·상세화 단계 합계로 집계
+- 이유: 일정 생성 중 외부 `loadLane`, 도보 경로, 실시간 보정 호출을 후보 조합 수만큼 반복하지 않고 생성시간과 외부 API 사용량을 줄이기 위함
+- 호환성 파괴: 아니오
+- 관련 PR 또는 이슈: 없음
+
 ## 2026-07-13
 
 - API: `POST /api/v1/schedules`
