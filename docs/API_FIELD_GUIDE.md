@@ -175,9 +175,9 @@
 | `evaluation.qualityScore.metrics[].maxScore` | integer | O | 지표 배점 |
 | `evaluation.qualityScore.metrics[].reason` | string | O | 점수 산정 근거 |
 | `evaluation.operations.generationMillis` | integer | O | 검증부터 저장·평가까지 생성 소요시간(ms) |
-| `evaluation.operations.routeResolutionCount` | integer | O | 순열 평가 중 경로 해석 요청 횟수 |
-| `evaluation.operations.routeCacheHitCount` | integer | O | 요청 단위 경로 비용 캐시 적중 횟수 |
-| `evaluation.operations.providerCallCount` | integer | O | 내부 `TransitRouteProvider.findRoute` 호출 횟수 |
+| `evaluation.operations.routeResolutionCount` | integer | O | 후보 순열 평가와 최종 상세화의 경로 해석 요청 횟수 합계 |
+| `evaluation.operations.routeCacheHitCount` | integer | O | 요청 단위 경량·상세 경로 캐시 적중 횟수 합계 |
+| `evaluation.operations.providerCallCount` | integer | O | 후보 탐색용·최종 상세화용 `TransitRouteProvider` 호출 횟수 합계 |
 | `evaluation.operations.providerFailureCount` | integer | O | 외부 Provider 호출 실패 횟수 |
 | `evaluation.operations.externalHttpCallCount` | integer | O | ODsay 경로검색·loadLane·TMAP 도보 HTTP 시도 합계 |
 | `evaluation.operations.externalHttpFailureCount` | integer | O | 외부 HTTP 오류·유효하지 않은 응답 횟수 |

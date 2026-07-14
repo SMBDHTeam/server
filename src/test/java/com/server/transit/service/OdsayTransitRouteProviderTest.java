@@ -63,6 +63,96 @@ class OdsayTransitRouteProviderTest {
     }
 
     @Test
+    @DisplayName("후보 비교용 경량 경로는 상세 좌표와 실시간 Provider를 호출하지 않는다")
+    void findRouteEstimateSkipsDetailedProviders() {
+        TransitPoint origin = point("부산역", "129.0403", "35.1151");
+        TransitPoint destination = point("가덕도 등대", "128.8294", "35.0241");
+        when(odsayClient.searchPublicTransitPath(
+                origin.longitude(),
+                origin.latitude(),
+                destination.longitude(),
+                destination.latitude()
+        )).thenReturn(response());
+
+        TransitRouteEstimate estimate = provider.findRouteEstimate(origin, destination);
+        TransitRouteResult result = estimate.route();
+
+        assertThat(estimate.detailLevel()).isEqualTo(TransitRouteEstimate.DetailLevel.ESTIMATE);
+        assertThat(estimate.requiresDetail()).isTrue();
+        assertThat(result.totalMinutes()).isEqualTo(42);
+        assertThat(result.segments()).hasSize(3);
+        assertThat(result.routeLines()).isEmpty();
+        assertThat(result.warnings()).containsExactly("후보 순서 비교용 경량 경로입니다.");
+        verify(odsayClient, Mockito.never()).loadLane(Mockito.anyString());
+        verify(walkingRouteProvider, Mockito.never()).findRoute(Mockito.any(), Mockito.any());
+        verify(transitRealtimeProvider, Mockito.never()).adjustment(Mockito.any());
+    }
+
+    @Test
+    @DisplayName("경량 경로를 상세화할 때 ODsay 경로검색 결과를 재사용한다")
+    void findRouteDetailReusesEstimatedPath() {
+        TransitPoint origin = point("부산역", "129.0403", "35.1151");
+        TransitPoint destination = point("가덕도 등대", "128.8294", "35.0241");
+        when(odsayClient.searchPublicTransitPath(
+                origin.longitude(),
+                origin.latitude(),
+                destination.longitude(),
+                destination.latitude()
+        )).thenReturn(response());
+        when(odsayClient.loadLane("0:0@2823889:1:66:103")).thenReturn(Optional.empty());
+        when(walkingRouteProvider.findRoute(Mockito.any(), Mockito.any())).thenReturn(Optional.empty());
+        when(transitRealtimeProvider.adjustment(Mockito.any()))
+                .thenReturn(TransitRealtimeAdjustment.none());
+
+        TransitRouteEstimate estimate = provider.findRouteEstimate(origin, destination);
+        TransitRouteResult detailed = provider.findRouteDetail(origin, destination, estimate);
+
+        assertThat(detailed.totalMinutes()).isEqualTo(42);
+        assertThat(detailed.routeLines()).hasSize(2);
+        verify(odsayClient, Mockito.times(1)).searchPublicTransitPath(
+                origin.longitude(),
+                origin.latitude(),
+                destination.longitude(),
+                destination.latitude()
+        );
+        verify(odsayClient).loadLane("0:0@2823889:1:66:103");
+    }
+
+    @Test
+    @DisplayName("상세화 endpoint가 탐색 endpoint와 다르면 경로를 다시 조회한다")
+    void findRouteDetailSearchesAgainForDifferentEndpoint() {
+        TransitPoint origin = point("부산역", "129.0403", "35.1151");
+        TransitPoint estimatedDestination = point("가덕도 등대", "128.8294", "35.0241");
+        TransitPoint requestedDestination = point("광안리", "129.1187", "35.1532");
+        when(odsayClient.searchPublicTransitPath(
+                Mockito.any(),
+                Mockito.any(),
+                Mockito.any(),
+                Mockito.any()
+        )).thenReturn(response());
+        when(odsayClient.loadLane("0:0@2823889:1:66:103")).thenReturn(Optional.empty());
+        when(walkingRouteProvider.findRoute(Mockito.any(), Mockito.any())).thenReturn(Optional.empty());
+        when(transitRealtimeProvider.adjustment(Mockito.any()))
+                .thenReturn(TransitRealtimeAdjustment.none());
+
+        TransitRouteEstimate estimate = provider.findRouteEstimate(origin, estimatedDestination);
+        provider.findRouteDetail(origin, requestedDestination, estimate);
+
+        verify(odsayClient).searchPublicTransitPath(
+                origin.longitude(),
+                origin.latitude(),
+                estimatedDestination.longitude(),
+                estimatedDestination.latitude()
+        );
+        verify(odsayClient).searchPublicTransitPath(
+                origin.longitude(),
+                origin.latitude(),
+                requestedDestination.longitude(),
+                requestedDestination.latitude()
+        );
+    }
+
+    @Test
     @DisplayName("mapObj 상세 경로 좌표가 있으면 정류장 좌표 대신 상세 좌표를 사용한다")
     void findRouteUsesDetailedRouteLineCoordinates() {
         TransitPoint origin = point("부산역", "129.0403", "35.1151");

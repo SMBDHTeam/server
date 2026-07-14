@@ -40,19 +40,58 @@ public class OdsayTransitRouteProvider implements TransitRouteProvider {
 
     @Override
     public TransitRouteResult findRoute(TransitPoint origin, TransitPoint destination) {
-        Map<String, Object> response = odsayClient.searchPublicTransitPath(
-                origin.longitude(),
-                origin.latitude(),
-                destination.longitude(),
-                destination.latitude()
-        );
-        PathWithRealtimeAdjustment selectedPath = bestPath(response);
-        Map<String, Object> path = selectedPath.path();
+        Map<String, Object> path = searchBestPath(origin, destination);
+        return detailedRoute(path, origin, destination);
+    }
+
+    @Override
+    public TransitRouteEstimate findRouteEstimate(TransitPoint origin, TransitPoint destination) {
+        Map<String, Object> path = searchBestPath(origin, destination);
         List<Map<String, Object>> subPaths = list(path, "subPath");
         if (subPaths.isEmpty()) {
             throw new BusinessException(ErrorCode.TRANSIT_ROUTE_NOT_FOUND);
         }
-        RealtimeAdjustmentSummary realtimeAdjustment = selectedPath.realtimeAdjustment();
+
+        TransitRouteResult route = new TransitRouteResult(
+                intValue(map(path, "info"), "totalTime"),
+                integerValue(map(path, "info"), "payment"),
+                "ODSAY",
+                "UNAVAILABLE",
+                false,
+                List.of("후보 순서 비교용 경량 경로입니다."),
+                subPaths.stream()
+                        .map(this::toSegment)
+                        .toList(),
+                List.of(),
+                rawJson(path, new RealtimeAdjustmentSummary(0, List.of()))
+        );
+        return TransitRouteEstimate.estimated(route, new OdsayDetailContext(path, origin, destination));
+    }
+
+    @Override
+    public TransitRouteResult findRouteDetail(
+            TransitPoint origin,
+            TransitPoint destination,
+            TransitRouteEstimate estimate
+    ) {
+        if (estimate != null
+                && estimate.detailContext() instanceof OdsayDetailContext context
+                && context.matches(origin, destination)) {
+            return detailedRoute(context.path(), origin, destination);
+        }
+        return TransitRouteProvider.super.findRouteDetail(origin, destination, estimate);
+    }
+
+    private TransitRouteResult detailedRoute(
+            Map<String, Object> path,
+            TransitPoint origin,
+            TransitPoint destination
+    ) {
+        List<Map<String, Object>> subPaths = list(path, "subPath");
+        if (subPaths.isEmpty()) {
+            throw new BusinessException(ErrorCode.TRANSIT_ROUTE_NOT_FOUND);
+        }
+        RealtimeAdjustmentSummary realtimeAdjustment = realtimeAdjustment(subPaths);
 
         return new TransitRouteResult(
                 intValue(map(path, "info"), "totalTime") + realtimeAdjustment.extraMinutes(),
@@ -71,15 +110,21 @@ public class OdsayTransitRouteProvider implements TransitRouteProvider {
         );
     }
 
-    private PathWithRealtimeAdjustment bestPath(Map<String, Object> response) {
+    private Map<String, Object> searchBestPath(TransitPoint origin, TransitPoint destination) {
+        Map<String, Object> response = odsayClient.searchPublicTransitPath(
+                origin.longitude(),
+                origin.latitude(),
+                destination.longitude(),
+                destination.latitude()
+        );
+        return bestPath(response);
+    }
+
+    private Map<String, Object> bestPath(Map<String, Object> response) {
         List<Map<String, Object>> paths = list(map(response, "result"), "path");
-        Map<String, Object> selectedPath = paths.stream()
+        return paths.stream()
                 .min(Comparator.comparingInt(path -> intValue(map(path, "info"), "totalTime")))
                 .orElseThrow(() -> new BusinessException(ErrorCode.TRANSIT_ROUTE_NOT_FOUND));
-        return new PathWithRealtimeAdjustment(
-                selectedPath,
-                realtimeAdjustment(list(selectedPath, "subPath"))
-        );
     }
 
     private TransitRouteResult.Segment toSegment(Map<String, Object> subPath) {
@@ -644,15 +689,20 @@ public class OdsayTransitRouteProvider implements TransitRouteProvider {
         return value == null ? "" : value;
     }
 
-    private record PathWithRealtimeAdjustment(
-            Map<String, Object> path,
-            RealtimeAdjustmentSummary realtimeAdjustment
-    ) {
-    }
-
     private record RealtimeAdjustmentSummary(
             int extraMinutes,
             List<Map<String, Object>> adjustments
     ) {
+    }
+
+    private record OdsayDetailContext(
+            Map<String, Object> path,
+            TransitPoint origin,
+            TransitPoint destination
+    ) implements TransitRouteEstimate.DetailContext {
+
+        private boolean matches(TransitPoint requestedOrigin, TransitPoint requestedDestination) {
+            return origin.equals(requestedOrigin) && destination.equals(requestedDestination);
+        }
     }
 }
