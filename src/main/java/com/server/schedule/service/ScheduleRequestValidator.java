@@ -6,6 +6,7 @@ import com.server.common.error.ErrorCode;
 import com.server.question.entity.Question;
 import com.server.question.repository.QuestionRepository;
 import com.server.schedule.dto.ScheduleCreateRequest;
+import com.server.schedule.planner.DailyScheduleTargetPolicy;
 import java.math.BigDecimal;
 import java.time.temporal.ChronoUnit;
 import java.util.HashMap;
@@ -20,7 +21,6 @@ import org.springframework.stereotype.Component;
 public class ScheduleRequestValidator {
 
     private static final int MAX_TRIP_DAYS = 4;
-    private static final int MAX_STOPS_PER_DAY = 3;
     private static final BigDecimal MIN_LONGITUDE = new BigDecimal("-180");
     private static final BigDecimal MAX_LONGITUDE = new BigDecimal("180");
     private static final BigDecimal MIN_LATITUDE = new BigDecimal("-90");
@@ -121,7 +121,7 @@ public class ScheduleRequestValidator {
     }
 
     private void validateMustVisitPlaceIds(List<Long> placeIds, int tripDays) {
-        if (placeIds.size() > tripDays * MAX_STOPS_PER_DAY
+        if (placeIds.size() > tripDays * DailyScheduleTargetPolicy.MAX_STOPS_PER_DAY
                 || placeIds.stream().anyMatch(placeId -> placeId == null || placeId <= 0)
                 || new HashSet<>(placeIds).size() != placeIds.size()) {
             invalid();

@@ -8,9 +8,11 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.OneToOne;
+import jakarta.persistence.CascadeType;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
 import java.util.UUID;
+import java.time.OffsetDateTime;
 
 @Entity
 @Table(
@@ -45,8 +47,17 @@ public class ScheduleStop {
     @Column(name = "warnings_json", nullable = false, columnDefinition = "text")
     private String warningsJson = "[]";
 
+    @Column(name = "fixed_starts_at")
+    private OffsetDateTime fixedStartsAt;
+
+    @Column(name = "fixed_ends_at")
+    private OffsetDateTime fixedEndsAt;
+
     @OneToOne(mappedBy = "scheduleStop", fetch = FetchType.LAZY)
     private TransitRoute inboundTransit;
+
+    @OneToOne(mappedBy = "scheduleStop", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+    private ScheduleFixedEvent fixedEvent;
 
     protected ScheduleStop() {
     }
@@ -74,6 +85,19 @@ public class ScheduleStop {
             throw new IllegalArgumentException("stayMinutes must be positive");
         }
         this.stayMinutes = stayMinutes;
+    }
+
+    public void applyFixedEvent(
+            String clientEventId,
+            String name,
+            OffsetDateTime startsAt,
+            OffsetDateTime endsAt
+    ) {
+        this.fixedStartsAt = startsAt;
+        this.fixedEndsAt = endsAt;
+        this.stayMinutes = (int) java.time.Duration.between(startsAt, endsAt).toMinutes();
+        this.fixedEvent = new ScheduleFixedEvent(
+                scheduleDay.getSchedule(), this, clientEventId, name, startsAt, endsAt);
     }
 
     public void reassign(ScheduleDay scheduleDay, int stopOrder, int stayMinutes) {
@@ -116,4 +140,7 @@ public class ScheduleStop {
     public TransitRoute getInboundTransit() {
         return inboundTransit;
     }
+
+    public OffsetDateTime getFixedStartsAt() { return fixedStartsAt; }
+    public OffsetDateTime getFixedEndsAt() { return fixedEndsAt; }
 }

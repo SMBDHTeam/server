@@ -100,8 +100,8 @@ public class LocalScheduleOpenApiExampleConfig {
     private List<ScheduleCreateRequest.SelectedAnswer> selectedAnswers() {
         return List.of(
                 new ScheduleCreateRequest.SelectedAnswer("COMPANION", "COMPANION_PARENTS"),
-                new ScheduleCreateRequest.SelectedAnswer("PACE", "PACE_BALANCED"),
-                new ScheduleCreateRequest.SelectedAnswer("THEME", "THEME_LOCAL"),
+                new ScheduleCreateRequest.SelectedAnswer("PACE", "PACE_PACKED"),
+                new ScheduleCreateRequest.SelectedAnswer("THEME", "THEME_NATURE"),
                 new ScheduleCreateRequest.SelectedAnswer("MOBILITY", "MOBILITY_LOW_WALK"),
                 new ScheduleCreateRequest.SelectedAnswer("TRANSIT", "TRANSIT_SIMPLE")
         );

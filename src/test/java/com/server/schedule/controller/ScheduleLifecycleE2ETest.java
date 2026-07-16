@@ -56,7 +56,8 @@ class ScheduleLifecycleE2ETest {
                 place("E2E-2", "송도해수욕장", "129.0172", "35.0770"),
                 place("E2E-3", "국제시장", "129.0286", "35.1025"),
                 place("E2E-4", "부산박물관", "129.0840", "35.1296"),
-                place("E2E-5", "자갈치시장", "129.0305", "35.0967")
+                place("E2E-5", "자갈치시장", "129.0305", "35.0967"),
+                place("E2E-6", "부산시민공원", "129.0600", "35.1600")
         ));
     }
 
@@ -193,7 +194,9 @@ class ScheduleLifecycleE2ETest {
                                     {"placeId":1,"dayNo":1,"order":1,"stayMinutes":60},
                                     {"placeId":2,"dayNo":1,"order":2,"stayMinutes":60},
                                     {"placeId":3,"dayNo":1,"order":3,"stayMinutes":60},
-                                    {"placeId":4,"dayNo":1,"order":4,"stayMinutes":60}
+                                    {"placeId":4,"dayNo":1,"order":4,"stayMinutes":60},
+                                    {"placeId":5,"dayNo":1,"order":5,"stayMinutes":60},
+                                    {"placeId":6,"dayNo":1,"order":6,"stayMinutes":60}
                                   ]
                                 }
                                 """))
@@ -220,8 +223,8 @@ class ScheduleLifecycleE2ETest {
                   "endLocation":{"name":"부산역","longitude":129.0403,"latitude":35.1151},
                   "selectedAnswers":[
                     {"questionId":"COMPANION","answerId":"COMPANION_PARENTS"},
-                    {"questionId":"PACE","answerId":"PACE_BALANCED"},
-                    {"questionId":"THEME","answerId":"THEME_LOCAL"},
+                    {"questionId":"PACE","answerId":"PACE_PACKED"},
+                    {"questionId":"THEME","answerId":"THEME_NATURE"},
                     {"questionId":"MOBILITY","answerId":"MOBILITY_LOW_WALK"},
                     {"questionId":"TRANSIT","answerId":"TRANSIT_SIMPLE"}
                   ],
@@ -241,8 +244,8 @@ class ScheduleLifecycleE2ETest {
                   "endLocation":{"name":"김해국제공항","longitude":128.9485,"latitude":35.1732},
                   "selectedAnswers":[
                     {"questionId":"COMPANION","answerId":"COMPANION_PARENTS"},
-                    {"questionId":"PACE","answerId":"PACE_BALANCED"},
-                    {"questionId":"THEME","answerId":"THEME_LOCAL"},
+                    {"questionId":"PACE","answerId":"PACE_PACKED"},
+                    {"questionId":"THEME","answerId":"THEME_NATURE"},
                     {"questionId":"MOBILITY","answerId":"MOBILITY_LOW_WALK"},
                     {"questionId":"TRANSIT","answerId":"TRANSIT_SIMPLE"}
                   ],

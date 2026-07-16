@@ -14,6 +14,9 @@
 | `docs/ERD.md` | 테이블, 컬럼, 관계의 기준 |
 | `docs/api-change-log.md` | API 계약 변경 이력 |
 | `docs/planner-performance-baseline.md` | 일정 Planner Hard Gate, 품질 점수, Iteration 기준선 |
+| `docs/ai-planner-roadmap.md` | 현재 AI 장소·날짜 제안과 결정론적 검증 Planner의 책임·전환 단계 |
+| `docs/schedule-generation-v2-spec.md` | 일정 생성 V2 기능·Preview·Planner 책임의 구현 명세 |
+| `docs/frontend-schedule-v2-handoff.md` | 일정 생성 V2 프론트 화면·상태·API 연동 가이드 |
 | `docs/examples/planner-console/README.md` | 일정 생성 API 로컬 E2E 콘솔 실행과 검증 절차 |
 | `docs/infra.md` | 로컬 PostgreSQL, Swagger UI와 환경별 실행 절차 |
 

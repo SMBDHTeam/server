@@ -3,13 +3,18 @@ package com.server.transit.service;
 import com.server.common.error.BusinessException;
 import com.server.common.error.ErrorCode;
 import com.server.external.odsay.OdsayClient;
+import com.server.external.odsay.OdsayRouteCacheProperties;
 import java.math.BigDecimal;
+import java.time.Clock;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Supplier;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
@@ -20,6 +25,7 @@ public class OdsayTransitRouteProvider implements TransitRouteProvider {
     private static final int TRAFFIC_TYPE_SUBWAY = 1;
     private static final int TRAFFIC_TYPE_BUS = 2;
     private static final int TRAFFIC_TYPE_WALK = 3;
+    private static final int STRAIGHT_WALK_GEOMETRY_THRESHOLD_METERS = 500;
     private static final Pattern COORDINATE_PAIR_PATTERN = Pattern.compile(
             "\\[\\s*\"?(-?\\d+(?:\\.\\d+)?)\"?\\s*,\\s*\"?(-?\\d+(?:\\.\\d+)?)\"?\\s*]"
     );
@@ -27,21 +33,52 @@ public class OdsayTransitRouteProvider implements TransitRouteProvider {
     private final OdsayClient odsayClient;
     private final WalkingRouteProvider walkingRouteProvider;
     private final TransitRealtimeProvider transitRealtimeProvider;
+    private final ExpiringCache<RouteCacheKey, Map<String, Object>> pathCache;
+    private final ExpiringCache<RouteCacheKey, TransitRouteResult> detailCache;
 
     public OdsayTransitRouteProvider(
             OdsayClient odsayClient,
             WalkingRouteProvider walkingRouteProvider,
             TransitRealtimeProvider transitRealtimeProvider
     ) {
+        this(
+                odsayClient, walkingRouteProvider, transitRealtimeProvider,
+                OdsayRouteCacheProperties.defaults(), Clock.systemUTC());
+    }
+
+    @Autowired
+    public OdsayTransitRouteProvider(
+            OdsayClient odsayClient,
+            WalkingRouteProvider walkingRouteProvider,
+            TransitRealtimeProvider transitRealtimeProvider,
+            OdsayRouteCacheProperties cacheProperties
+    ) {
+        this(
+                odsayClient, walkingRouteProvider, transitRealtimeProvider,
+                cacheProperties, Clock.systemUTC());
+    }
+
+    OdsayTransitRouteProvider(
+            OdsayClient odsayClient,
+            WalkingRouteProvider walkingRouteProvider,
+            TransitRealtimeProvider transitRealtimeProvider,
+            OdsayRouteCacheProperties cacheProperties,
+            Clock clock
+    ) {
         this.odsayClient = odsayClient;
         this.walkingRouteProvider = walkingRouteProvider;
         this.transitRealtimeProvider = transitRealtimeProvider;
+        this.pathCache = new ExpiringCache<>(
+                cacheProperties.pathTtl(), cacheProperties.maxEntries(), clock);
+        this.detailCache = new ExpiringCache<>(
+                cacheProperties.detailTtl(), cacheProperties.maxEntries(), clock);
     }
 
     @Override
     public TransitRouteResult findRoute(TransitPoint origin, TransitPoint destination) {
-        Map<String, Object> path = searchBestPath(origin, destination);
-        return detailedRoute(path, origin, destination);
+        RouteCacheKey key = RouteCacheKey.of(origin, destination);
+        return detailCache.get(key, () -> detailedRoute(
+                searchBestPath(origin, destination), origin, destination));
     }
 
     @Override
@@ -74,12 +111,15 @@ public class OdsayTransitRouteProvider implements TransitRouteProvider {
             TransitPoint destination,
             TransitRouteEstimate estimate
     ) {
-        if (estimate != null
-                && estimate.detailContext() instanceof OdsayDetailContext context
-                && context.matches(origin, destination)) {
-            return detailedRoute(context.path(), origin, destination);
-        }
-        return TransitRouteProvider.super.findRouteDetail(origin, destination, estimate);
+        RouteCacheKey key = RouteCacheKey.of(origin, destination);
+        return detailCache.get(key, () -> {
+            if (estimate != null
+                    && estimate.detailContext() instanceof OdsayDetailContext context
+                    && context.matches(origin, destination)) {
+                return detailedRoute(context.path(), origin, destination);
+            }
+            return detailedRoute(searchBestPath(origin, destination), origin, destination);
+        });
     }
 
     private TransitRouteResult detailedRoute(
@@ -111,13 +151,16 @@ public class OdsayTransitRouteProvider implements TransitRouteProvider {
     }
 
     private Map<String, Object> searchBestPath(TransitPoint origin, TransitPoint destination) {
-        Map<String, Object> response = odsayClient.searchPublicTransitPath(
-                origin.longitude(),
-                origin.latitude(),
-                destination.longitude(),
-                destination.latitude()
-        );
-        return bestPath(response);
+        RouteCacheKey key = RouteCacheKey.of(origin, destination);
+        return pathCache.get(key, () -> {
+            Map<String, Object> response = odsayClient.searchPublicTransitPath(
+                    origin.longitude(),
+                    origin.latitude(),
+                    destination.longitude(),
+                    destination.latitude()
+            );
+            return bestPath(response);
+        });
     }
 
     private Map<String, Object> bestPath(Map<String, Object> response) {
@@ -299,7 +342,11 @@ public class OdsayTransitRouteProvider implements TransitRouteProvider {
                 List<Object> nextCoordinate = transitLineIndex < transitRouteLines.size()
                         ? firstCoordinate(transitRouteLines.get(transitLineIndex).coordinatesJson())
                         : destinationCoordinate;
-                addWalkRouteLine(routeLines, currentCoordinate, nextCoordinate);
+                addWalkRouteLine(
+                        routeLines,
+                        currentCoordinate,
+                        nextCoordinate,
+                        firstInteger(subPath, "distance", "sectionDistance"));
                 currentCoordinate = nextCoordinate == null ? currentCoordinate : nextCoordinate;
                 continue;
             }
@@ -315,7 +362,7 @@ public class OdsayTransitRouteProvider implements TransitRouteProvider {
         }
 
         if (routeLines.isEmpty()) {
-            addWalkRouteLine(routeLines, currentCoordinate, destinationCoordinate);
+            addWalkRouteLine(routeLines, currentCoordinate, destinationCoordinate, null);
         }
         return routeLines;
     }
@@ -323,15 +370,18 @@ public class OdsayTransitRouteProvider implements TransitRouteProvider {
     private void addWalkRouteLine(
             List<TransitRouteResult.RouteLine> routeLines,
             List<Object> startCoordinate,
-            List<Object> endCoordinate
+            List<Object> endCoordinate,
+            Integer distanceMeters
     ) {
         if (startCoordinate == null || endCoordinate == null || sameCoordinate(startCoordinate, endCoordinate)) {
             return;
         }
-        var walkingRoute = walkingRouteProvider.findRoute(
-                transitPoint("walk-start", startCoordinate),
-                transitPoint("walk-end", endCoordinate)
-        );
+        var walkingRoute = distanceMeters != null
+                && distanceMeters <= STRAIGHT_WALK_GEOMETRY_THRESHOLD_METERS
+                ? java.util.Optional.<WalkingRouteResult>empty()
+                : walkingRouteProvider.findRoute(
+                        transitPoint("walk-start", startCoordinate),
+                        transitPoint("walk-end", endCoordinate));
         boolean fallbackUsed = walkingRoute.isEmpty();
         String coordinatesJson = walkingRoute
                 .map(WalkingRouteResult::coordinatesJson)
@@ -341,8 +391,8 @@ public class OdsayTransitRouteProvider implements TransitRouteProvider {
                 "WALK",
                 null,
                 coordinatesJson,
-                null,
-                null,
+                walkingRoute.map(WalkingRouteResult::totalMinutes).orElse(null),
+                walkingRoute.map(WalkingRouteResult::distanceMeters).orElse(distanceMeters),
                 "도보 이동",
                 fallbackUsed
         ));
@@ -367,7 +417,9 @@ public class OdsayTransitRouteProvider implements TransitRouteProvider {
     }
 
     private String loadLaneMapObject(String mapObject) {
-        if (mapObject.contains("@")) {
+        String firstSegment = mapObject.split("@", 2)[0];
+        long separatorCount = firstSegment.chars().filter(character -> character == ':').count();
+        if (separatorCount == 1) {
             return mapObject;
         }
         return "0:0@" + mapObject;
@@ -704,5 +756,63 @@ public class OdsayTransitRouteProvider implements TransitRouteProvider {
         private boolean matches(TransitPoint requestedOrigin, TransitPoint requestedDestination) {
             return origin.equals(requestedOrigin) && destination.equals(requestedDestination);
         }
+    }
+
+    private record RouteCacheKey(
+            String startLongitude,
+            String startLatitude,
+            String endLongitude,
+            String endLatitude
+    ) {
+
+        private static RouteCacheKey of(TransitPoint origin, TransitPoint destination) {
+            return new RouteCacheKey(
+                    coordinateKey(origin.longitude()),
+                    coordinateKey(origin.latitude()),
+                    coordinateKey(destination.longitude()),
+                    coordinateKey(destination.latitude()));
+        }
+
+        private static String coordinateKey(BigDecimal coordinate) {
+            return coordinate.stripTrailingZeros().toPlainString();
+        }
+    }
+
+    private static final class ExpiringCache<K, V> {
+
+        private final Map<K, CacheValue<V>> entries = new ConcurrentHashMap<>();
+        private final long ttlMillis;
+        private final int maxEntries;
+        private final Clock clock;
+
+        private ExpiringCache(java.time.Duration ttl, int maxEntries, Clock clock) {
+            this.ttlMillis = ttl == null ? 0 : Math.max(0, ttl.toMillis());
+            this.maxEntries = Math.max(0, maxEntries);
+            this.clock = clock;
+        }
+
+        private V get(K key, Supplier<V> loader) {
+            if (ttlMillis == 0 || maxEntries == 0) return loader.get();
+            long now = clock.millis();
+            CacheValue<V> cached = entries.get(key);
+            if (cached != null && cached.expiresAtMillis() > now) return cached.value();
+            evictExpiredAndOldest(now, key);
+            return entries.compute(key, (ignored, current) -> {
+                long loadedAt = clock.millis();
+                if (current != null && current.expiresAtMillis() > loadedAt) return current;
+                return new CacheValue<>(loader.get(), loadedAt + ttlMillis);
+            }).value();
+        }
+
+        private void evictExpiredAndOldest(long now, K incomingKey) {
+            entries.entrySet().removeIf(entry -> entry.getValue().expiresAtMillis() <= now);
+            if (entries.size() < maxEntries || entries.containsKey(incomingKey)) return;
+            entries.entrySet().stream()
+                    .min(Comparator.comparingLong(entry -> entry.getValue().expiresAtMillis()))
+                    .ifPresent(entry -> entries.remove(entry.getKey(), entry.getValue()));
+        }
+    }
+
+    private record CacheValue<V>(V value, long expiresAtMillis) {
     }
 }

@@ -49,6 +49,21 @@ class SecurityConfigTest {
                 .andExpect(header().string("Access-Control-Allow-Methods", org.hamcrest.Matchers.containsString("POST")));
     }
 
+    @Test
+    @DisplayName("로컬 프론트의 V2 생성 preflight 요청을 허용한다")
+    void localFrontendAllowsScheduleV2CorsPreflight() throws Exception {
+        mockMvc.perform(options("/api/v1/schedules")
+                        .header("Origin", "http://localhost:3000")
+                        .header("Access-Control-Request-Method", "POST")
+                        .header("Access-Control-Request-Headers", "Content-Type, Idempotency-Key"))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Access-Control-Allow-Origin", "http://localhost:3000"))
+                .andExpect(header().string(
+                        "Access-Control-Allow-Headers",
+                        org.hamcrest.Matchers.containsString("Idempotency-Key")
+                ));
+    }
+
     @TestConfiguration
     static class TestConfig {
 

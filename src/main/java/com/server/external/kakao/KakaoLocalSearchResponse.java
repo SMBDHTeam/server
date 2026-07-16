@@ -17,11 +17,24 @@ public record KakaoLocalSearchResponse(
             String placeName,
             @JsonProperty("address_name")
             String addressName,
+            @JsonProperty("category_name")
+            String categoryName,
             String x,
             String y,
             String distance,
             @JsonProperty("place_url")
             String placeUrl
     ) {
+        public Document(
+                String id,
+                String placeName,
+                String addressName,
+                String x,
+                String y,
+                String distance,
+                String placeUrl
+        ) {
+            this(id, placeName, addressName, null, x, y, distance, placeUrl);
+        }
     }
 }

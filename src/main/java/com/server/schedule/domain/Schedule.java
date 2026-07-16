@@ -5,6 +5,8 @@ import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.OneToMany;
+import jakarta.persistence.OneToOne;
+import jakarta.persistence.JoinColumn;
 import jakarta.persistence.OrderBy;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
@@ -46,14 +48,30 @@ public class Schedule {
     @Column(name = "start_latitude", nullable = false, precision = 12, scale = 8)
     private BigDecimal startLatitude;
 
-    @Column(name = "end_place_name", nullable = false)
+    @Column(name = "end_place_name")
     private String endPlaceName;
 
-    @Column(name = "end_longitude", nullable = false, precision = 12, scale = 8)
+    @Column(name = "end_longitude", precision = 12, scale = 8)
     private BigDecimal endLongitude;
 
-    @Column(name = "end_latitude", nullable = false, precision = 12, scale = 8)
+    @Column(name = "end_latitude", precision = 12, scale = 8)
     private BigDecimal endLatitude;
+
+    @OneToOne
+    @JoinColumn(name = "preview_id", unique = true)
+    private SchedulePreview preview;
+
+    @Column(name = "time_zone")
+    private String timeZone;
+
+    @Column(name = "lodging_mode")
+    private String lodgingMode;
+
+    @Column(name = "route_coverage")
+    private String routeCoverage;
+
+    @Column(name = "planning_warnings_json", columnDefinition = "text")
+    private String planningWarningsJson;
 
     @Column(name = "style_summary", columnDefinition = "text")
     private String styleSummary;
@@ -114,6 +132,21 @@ public class Schedule {
         this.updatedAt = LocalDateTime.now();
     }
 
+    public void applyPreview(
+            SchedulePreview preview,
+            String timeZone,
+            String lodgingMode,
+            String routeCoverage,
+            String planningWarningsJson
+    ) {
+        this.preview = preview;
+        this.timeZone = timeZone;
+        this.lodgingMode = lodgingMode;
+        this.routeCoverage = routeCoverage;
+        this.planningWarningsJson = planningWarningsJson;
+        touch();
+    }
+
     public UUID getId() {
         return id;
     }
@@ -121,6 +154,12 @@ public class Schedule {
     public String getStatus() {
         return status;
     }
+
+    public SchedulePreview getPreview() { return preview; }
+    public String getTimeZone() { return timeZone; }
+    public String getLodgingMode() { return lodgingMode; }
+    public String getRouteCoverage() { return routeCoverage; }
+    public String getPlanningWarningsJson() { return planningWarningsJson; }
 
     public LocalDate getStartDate() {
         return startDate;

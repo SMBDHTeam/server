@@ -28,11 +28,13 @@ public class SecurityConfig {
     CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
         configuration.setAllowedOrigins(java.util.List.of(
+                "http://localhost:3000",
+                "http://127.0.0.1:3000",
                 "http://localhost:8080",
                 "http://127.0.0.1:8080"
         ));
         configuration.setAllowedMethods(java.util.List.of("GET", "POST", "PATCH", "DELETE", "OPTIONS"));
-        configuration.setAllowedHeaders(java.util.List.of("Content-Type", "X-Trace-Id"));
+        configuration.setAllowedHeaders(java.util.List.of("Content-Type", "X-Trace-Id", "Idempotency-Key"));
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/api/v1/**", configuration);

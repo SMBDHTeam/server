@@ -8,11 +8,11 @@
 
 | 질문 ID | 답변 ID |
 | --- | --- |
-| `COMPANION` | `COMPANION_SOLO`, `COMPANION_COUPLE`, `COMPANION_FRIENDS`, `COMPANION_PARENTS`, `COMPANION_FAMILY_WITH_CHILD` |
-| `PACE` | `PACE_RELAXED`, `PACE_BALANCED`, `PACE_ACTIVE` |
-| `THEME` | `THEME_LOCAL`, `THEME_FOOD`, `THEME_HISTORY_CULTURE`, `THEME_NATURE`, `THEME_NIGHT_VIEW`, `THEME_EVENT` |
-| `MOBILITY` | `MOBILITY_AVOID_HILLS_STAIRS`, `MOBILITY_LOW_WALK`, `MOBILITY_NORMAL`, `MOBILITY_OK_HILLS` |
-| `TRANSIT` | `TRANSIT_SIMPLE`, `TRANSIT_FAST`, `TRANSIT_TRANSFER_OK` |
+| `COMPANION` | `COMPANION_SOLO`, `COMPANION_FRIENDS`, `COMPANION_COUPLE`, `COMPANION_FAMILY_WITH_CHILD`, `COMPANION_PARENTS`, `COMPANION_OTHER` |
+| `MOBILITY` | `MOBILITY_NORMAL`, `MOBILITY_LOW_WALK` |
+| `PACE` | `PACE_PACKED`, `PACE_RELAXED` |
+| `TRANSIT` | `TRANSIT_SIMPLE`, `TRANSIT_FAST` |
+| `THEME` | `THEME_FOOD`, `THEME_NATURE`, `THEME_HISTORY_CULTURE`, `THEME_SEA`, `THEME_SHOPPING`, `THEME_HEALING` |
 
 ## Iteration 001 시나리오 세트
 
@@ -31,7 +31,7 @@
 | --- | ---: | --- |
 | `TIME_FIT` | 30 | 체류시간 + 이동시간이 각 일차의 시작·종료시각 안에 들어오는지 |
 | `MOBILITY_FIT` | 25 | 부모님/아이/저도보/언덕회피 조건에서 도보 전용 이동과 부담 장소를 줄였는지 |
-| `TRANSIT_FIT` | 20 | `TRANSIT_SIMPLE` 조건에서 복합 환승 부담을 줄였는지 |
+| `TRANSIT_FIT` | 20 | 전체 합계가 아닌 이동 구간당 평균 복합 환승 부담. `TRANSIT_SIMPLE`은 구간당 부담에 더 큰 감점 적용 |
 | `PREFERENCE_FIT` | 15 | 페이스와 테마 답변이 장소명/방문 수에 반영됐는지 |
 | `ENDPOINT_FIT` | 10 | 모든 일차에 해당 날짜 도착지까지의 `finalTransit`이 포함됐는지 |
 
@@ -43,7 +43,7 @@ scripts/run-schedule-scenario-check.sh
 
 루틴은 다음 테스트를 실행한다.
 
-- `QuestionSeedInitializerTest`: 질문/답변 seed가 5개 질문, 21개 답변으로 들어가며 재실행해도 중복되지 않는지 확인
+- `QuestionSeedInitializerTest`: 질문/답변 seed가 5개 질문, 18개 활성 답변으로 들어가며 재실행해도 중복되지 않는지 확인
 - `ScheduleRequestValidatorTest`: 활성 필수 질문, 질문·답변 소속 관계, 중복 응답을 검증하는지 확인
 - `DayRouteOptimizerTest`: 일차 내 모든 방문 순서 중 사용자 비용이 가장 낮은 순서를 선택하는지 확인
 - `ScheduleServiceTest.createUsesDaySpecificEndpoints`: 날짜별 출발·도착 조건으로 경로를 생성하는지 확인
@@ -54,4 +54,4 @@ scripts/run-schedule-scenario-check.sh
 
 - 실제 DB seed 적용 후 `GET /api/v1/trip-questions` 응답 스냅샷 저장
 - ODsay/TMAP 실제 응답을 사용하는 수동 검증 시나리오와 점수 기록
-- `THEME_NIGHT_VIEW`, `TRANSIT_FAST` 실제 경로 시간 비교 시나리오 추가
+- `THEME_SEA`, `TRANSIT_FAST` 실제 경로 시간 비교 시나리오 추가

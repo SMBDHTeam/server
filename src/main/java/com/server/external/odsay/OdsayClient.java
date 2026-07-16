@@ -7,9 +7,12 @@ import java.math.BigDecimal;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.TimeUnit;
+import java.util.function.Supplier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.core.ParameterizedTypeReference;
@@ -31,6 +34,8 @@ public class OdsayClient {
     private final RestClient restClient;
     private final OdsayProperties properties;
     private final ExternalCallMetricsCollector metricsCollector;
+    private final Object requestPermitMonitor = new Object();
+    private long nextRequestAtNanos;
 
     public OdsayClient(RestClient odsayRestClient, OdsayProperties properties) {
         this(odsayRestClient, properties, new ExternalCallMetricsCollector());
@@ -57,7 +62,6 @@ public class OdsayClient {
             throw new BusinessException(ErrorCode.EXTERNAL_PROVIDER_UNAVAILABLE);
         }
         try {
-            metricsCollector.recordOdsayPathSearch();
             String uri = UriComponentsBuilder.fromPath("/v1/api/searchPubTransPathT")
                     .queryParam("SX", startLongitude)
                     .queryParam("SY", startLatitude)
@@ -66,10 +70,13 @@ public class OdsayClient {
                     .queryParam("apiKey", URLEncoder.encode(properties.apiKey(), StandardCharsets.UTF_8))
                     .build(true)
                     .toUriString();
-            Map<String, Object> response = restClient.get()
-                    .uri(URI.create(baseUrl() + uri))
-                    .retrieve()
-                    .body(RESPONSE_TYPE);
+            Map<String, Object> response = withRequestPermit(() -> {
+                metricsCollector.recordOdsayPathSearch();
+                return restClient.get()
+                        .uri(URI.create(baseUrl() + uri))
+                        .retrieve()
+                        .body(RESPONSE_TYPE);
+            });
             if (response == null || response.isEmpty()) {
                 metricsCollector.recordFailure();
                 throw new BusinessException(ErrorCode.EXTERNAL_PROVIDER_UNAVAILABLE);
@@ -100,16 +107,18 @@ public class OdsayClient {
             return Optional.empty();
         }
         try {
-            metricsCollector.recordOdsayLoadLane();
             String uri = UriComponentsBuilder.fromPath("/v1/api/loadLane")
                     .queryParam("mapObject", URLEncoder.encode(mapObject, StandardCharsets.UTF_8))
                     .queryParam("apiKey", URLEncoder.encode(properties.apiKey(), StandardCharsets.UTF_8))
                     .build(true)
                     .toUriString();
-            Map<String, Object> response = restClient.get()
-                    .uri(URI.create(baseUrl() + uri))
-                    .retrieve()
-                    .body(RESPONSE_TYPE);
+            Map<String, Object> response = withRequestPermit(() -> {
+                metricsCollector.recordOdsayLoadLane();
+                return restClient.get()
+                        .uri(URI.create(baseUrl() + uri))
+                        .retrieve()
+                        .body(RESPONSE_TYPE);
+            });
             if (response == null || response.isEmpty()) {
                 metricsCollector.recordFailure();
                 return Optional.empty();
@@ -139,6 +148,30 @@ public class OdsayClient {
             return baseUrl.substring(0, baseUrl.length() - 1);
         }
         return baseUrl;
+    }
+
+    private <T> T withRequestPermit(Supplier<T> request) {
+        Duration interval = properties.minRequestInterval();
+        if (interval == null || interval.isZero() || interval.isNegative()) {
+            return request.get();
+        }
+        synchronized (requestPermitMonitor) {
+            long now = System.nanoTime();
+            long waitNanos = nextRequestAtNanos - now;
+            if (waitNanos > 0) {
+                try {
+                    TimeUnit.NANOSECONDS.sleep(waitNanos);
+                } catch (InterruptedException exception) {
+                    Thread.currentThread().interrupt();
+                    throw new BusinessException(ErrorCode.EXTERNAL_PROVIDER_UNAVAILABLE, exception);
+                }
+            }
+            try {
+                return request.get();
+            } finally {
+                nextRequestAtNanos = System.nanoTime() + interval.toNanos();
+            }
+        }
     }
 
     private String errorCode(Map<String, Object> response) {

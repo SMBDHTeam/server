@@ -39,6 +39,9 @@ class QuestionControllerTest {
         mockMvc.perform(get("/api/v1/trip-questions"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.items[0].id").value("COMPANION"))
+                .andExpect(jsonPath("$.items[0].minSelections").value(1))
+                .andExpect(jsonPath("$.items[0].maxSelections").value(1))
+                .andExpect(jsonPath("$.items[0].uiStep").value(1))
                 .andExpect(jsonPath("$.items[0].answers[0].label").value("부모님"));
     }
 }

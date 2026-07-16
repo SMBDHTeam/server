@@ -12,7 +12,11 @@ public record ScheduleScoreResult(
             String label,
             int maxScore,
             int score,
-            String reason
+            String reason,
+            String status
     ) {
+        public Metric(String id, String label, int maxScore, int score, String reason) {
+            this(id, label, maxScore, score, reason, "EVALUATED");
+        }
     }
 }

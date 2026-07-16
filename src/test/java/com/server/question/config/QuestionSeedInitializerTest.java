@@ -20,7 +20,7 @@ class QuestionSeedInitializerTest {
         Integer questionCount = jdbcTemplate.queryForObject("select count(*) from questions", Integer.class);
         Integer answerCount = jdbcTemplate.queryForObject("select count(*) from answers", Integer.class);
         assertThat(questionCount).isEqualTo(5);
-        assertThat(answerCount).isEqualTo(21);
+        assertThat(answerCount).isEqualTo(18);
         assertThat(jdbcTemplate.queryForObject(
                 "select text from questions where id = 'COMPANION'",
                 String.class
@@ -28,15 +28,26 @@ class QuestionSeedInitializerTest {
         assertThat(jdbcTemplate.queryForList(
                 "select id from questions where active = true order by display_order",
                 String.class
-        )).containsExactly("COMPANION", "PACE", "THEME", "MOBILITY", "TRANSIT");
+        )).containsExactly("COMPANION", "MOBILITY", "PACE", "TRANSIT", "THEME");
+        assertThat(jdbcTemplate.queryForMap(
+                "select type, min_selections, max_selections, ui_step from questions where id = 'THEME'"
+        )).containsEntry("TYPE", "MULTIPLE_CHOICE")
+                .containsEntry("MIN_SELECTIONS", 1)
+                .containsEntry("MAX_SELECTIONS", 3)
+                .containsEntry("UI_STEP", 3);
         assertThat(jdbcTemplate.queryForList(
                 "select id from answers where question_id = 'MOBILITY' and active = true order by display_order",
                 String.class
         )).containsExactly(
-                "MOBILITY_AVOID_HILLS_STAIRS",
-                "MOBILITY_LOW_WALK",
                 "MOBILITY_NORMAL",
-                "MOBILITY_OK_HILLS"
+                "MOBILITY_LOW_WALK"
+        );
+        assertThat(jdbcTemplate.queryForList(
+                "select id from answers where question_id = 'PACE' and active = true order by display_order",
+                String.class
+        )).containsExactly(
+                "PACE_PACKED",
+                "PACE_RELAXED"
         );
     }
 
@@ -55,6 +66,9 @@ class QuestionSeedInitializerTest {
                     text varchar(255) not null,
                     type varchar(255) not null,
                     required boolean not null,
+                    min_selections integer not null,
+                    max_selections integer not null,
+                    ui_step integer not null,
                     display_order integer not null,
                     active boolean not null
                 )
