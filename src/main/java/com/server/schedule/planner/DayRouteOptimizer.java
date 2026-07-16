@@ -34,6 +34,8 @@ public class DayRouteOptimizer {
     private static final int DIRECTION_REVERSAL_90_DEGREES_PENALTY = 3;
     private static final int DIRECTION_REVERSAL_120_DEGREES_PENALTY = 9;
     private static final int DIRECTION_REVERSAL_150_DEGREES_PENALTY = 18;
+    private static final double DETOUR_RATIO_TOLERANCE = 1.15;
+    private static final int DETOUR_PENALTY_PER_RATIO = 80;
     private static final int MIN_DIRECTION_ANALYSIS_LEG_METERS = 1_000;
     private static final int BASE_RETURN_RADIUS_METERS = 1_000;
     private static final double EARTH_RADIUS_METERS = 6_371_000.0;
@@ -258,11 +260,19 @@ public class DayRouteOptimizer {
         return candidates.stream().map(candidate -> {
             double detourRatio = coordinateRouteDistance(day, candidate.places()) / shortestDistance;
             RouteFlowMetrics flow = candidate.routeFlow();
+            RouteFlowMetrics detourAwareFlow = flow.withDetourRatio(detourRatio);
             return new OptimizedDayRoute(
                     candidate.places(), candidate.inboundRoutes(), candidate.finalRoute(),
-                    candidate.totalMinutes(), candidate.optimizationCost(),
-                    flow.withDetourRatio(detourRatio));
+                    candidate.totalMinutes(), candidate.optimizationCost()
+                            + detourAwareFlow.totalPenalty() - flow.totalPenalty(),
+                    detourAwareFlow);
         }).toList();
+    }
+
+    private static int detourPenalty(double detourRatio) {
+        if (detourRatio <= DETOUR_RATIO_TOLERANCE) return 0;
+        return (int) Math.ceil((detourRatio - DETOUR_RATIO_TOLERANCE)
+                * DETOUR_PENALTY_PER_RATIO);
     }
 
     private static List<RoutePoint> routePoints(ScheduleDay day, List<Place> order) {
@@ -459,7 +469,7 @@ public class DayRouteOptimizer {
         private RouteFlowMetrics withDetourRatio(double detourRatio) {
             return new RouteFlowMetrics(
                     regionTransitionCount, regionReentryCount, directionReversalPenalty,
-                    detourRatio, totalPenalty);
+                    detourRatio, totalPenalty + detourPenalty(detourRatio));
         }
     }
 

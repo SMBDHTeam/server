@@ -176,6 +176,37 @@ class DayRouteOptimizerTest {
         assertThat(result.routeFlow().regionReentryCount()).isZero();
     }
 
+    @Test
+    void penalizesLargeCoordinateDetoursEvenWhenTheirRawTransitTimeIsLower() {
+        ScheduleDay day = day(
+                "START", "129.0260", "35.1151",
+                "END", "129.0540", "35.1151");
+        Place first = place("A", "129.0330", "35.1151");
+        Place second = place("B", "129.0400", "35.1151");
+        Place third = place("C", "129.0470", "35.1151");
+        Map<String, Integer> costs = Map.of(
+                "START>A", 15,
+                "A>B", 15,
+                "B>C", 15,
+                "C>END", 15,
+                "START>C", 5,
+                "C>B", 5,
+                "B>A", 5,
+                "A>END", 5
+        );
+
+        DayRouteOptimizer.OptimizedDayRoute result = optimizer.bestOf(
+                day,
+                List.of(List.of(first, second, third), List.of(third, second, first)),
+                (origin, destination) -> route(costs.get(origin.name() + ">" + destination.name())),
+                new DayRouteOptimizer.OptimizationPreference(0, 0),
+                ignored -> 30
+        );
+
+        assertThat(result.places()).extracting(Place::getName).containsExactly("A", "B", "C");
+        assertThat(result.routeFlow().detourRatio()).isEqualTo(1.0);
+    }
+
     private ScheduleDay day() {
         return day(LocalTime.parse("09:00"), LocalTime.parse("19:00"));
     }
