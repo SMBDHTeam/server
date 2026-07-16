@@ -29,6 +29,15 @@ public class Question {
     @Column(nullable = false)
     private boolean required;
 
+    @Column(name = "min_selections", nullable = false)
+    private int minSelections;
+
+    @Column(name = "max_selections", nullable = false)
+    private int maxSelections;
+
+    @Column(name = "ui_step", nullable = false)
+    private int uiStep;
+
     @Column(name = "display_order", nullable = false)
     private int displayOrder;
 

@@ -39,6 +39,9 @@ public class QuestionService {
                 question.getText(),
                 question.getType(),
                 question.isRequired(),
+                question.getMinSelections(),
+                question.getMaxSelections(),
+                question.getUiStep(),
                 question.getDisplayOrder(),
                 answers
         );
@@ -56,4 +59,3 @@ public class QuestionService {
 
     }
 }
-

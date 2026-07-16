@@ -20,8 +20,8 @@ final class ScheduleOpenApiExamples {
               },
               "selectedAnswers": [
                 {"questionId": "COMPANION", "answerId": "COMPANION_PARENTS"},
-                {"questionId": "PACE", "answerId": "PACE_BALANCED"},
-                {"questionId": "THEME", "answerId": "THEME_LOCAL"},
+                {"questionId": "PACE", "answerId": "PACE_PACKED"},
+                {"questionId": "THEME", "answerId": "THEME_NATURE"},
                 {"questionId": "MOBILITY", "answerId": "MOBILITY_LOW_WALK"},
                 {"questionId": "TRANSIT", "answerId": "TRANSIT_SIMPLE"}
               ],
@@ -47,8 +47,8 @@ final class ScheduleOpenApiExamples {
               },
               "selectedAnswers": [
                 {"questionId": "COMPANION", "answerId": "COMPANION_PARENTS"},
-                {"questionId": "PACE", "answerId": "PACE_BALANCED"},
-                {"questionId": "THEME", "answerId": "THEME_LOCAL"},
+                {"questionId": "PACE", "answerId": "PACE_PACKED"},
+                {"questionId": "THEME", "answerId": "THEME_NATURE"},
                 {"questionId": "MOBILITY", "answerId": "MOBILITY_LOW_WALK"},
                 {"questionId": "TRANSIT", "answerId": "TRANSIT_SIMPLE"}
               ],

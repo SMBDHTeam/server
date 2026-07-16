@@ -1,5 +1,6 @@
 package com.server.schedule.domain;
 
+import com.server.place.domain.Place;
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -47,23 +48,29 @@ public class ScheduleDay {
     @Column(name = "end_time", nullable = false)
     private LocalTime endTime;
 
-    @Column(name = "start_place_name", nullable = false)
+    @Column(name = "start_place_name")
     private String startPlaceName;
 
-    @Column(name = "start_longitude", nullable = false, precision = 12, scale = 8)
+    @Column(name = "start_longitude", precision = 12, scale = 8)
     private BigDecimal startLongitude;
 
-    @Column(name = "start_latitude", nullable = false, precision = 12, scale = 8)
+    @Column(name = "start_latitude", precision = 12, scale = 8)
     private BigDecimal startLatitude;
 
-    @Column(name = "end_place_name", nullable = false)
+    @Column(name = "end_place_name")
     private String endPlaceName;
 
-    @Column(name = "end_longitude", nullable = false, precision = 12, scale = 8)
+    @Column(name = "end_longitude", precision = 12, scale = 8)
     private BigDecimal endLongitude;
 
-    @Column(name = "end_latitude", nullable = false, precision = 12, scale = 8)
+    @Column(name = "end_latitude", precision = 12, scale = 8)
     private BigDecimal endLatitude;
+
+    @Column(name = "start_location_source")
+    private String startLocationSource;
+
+    @Column(name = "end_location_source")
+    private String endLocationSource;
 
     @OrderBy("stopOrder ASC")
     @OneToMany(mappedBy = "scheduleDay", cascade = CascadeType.ALL, orphanRemoval = true)
@@ -105,6 +112,25 @@ public class ScheduleDay {
             BigDecimal endLongitude,
             BigDecimal endLatitude
     ) {
+        this(schedule, dayNo, date, startTime, endTime, startPlaceName, startLongitude, startLatitude,
+                endPlaceName, endLongitude, endLatitude, "LEGACY", "LEGACY");
+    }
+
+    public ScheduleDay(
+            Schedule schedule,
+            int dayNo,
+            LocalDate date,
+            LocalTime startTime,
+            LocalTime endTime,
+            String startPlaceName,
+            BigDecimal startLongitude,
+            BigDecimal startLatitude,
+            String endPlaceName,
+            BigDecimal endLongitude,
+            BigDecimal endLatitude,
+            String startLocationSource,
+            String endLocationSource
+    ) {
         this.id = UUID.randomUUID();
         this.schedule = schedule;
         this.dayNo = dayNo;
@@ -117,6 +143,8 @@ public class ScheduleDay {
         this.endPlaceName = endPlaceName;
         this.endLongitude = endLongitude;
         this.endLatitude = endLatitude;
+        this.startLocationSource = startLocationSource;
+        this.endLocationSource = endLocationSource;
         schedule.addDay(this);
     }
 
@@ -132,6 +160,10 @@ public class ScheduleDay {
         this.stops.sort(java.util.Comparator.comparingInt(ScheduleStop::getStopOrder));
     }
 
+    public void clearStops() {
+        this.stops.clear();
+    }
+
     public void addTransitRoute(TransitRoute transitRoute) {
         this.transitRoutes.add(transitRoute);
     }
@@ -145,9 +177,29 @@ public class ScheduleDay {
         this.transitRoutes.clear();
     }
 
+    public void resolvePlannerEndpoints(Place firstPlace, Place lastPlace) {
+        if (firstPlace != null
+                && (startLongitude == null || "PLANNER_DECIDES".equals(startLocationSource))) {
+            startPlaceName = firstPlace.getName();
+            startLongitude = firstPlace.getLongitude();
+            startLatitude = firstPlace.getLatitude();
+            startLocationSource = "PLANNER_DECIDES";
+        }
+        if (lastPlace != null
+                && (endLongitude == null || "LAST_STOP".equals(endLocationSource)
+                        || "PLANNER_DECIDES".equals(endLocationSource))) {
+            endPlaceName = lastPlace.getName();
+            endLongitude = lastPlace.getLongitude();
+            endLatitude = lastPlace.getLatitude();
+            endLocationSource = "LAST_STOP";
+        }
+    }
+
     public UUID getId() {
         return id;
     }
+
+    public Schedule getSchedule() { return schedule; }
 
     public int getDayNo() {
         return dayNo;
@@ -188,6 +240,9 @@ public class ScheduleDay {
     public BigDecimal getEndLatitude() {
         return endLatitude;
     }
+
+    public String getStartLocationSource() { return startLocationSource; }
+    public String getEndLocationSource() { return endLocationSource; }
 
     public List<ScheduleStop> getStops() {
         return stops;

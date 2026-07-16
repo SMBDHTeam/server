@@ -5,9 +5,11 @@ import com.server.common.error.ErrorCode;
 import com.server.external.metrics.ExternalCallMetricsCollector;
 import com.server.place.domain.Place;
 import com.server.place.repository.PlaceRepository;
+import com.server.place.support.PlaceCategoryLabelResolver;
 import com.server.schedule.domain.Schedule;
 import com.server.schedule.domain.ScheduleDay;
 import com.server.schedule.domain.ScheduleStop;
+import com.server.schedule.domain.SchedulePreview;
 import com.server.schedule.domain.TransitRoute;
 import com.server.schedule.domain.TransitRouteLine;
 import com.server.schedule.domain.TransitSegment;
@@ -17,20 +19,28 @@ import com.server.schedule.dto.ScheduleListResponse;
 import com.server.schedule.dto.ScheduleMapResponse;
 import com.server.schedule.dto.ScheduleResponse;
 import com.server.schedule.dto.ScheduleUpdateRequest;
+import com.server.schedule.dto.SchedulePreviewResponse;
+import com.server.schedule.dto.SchedulePreviewCreateRequest;
 import com.server.schedule.evaluation.ScheduleHardGateEvaluator;
 import com.server.schedule.evaluation.ScheduleHardGateResult;
 import com.server.schedule.evaluation.ScheduleScoreEvaluator;
 import com.server.schedule.evaluation.ScheduleScoreResult;
 import com.server.schedule.planner.DayPlaceAllocator;
 import com.server.schedule.planner.DayRouteOptimizer;
+import com.server.schedule.planner.DailyScheduleTargetPolicy;
 import com.server.schedule.planner.ScheduleFeasibilityChecker;
+import com.server.schedule.planner.FixedEventPlanner;
 import com.server.schedule.planner.PlacePreferenceScorer;
 import com.server.schedule.planner.PlaceCandidateProvider;
 import com.server.schedule.planner.MultiDayPlanOptimizer;
+import com.server.schedule.planner.MealTimePolicy;
+import com.server.schedule.planner.PlannerRouteEstimator;
+import com.server.schedule.planner.SchedulePlannerProperties;
+import com.server.schedule.planner.AiSchedulePlanGenerator;
 import com.server.schedule.repository.ScheduleRepository;
 import com.server.transit.service.TransitPoint;
-import com.server.transit.service.TransitRouteEstimate;
 import com.server.transit.service.TransitRouteProvider;
+import com.server.transit.service.TransitRouteEstimate;
 import com.server.transit.service.TransitRouteResult;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -41,6 +51,7 @@ import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.EnumMap;
+import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
@@ -50,12 +61,12 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -63,9 +74,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class ScheduleService {
 
     private static final int DEFAULT_STAY_MINUTES = 60;
-    private static final int MAX_STOPS_PER_DAY = 3;
     private static final int MIN_STOPS_PER_DAY = 1;
-    private static final int ESTIMATED_TRANSIT_MINUTES_PER_STOP = 45;
     private static final int CLOSE_WALK_THRESHOLD_METERS = 1_200;
     private static final int PROVIDER_FAILURE_WALK_FALLBACK_METERS = 1_500;
     private static final double EARTH_RADIUS_METERS = 6_371_000.0;
@@ -86,30 +95,11 @@ public class ScheduleService {
     private final PlacePreferenceScorer placePreferenceScorer;
     private final PlaceCandidateProvider placeCandidateProvider;
     private final ExternalCallMetricsCollector externalCallMetricsCollector;
+    private final FixedEventPlanner fixedEventPlanner;
+    private final PlannerRouteEstimator plannerRouteEstimator;
+    private final SchedulePlannerProperties plannerProperties;
+    private final AiSchedulePlanGenerator aiSchedulePlanGenerator;
 
-    public ScheduleService(
-            ScheduleRepository scheduleRepository,
-            PlaceRepository placeRepository,
-            TransitRouteProvider transitRouteProvider
-    ) {
-        this(
-                scheduleRepository,
-                placeRepository,
-                transitRouteProvider,
-                new ScheduleRequestValidator(),
-                new DayRouteOptimizer(),
-                new SchedulePersistenceService(scheduleRepository),
-                new ScheduleHardGateEvaluator(),
-                new ScheduleScoreEvaluator(),
-                new MultiDayPlanOptimizer(new DayPlaceAllocator(), new PlacePreferenceScorer()),
-                new ScheduleFeasibilityChecker(),
-                new PlacePreferenceScorer(),
-                new PlaceCandidateProvider(placeRepository, new PlacePreferenceScorer()),
-                new ExternalCallMetricsCollector()
-        );
-    }
-
-    @Autowired
     public ScheduleService(
             ScheduleRepository scheduleRepository,
             PlaceRepository placeRepository,
@@ -123,7 +113,11 @@ public class ScheduleService {
             ScheduleFeasibilityChecker feasibilityChecker,
             PlacePreferenceScorer placePreferenceScorer,
             PlaceCandidateProvider placeCandidateProvider,
-            ExternalCallMetricsCollector externalCallMetricsCollector
+            ExternalCallMetricsCollector externalCallMetricsCollector,
+            FixedEventPlanner fixedEventPlanner,
+            PlannerRouteEstimator plannerRouteEstimator,
+            SchedulePlannerProperties plannerProperties,
+            AiSchedulePlanGenerator aiSchedulePlanGenerator
     ) {
         this.scheduleRepository = scheduleRepository;
         this.placeRepository = placeRepository;
@@ -138,18 +132,49 @@ public class ScheduleService {
         this.placePreferenceScorer = placePreferenceScorer;
         this.placeCandidateProvider = placeCandidateProvider;
         this.externalCallMetricsCollector = externalCallMetricsCollector;
+        this.fixedEventPlanner = fixedEventPlanner;
+        this.plannerRouteEstimator = plannerRouteEstimator;
+        this.plannerProperties = plannerProperties;
+        this.aiSchedulePlanGenerator = aiSchedulePlanGenerator;
     }
 
     public ScheduleResponse create(ScheduleCreateRequest request) {
+        return createInternal(request, null);
+    }
+
+    public ScheduleResponse createFromPreview(
+            ScheduleCreateRequest request,
+            SchedulePreview preview,
+            List<SchedulePreviewResponse.ResolvedDay> resolvedDays,
+            List<String> planningWarnings,
+            List<SchedulePreviewCreateRequest.FixedEvent> fixedEvents,
+            String customPrompt
+    ) {
+        return createInternal(request, new PreviewPlanningOptions(
+                preview, resolvedDays, planningWarnings, fixedEvents, customPrompt));
+    }
+
+    private ScheduleResponse createInternal(
+            ScheduleCreateRequest request,
+            PreviewPlanningOptions planningOptions
+    ) {
         try (ExternalCallMetricsCollector.Scope externalMetrics = externalCallMetricsCollector.start()) {
         long startedAt = System.nanoTime();
         PlannerExecutionMetrics executionMetrics = new PlannerExecutionMetrics();
-        requestValidator.validate(request);
+        if (planningOptions == null) requestValidator.validate(request);
         int tripDays = tripDays(request);
-        List<Integer> dailyStopTargets = dailyStopTargets(request, tripDays);
-        PlaceCandidateProvider.ResolvedPlaces resolvedPlaces = placeCandidateProvider.resolve(request, dailyStopTargets);
-        ScheduleCreateRequest.Location overallStart = overallStartLocation(request);
-        ScheduleCreateRequest.Location overallEnd = overallEndLocation(request, tripDays);
+        List<Integer> dailyStopTargets = planningOptions == null
+                ? dailyStopTargets(request, tripDays)
+                : planningOptions.resolvedDays().stream()
+                        .map(day -> stopsForAvailableMinutes(
+                                Duration.between(day.availableFrom(), day.availableUntil()).toMinutes(), request))
+                        .toList();
+        ScheduleCreateRequest.Location overallStart = planningOptions == null
+                ? overallStartLocation(request)
+                : toCreateLocation(planningOptions.resolvedDays().get(0).startLocation(), request.startLocation());
+        ScheduleCreateRequest.Location overallEnd = planningOptions == null
+                ? overallEndLocation(request, tripDays)
+                : toCreateLocation(planningOptions.resolvedDays().get(tripDays - 1).endLocation(), null);
         Schedule schedule = new Schedule(
                 request.startDate(),
                 request.endDate(),
@@ -158,15 +183,38 @@ public class ScheduleService {
                 overallStart.name(),
                 overallStart.longitude(),
                 overallStart.latitude(),
-                overallEnd.name(),
-                overallEnd.longitude(),
-                overallEnd.latitude(),
+                overallEnd == null ? null : overallEnd.name(),
+                overallEnd == null ? null : overallEnd.longitude(),
+                overallEnd == null ? null : overallEnd.latitude(),
                 styleSummary(request),
                 conditionJson(request)
         );
 
-        List<ScheduleDay> days = createDays(schedule, request);
-        createStopsAndRoutes(days, resolvedPlaces, dailyStopTargets, request, executionMetrics);
+        List<ScheduleDay> days = planningOptions == null
+                ? createDays(schedule, request)
+                : createResolvedDays(schedule, planningOptions.resolvedDays());
+        List<SchedulePreviewCreateRequest.FixedEvent> fixedEvents = planningOptions == null
+                ? List.of() : planningOptions.fixedEvents();
+        dailyStopTargets = targetsWithRequiredCapacity(
+                dailyStopTargets, days, request.mustVisitPlaceIdsOrEmpty().size(), fixedEvents);
+        PlaceCandidateProvider.ResolvedPlaces resolvedPlaces = placeCandidateProvider.resolve(
+                request, dailyStopTargets, days);
+        dailyStopTargets = targetsForAvailableCandidates(
+                dailyStopTargets, days, resolvedPlaces.places().size(), fixedEvents);
+        int reducedOptionalStops = createStopsAndRoutes(
+                days, resolvedPlaces, dailyStopTargets, request, executionMetrics,
+                fixedEvents,
+                planningOptions == null ? null : planningOptions.customPrompt());
+        if (planningOptions != null) {
+            List<String> warnings = new ArrayList<>(planningOptions.planningWarnings());
+            if (reducedOptionalStops > 0) {
+                warnings.add("OPTIONAL_STOPS_REDUCED_FOR_FEASIBILITY");
+            }
+            schedule.applyPreview(
+                    planningOptions.preview(), planningOptions.preview().getTimeZone(),
+                    planningOptions.preview().getLodgingMode(), planningOptions.preview().getRouteCoverage(),
+                    jsonArray(warnings));
+        }
         ScheduleHardGateResult hardGateResult = hardGateEvaluator.evaluate(
                 schedule,
                 resolvedPlaces.mustVisitPlaceIds()
@@ -194,9 +242,36 @@ public class ScheduleService {
         }
     }
 
+    private ScheduleCreateRequest.Location toCreateLocation(
+            SchedulePreviewResponse.Location location,
+            ScheduleCreateRequest.Location fallback
+    ) {
+        if (location == null) return fallback;
+        return new ScheduleCreateRequest.Location(location.name(), location.longitude(), location.latitude());
+    }
+
+    private List<ScheduleDay> createResolvedDays(
+            Schedule schedule,
+            List<SchedulePreviewResponse.ResolvedDay> resolvedDays
+    ) {
+        List<ScheduleDay> days = new ArrayList<>();
+        for (int index = 0; index < resolvedDays.size(); index++) {
+            SchedulePreviewResponse.ResolvedDay resolved = resolvedDays.get(index);
+            SchedulePreviewResponse.Location start = resolved.startLocation();
+            SchedulePreviewResponse.Location end = resolved.endLocation();
+            days.add(new ScheduleDay(
+                    schedule, index + 1, resolved.date(), resolved.availableFrom(), resolved.availableUntil(),
+                    start == null ? null : start.name(), start == null ? null : start.longitude(),
+                    start == null ? null : start.latitude(), end == null ? null : end.name(),
+                    end == null ? null : end.longitude(), end == null ? null : end.latitude(),
+                    resolved.startLocationSource(), resolved.endLocationSource()));
+        }
+        return days;
+    }
+
     @Transactional(readOnly = true)
     public ScheduleListResponse getAll() {
-        return new ScheduleListResponse(scheduleRepository.findAll()
+        return new ScheduleListResponse(scheduleRepository.findAllByOrderByStartDateAscCreatedAtDesc()
                 .stream()
                 .map(this::toResponse)
                 .toList());
@@ -280,16 +355,10 @@ public class ScheduleService {
         ScheduleDay firstDay = days.isEmpty() ? schedule.getDays().get(0) : days.get(0);
         ScheduleDay lastDay = days.isEmpty() ? schedule.getDays().get(schedule.getDays().size() - 1) : days.get(days.size() - 1);
         return new ScheduleMapResponse(
-                new ScheduleMapResponse.Marker(
-                        firstDay.getStartPlaceName(),
-                        firstDay.getStartLongitude(),
-                        firstDay.getStartLatitude()
-                ),
-                new ScheduleMapResponse.Marker(
-                        lastDay.getEndPlaceName(),
-                        lastDay.getEndLongitude(),
-                        lastDay.getEndLatitude()
-                ),
+                firstDay.getStartLongitude() == null ? null : new ScheduleMapResponse.Marker(
+                        firstDay.getStartPlaceName(), firstDay.getStartLongitude(), firstDay.getStartLatitude()),
+                lastDay.getEndLongitude() == null ? null : new ScheduleMapResponse.Marker(
+                        lastDay.getEndPlaceName(), lastDay.getEndLongitude(), lastDay.getEndLatitude()),
                 days.stream()
                         .flatMap(day -> {
                             Map<UUID, StopTime> stopTimes = stopTimes(schedule, day);
@@ -336,7 +405,8 @@ public class ScheduleService {
         }
         for (Integer dayNo : dayByNumber.keySet()) {
             Set<Integer> orders = ordersByDay.get(dayNo);
-            if (orders == null || orders.isEmpty() || orders.size() > MAX_STOPS_PER_DAY) {
+            if (orders == null || orders.isEmpty()
+                    || orders.size() > DailyScheduleTargetPolicy.MAX_STOPS_PER_DAY) {
                 throw new BusinessException(ErrorCode.INVALID_SCHEDULE_CONDITION);
             }
             for (int order = 1; order <= orders.size(); order++) {
@@ -364,10 +434,13 @@ public class ScheduleService {
     }
 
     private void recalculateRoutes(Schedule schedule) {
-        Map<RouteKey, TransitRouteEstimate> routeCache = new HashMap<>();
+        RouteSearchContext routeSearch = new RouteSearchContext();
         PlannerExecutionMetrics executionMetrics = new PlannerExecutionMetrics();
         for (ScheduleDay day : schedule.getDays()) {
-            TransitPoint previous = new TransitPoint(
+            resolvePlannerEndpoints(day, day.getStops().stream()
+                    .map(ScheduleStop::getPlace)
+                    .toList());
+            TransitPoint previous = day.getStartLongitude() == null ? null : new TransitPoint(
                     day.getStartPlaceName(), day.getStartLongitude(), day.getStartLatitude());
             for (ScheduleStop stop : day.getStops()) {
                 TransitPoint destination = new TransitPoint(
@@ -375,27 +448,21 @@ public class ScheduleService {
                         stop.getPlace().getLongitude(),
                         stop.getPlace().getLatitude()
                 );
-                TransitRouteResult route = resolveRoute(
-                        routeCache,
-                        executionMetrics,
-                        previous,
-                        destination,
-                        RouteResolutionMode.DETAILED,
-                        null
-                ).route();
-                createRoute(day, stop, "INBOUND", stop.getStopOrder(), route);
+                if (previous != null && !samePoint(previous, destination)) {
+                    TransitRouteResult route = resolveRoute(
+                            routeSearch, executionMetrics, previous, destination);
+                    createRoute(day, stop, "INBOUND", stop.getStopOrder(), route);
+                }
                 previous = destination;
             }
-            TransitRouteResult finalRoute = resolveRoute(
-                    routeCache,
-                    executionMetrics,
-                    previous,
-                    new TransitPoint(
-                            day.getEndPlaceName(), day.getEndLongitude(), day.getEndLatitude()),
-                    RouteResolutionMode.DETAILED,
-                    null
-            ).route();
-            createRoute(day, null, "FINAL", day.getStops().size() + 1, finalRoute);
+            if (day.getEndLongitude() != null && previous != null
+                    && !samePoint(previous, new TransitPoint(
+                            day.getEndPlaceName(), day.getEndLongitude(), day.getEndLatitude()))) {
+                TransitRouteResult finalRoute = resolveRoute(
+                        routeSearch, executionMetrics, previous,
+                        new TransitPoint(day.getEndPlaceName(), day.getEndLongitude(), day.getEndLatitude()));
+                createRoute(day, null, "FINAL", day.getStops().size() + 1, finalRoute);
+            }
             if (!feasibilityChecker.fitWithinAvailableTime(day)) {
                 throw new BusinessException(ErrorCode.INVALID_SCHEDULE_CONDITION);
             }
@@ -433,15 +500,74 @@ public class ScheduleService {
                     ScheduleCreateRequest.DayCondition condition = dayConditions.get(dayNo);
                     LocalTime startTime = condition == null ? request.dailyStartTime() : condition.startTime();
                     LocalTime endTime = condition == null ? request.dailyEndTime() : condition.endTime();
-                    return stopsForAvailableMinutes(Duration.between(startTime, endTime).toMinutes());
+                    return stopsForAvailableMinutes(Duration.between(startTime, endTime).toMinutes(), request);
                 })
                 .toList();
     }
 
-    private int stopsForAvailableMinutes(long availableMinutes) {
-        int estimatedStopBudget = DEFAULT_STAY_MINUTES + ESTIMATED_TRANSIT_MINUTES_PER_STOP;
-        int stops = (int) Math.max(MIN_STOPS_PER_DAY, availableMinutes / estimatedStopBudget);
-        return Math.min(MAX_STOPS_PER_DAY, stops);
+    private int stopsForAvailableMinutes(long availableMinutes, ScheduleCreateRequest request) {
+        return DailyScheduleTargetPolicy.target(availableMinutes, request.selectedAnswers());
+    }
+
+    private List<Integer> targetsWithRequiredCapacity(
+            List<Integer> targets,
+            List<ScheduleDay> days,
+            int requiredPlaceCount,
+            List<SchedulePreviewCreateRequest.FixedEvent> fixedEvents
+    ) {
+        List<Integer> adjusted = new ArrayList<>(targets);
+        for (int index = 0; index < days.size(); index++) {
+            LocalDate date = days.get(index).getDate();
+            int fixedCount = (int) fixedEvents.stream()
+                    .filter(event -> java.time.OffsetDateTime.parse(event.startsAt())
+                            .atZoneSameInstant(java.time.ZoneId.of("Asia/Seoul"))
+                            .toLocalDate().equals(date))
+                    .count();
+            adjusted.set(index, Math.max(adjusted.get(index), fixedCount));
+        }
+        int remainingRequiredCapacity = requiredPlaceCount - adjusted.stream().mapToInt(Integer::intValue).sum();
+        for (int index = 0; index < adjusted.size() && remainingRequiredCapacity > 0; index++) {
+            int additionalCapacity = DailyScheduleTargetPolicy.MAX_STOPS_PER_DAY - adjusted.get(index);
+            int added = Math.min(additionalCapacity, remainingRequiredCapacity);
+            adjusted.set(index, adjusted.get(index) + added);
+            remainingRequiredCapacity -= added;
+        }
+        if (remainingRequiredCapacity > 0) {
+            throw new BusinessException(ErrorCode.MUST_VISIT_PLACE_LIMIT_EXCEEDED);
+        }
+        return List.copyOf(adjusted);
+    }
+
+    private List<Integer> targetsForAvailableCandidates(
+            List<Integer> targets,
+            List<ScheduleDay> days,
+            int candidateCount,
+            List<SchedulePreviewCreateRequest.FixedEvent> fixedEvents
+    ) {
+        List<Integer> adjusted = new ArrayList<>(targets);
+        int targetCount = adjusted.stream().mapToInt(Integer::intValue).sum();
+        List<Integer> minimumTargets = new ArrayList<>();
+        for (ScheduleDay day : days) {
+            int fixedCount = (int) fixedEvents.stream()
+                    .filter(event -> java.time.OffsetDateTime.parse(event.startsAt())
+                            .atZoneSameInstant(java.time.ZoneId.of("Asia/Seoul"))
+                            .toLocalDate().equals(day.getDate()))
+                    .count();
+            minimumTargets.add(Math.max(fixedCount, candidateCount >= days.size() ? 1 : 0));
+        }
+        while (targetCount > candidateCount) {
+            int index = -1;
+            for (int candidateIndex = 0; candidateIndex < adjusted.size(); candidateIndex++) {
+                if (adjusted.get(candidateIndex) > minimumTargets.get(candidateIndex)
+                        && (index < 0 || adjusted.get(candidateIndex) > adjusted.get(index))) {
+                    index = candidateIndex;
+                }
+            }
+            if (index < 0) break;
+            adjusted.set(index, adjusted.get(index) - 1);
+            targetCount--;
+        }
+        return List.copyOf(adjusted);
     }
 
     private List<ScheduleDay> createDays(Schedule schedule, ScheduleCreateRequest request) {
@@ -476,119 +602,476 @@ public class ScheduleService {
         return days;
     }
 
-    private void createStopsAndRoutes(
+    private int createStopsAndRoutes(
             List<ScheduleDay> days,
             PlaceCandidateProvider.ResolvedPlaces resolvedPlaces,
             List<Integer> dailyStopTargets,
             ScheduleCreateRequest request,
-            PlannerExecutionMetrics executionMetrics
+            PlannerExecutionMetrics executionMetrics,
+            List<SchedulePreviewCreateRequest.FixedEvent> fixedEvents,
+            String customPrompt
     ) {
         List<Place> places = resolvedPlaces.places();
-        List<List<Place>> placesByDay = multiDayPlanOptimizer.optimize(
+        Map<LocalDate, Set<Long>> fixedPlaceIdsByDate = fixedEvents.stream().collect(Collectors.groupingBy(
+                event -> java.time.OffsetDateTime.parse(event.startsAt())
+                        .atZoneSameInstant(java.time.ZoneId.of("Asia/Seoul")).toLocalDate(),
+                Collectors.mapping(SchedulePreviewCreateRequest.FixedEvent::placeId, Collectors.toSet())));
+        Map<Long, SchedulePreviewCreateRequest.FixedEvent> fixedEventByPlaceId = fixedEvents.stream()
+                .collect(Collectors.toMap(SchedulePreviewCreateRequest.FixedEvent::placeId, Function.identity()));
+
+        CompletableFuture<AiSchedulePlanGenerator.Result> aiProposalFuture = CompletableFuture.supplyAsync(
+                () -> aiSchedulePlanGenerator.generate(
+                        places, resolvedPlaces.mustVisitPlaceIds(), days, dailyStopTargets,
+                        request, fixedPlaceIdsByDate, customPrompt));
+        List<MultiDayPlanOptimizer.OptimizedPlan> deterministicCandidates = multiDayPlanOptimizer.ranked(
                 places,
                 resolvedPlaces.mustVisitPlaceIds(),
                 days,
                 dailyStopTargets,
-                request
+                request,
+                plannerProperties.multiDayActualRerankCandidates()
         );
+        AiSchedulePlanGenerator.Result aiProposal = aiProposalFuture.join();
+        List<MultiDayPlanOptimizer.OptimizedPlan> planCandidates = mergeAiProposal(
+                deterministicCandidates, aiProposal,
+                plannerProperties.multiDayActualRerankCandidates());
+        executionMetrics.multiDayPlanCandidateCount = planCandidates.size();
+        executionMetrics.aiPlanConfidence = aiProposal.confidence();
 
-        Map<RouteKey, TransitRouteEstimate> estimateCache = new HashMap<>();
-        Map<RouteKey, TransitRouteEstimate> detailedCache = new HashMap<>();
+        RouteSearchContext routeSearch = new RouteSearchContext();
+        List<List<Place>> placesByDay = selectMultiDayPlan(
+                planCandidates, days, request, routeSearch, executionMetrics, fixedEvents.isEmpty());
+        executionMetrics.planningMode = aiProposal.hasProposal()
+                ? (multiDayAssignmentKey(placesByDay).equals(
+                        multiDayAssignmentKey(aiProposal.placesByDay()))
+                        ? "AI_GENERATED" : "AI_ASSISTED")
+                : aiProposal.source();
+        placesByDay = fixedEventPlanner.placeOnRequiredDays(
+                placesByDay, days, dailyStopTargets, fixedPlaceIdsByDate);
+        int reducedOptionalStops = 0;
         for (int dayIndex = 0; dayIndex < days.size(); dayIndex++) {
             ScheduleDay day = days.get(dayIndex);
-            DayRouteOptimizer.OptimizedDayRoute optimizedRoute = dayRouteOptimizer.optimize(
-                    day,
-                    placesByDay.get(dayIndex),
-                    (origin, destination) -> resolveRoute(
-                            estimateCache,
-                            executionMetrics,
-                            origin,
-                            destination,
-                            RouteResolutionMode.ESTIMATE,
-                            null
-                    ).route(),
-                    optimizationPreference(request)
-            );
-            List<ScheduleStop> stops = new ArrayList<>();
-            TransitPoint previous = new TransitPoint(
-                    day.getStartPlaceName(), day.getStartLongitude(), day.getStartLatitude());
-            for (int stopIndex = 0; stopIndex < optimizedRoute.places().size(); stopIndex++) {
-                Place place = optimizedRoute.places().get(stopIndex);
-                TransitPoint destination = new TransitPoint(
-                        place.getName(), place.getLongitude(), place.getLatitude());
-                TransitRouteResult inboundRoute = selectedRoute(
-                        estimateCache, detailedCache, executionMetrics, previous, destination);
-                ScheduleStop stop = new ScheduleStop(day, place, stopIndex + 1, stayMinutes(place));
-                stop.updateDeliveryInfo(
-                        jsonArray(selectionReasons(
-                                place,
-                                !resolvedPlaces.mustVisitPlaceIds().contains(place.getId()),
-                                request
-                        )),
-                        jsonArray(stopWarnings(place, request))
-                );
-                stops.add(stop);
-                createRoute(day, stop, "INBOUND", stopIndex + 1, inboundRoute);
-                previous = destination;
+            List<Place> dayPlaces = new ArrayList<>(placesByDay.get(dayIndex));
+            while (true) {
+                day.clearTransitRoutes();
+                day.clearStops();
+                List<Place> orderedPlaces = optimizedOrder(
+                        day, dayPlaces, fixedEventByPlaceId, request,
+                        routeSearch, executionMetrics, days.size(), dayIndex);
+                createDayStopsAndRoutes(
+                        day, orderedPlaces, resolvedPlaces, fixedEventByPlaceId,
+                        request, routeSearch, executionMetrics);
+                resolvePlannerEndpoints(day, orderedPlaces);
+                if (feasibilityChecker.fitWithinAvailableTime(day)) {
+                    break;
+                }
+                Place removable = optionalPlaceToRemove(
+                        day, orderedPlaces, resolvedPlaces.mustVisitPlaceIds(),
+                        fixedEventByPlaceId.keySet(), request);
+                if (removable == null) {
+                    throw new BusinessException("END_CONSTRAINT".equals(day.getEndLocationSource())
+                            ? ErrorCode.END_CONSTRAINT_UNREACHABLE : ErrorCode.INVALID_SCHEDULE_CONDITION);
+                }
+                dayPlaces.remove(removable);
+                reducedOptionalStops++;
             }
-            if (!optimizedRoute.places().isEmpty()) {
-                TransitRouteResult finalRoute = selectedRoute(
-                        estimateCache,
-                        detailedCache,
-                        executionMetrics,
-                        previous,
-                        new TransitPoint(day.getEndPlaceName(), day.getEndLongitude(), day.getEndLatitude())
-                );
-                createRoute(day, null, "FINAL", stops.size() + 1, finalRoute);
-            }
-            feasibilityChecker.fitWithinAvailableTime(day);
         }
+        fixedEventPlanner.validateDetailedFeasibility(days);
+        return reducedOptionalStops;
     }
 
-    private TransitRouteResult selectedRoute(
-            Map<RouteKey, TransitRouteEstimate> estimateCache,
-            Map<RouteKey, TransitRouteEstimate> detailedCache,
+    private List<MultiDayPlanOptimizer.OptimizedPlan> mergeAiProposal(
+            List<MultiDayPlanOptimizer.OptimizedPlan> deterministicCandidates,
+            AiSchedulePlanGenerator.Result aiProposal,
+            int limit
+    ) {
+        if (!aiProposal.hasProposal()) return deterministicCandidates;
+        List<MultiDayPlanOptimizer.OptimizedPlan> merged = new ArrayList<>();
+        long neutralEstimatedCost = deterministicCandidates.get(0).estimatedCost();
+        merged.add(new MultiDayPlanOptimizer.OptimizedPlan(
+                neutralEstimatedCost, aiProposal.placesByDay()));
+        Set<String> assignments = new LinkedHashSet<>();
+        assignments.add(multiDayAssignmentKey(aiProposal.placesByDay()));
+        for (MultiDayPlanOptimizer.OptimizedPlan candidate : deterministicCandidates) {
+            if (assignments.add(multiDayAssignmentKey(candidate.placesByDay()))) {
+                merged.add(candidate);
+            }
+            if (merged.size() >= limit) break;
+        }
+        return List.copyOf(merged);
+    }
+
+    private List<List<Place>> selectMultiDayPlan(
+            List<MultiDayPlanOptimizer.OptimizedPlan> planCandidates,
+            List<ScheduleDay> days,
+            ScheduleCreateRequest request,
+            RouteSearchContext routeSearch,
+            PlannerExecutionMetrics executionMetrics,
+            boolean canRerank
+    ) {
+        MultiDayPlanOptimizer.OptimizedPlan first = planCandidates.get(0);
+        if (!plannerProperties.actualRouteRerankEnabled()
+                || !canRerank
+                || days.size() < 2
+                || planCandidates.size() < 2) {
+            return first.placesByDay();
+        }
+
+        int remainingBudget = plannerProperties.maxRouteEstimateProviderCalls()
+                - routeSearch.providerEstimateCount();
+        if (remainingBudget <= 0) return first.placesByDay();
+
+        Set<RouteKey> requiredProviderRoutes = new LinkedHashSet<>();
+        List<MultiDayPlanOrder> accepted = new ArrayList<>();
+        for (MultiDayPlanOptimizer.OptimizedPlan candidate : planCandidates) {
+            List<List<Place>> orders = providerFreeOrders(days, candidate.placesByDay(), request);
+            Set<RouteKey> nextRoutes = new LinkedHashSet<>(requiredProviderRoutes);
+            for (int dayIndex = 0; dayIndex < days.size(); dayIndex++) {
+                nextRoutes.addAll(multiDayBoundaryRouteKeys(
+                        days.get(dayIndex), orders.get(dayIndex), routeSearch));
+            }
+            if (nextRoutes.size() > remainingBudget) continue;
+            requiredProviderRoutes = nextRoutes;
+            accepted.add(new MultiDayPlanOrder(candidate, orders));
+        }
+        if (accepted.size() < 2) return first.placesByDay();
+
+        MultiDayPlanResult best = null;
+        for (MultiDayPlanOrder candidate : accepted) {
+            try {
+                long actualCost = 0;
+                for (int dayIndex = 0; dayIndex < days.size(); dayIndex++) {
+                    ScheduleDay candidateDay = days.get(dayIndex);
+                    actualCost += dayRouteOptimizer.bestOf(
+                            candidateDay,
+                            List.of(candidate.orders().get(dayIndex)),
+                            (origin, destination) -> multiDayAssignmentRoute(
+                                    candidateDay, routeSearch, executionMetrics,
+                                    origin, destination),
+                            optimizationPreference(request),
+                            this::stayMinutes
+                    ).optimizationCost();
+                }
+                executionMetrics.multiDayPlanRerankedCount++;
+                MultiDayPlanResult evaluated = new MultiDayPlanResult(
+                        candidate.plan(), candidate.orders(), actualCost);
+                if (best == null || compareMultiDayPlans(evaluated, best) < 0) {
+                    best = evaluated;
+                }
+            } catch (BusinessException ignored) {
+                // A failed candidate is discarded; the deterministic first plan remains the fallback.
+            }
+        }
+        return best == null ? first.placesByDay() : best.orders();
+    }
+
+    private Set<RouteKey> multiDayBoundaryRouteKeys(
+            ScheduleDay day,
+            List<Place> order,
+            RouteSearchContext routeSearch
+    ) {
+        if (order.isEmpty()) return Set.of();
+        Set<RouteKey> keys = new LinkedHashSet<>();
+        TransitPoint first = new TransitPoint(
+                order.get(0).getName(), order.get(0).getLongitude(), order.get(0).getLatitude());
+        if (day.getStartLongitude() != null) {
+            addProviderRouteKey(keys, routeSearch, new TransitPoint(
+                    day.getStartPlaceName(), day.getStartLongitude(), day.getStartLatitude()), first);
+        }
+        if (day.getEndLongitude() != null) {
+            Place lastPlace = order.get(order.size() - 1);
+            addProviderRouteKey(keys, routeSearch, new TransitPoint(
+                    lastPlace.getName(), lastPlace.getLongitude(), lastPlace.getLatitude()),
+                    new TransitPoint(
+                            day.getEndPlaceName(), day.getEndLongitude(), day.getEndLatitude()));
+        }
+        return Set.copyOf(keys);
+    }
+
+    private TransitRouteResult multiDayAssignmentRoute(
+            ScheduleDay day,
+            RouteSearchContext routeSearch,
             PlannerExecutionMetrics executionMetrics,
             TransitPoint origin,
             TransitPoint destination
     ) {
-        TransitRouteEstimate estimate = estimateCache.get(new RouteKey(origin, destination));
-        if (estimate != null && !estimate.requiresDetail()) {
-            return estimate.route();
-        }
-        return resolveRoute(
-                detailedCache,
-                executionMetrics,
-                origin,
-                destination,
-                RouteResolutionMode.DETAILED,
-                estimate
-        ).route();
+        boolean startsAtDayBoundary = day.getStartLongitude() != null
+                && samePoint(origin, day.getStartLongitude(), day.getStartLatitude());
+        boolean endsAtDayBoundary = day.getEndLongitude() != null
+                && samePoint(destination, day.getEndLongitude(), day.getEndLatitude());
+        return startsAtDayBoundary || endsAtDayBoundary
+                ? estimatedRoute(routeSearch, executionMetrics, origin, destination)
+                : plannerRouteEstimator.estimate(origin, destination);
     }
 
-    private TransitRouteEstimate resolveRoute(
-            Map<RouteKey, TransitRouteEstimate> routeCache,
+    private boolean samePoint(TransitPoint point, BigDecimal longitude, BigDecimal latitude) {
+        return point.longitude().compareTo(longitude) == 0
+                && point.latitude().compareTo(latitude) == 0;
+    }
+
+    private List<List<Place>> providerFreeOrders(
+            List<ScheduleDay> days,
+            List<List<Place>> placesByDay,
+            ScheduleCreateRequest request
+    ) {
+        List<List<Place>> orders = new ArrayList<>();
+        for (int dayIndex = 0; dayIndex < days.size(); dayIndex++) {
+            orders.add(dayRouteOptimizer.rankedWithMealPositionDiversity(
+                    days.get(dayIndex),
+                    placesByDay.get(dayIndex),
+                    plannerRouteEstimator::estimate,
+                    optimizationPreference(request),
+                    this::stayMinutes,
+                    1
+            ).get(0).places());
+        }
+        return List.copyOf(orders);
+    }
+
+    private int compareMultiDayPlans(MultiDayPlanResult left, MultiDayPlanResult right) {
+        int actual = Long.compare(left.actualCost(), right.actualCost());
+        if (actual != 0) return actual;
+        int estimated = Long.compare(left.plan().estimatedCost(), right.plan().estimatedCost());
+        if (estimated != 0) return estimated;
+        return multiDayPlanKey(left.orders()).compareTo(multiDayPlanKey(right.orders()));
+    }
+
+    private String multiDayPlanKey(List<List<Place>> placesByDay) {
+        return placesByDay.stream()
+                .map(day -> day.stream()
+                        .map(place -> place.getId() == null ? place.getName() : place.getId().toString())
+                        .collect(Collectors.joining(">")))
+                .collect(Collectors.joining("|"));
+    }
+
+    private String multiDayAssignmentKey(List<List<Place>> placesByDay) {
+        return placesByDay.stream()
+                .map(day -> day.stream()
+                        .map(place -> place.getId() == null ? place.getName() : place.getId().toString())
+                        .sorted()
+                        .collect(Collectors.joining(">")))
+                .collect(Collectors.joining("|"));
+    }
+
+    private List<Place> optimizedOrder(
+            ScheduleDay day,
+            List<Place> places,
+            Map<Long, SchedulePreviewCreateRequest.FixedEvent> fixedEventByPlaceId,
+            ScheduleCreateRequest request,
+            RouteSearchContext routeSearch,
+            PlannerExecutionMetrics executionMetrics,
+            int tripDays,
+            int dayIndex
+    ) {
+        DayRouteOptimizer.OptimizationPreference preference = optimizationPreference(request);
+        List<DayRouteOptimizer.OptimizedDayRoute> localCandidates = dayRouteOptimizer
+                .rankedWithMealPositionDiversity(
+                day,
+                places,
+                plannerRouteEstimator::estimate,
+                preference,
+                this::stayMinutes,
+                plannerProperties.actualRouteRerankCandidates());
+        List<Place> routeOrder = localCandidates.get(0).places();
+        boolean hasFixedEvent = places.stream()
+                .anyMatch(place -> fixedEventByPlaceId.containsKey(place.getId()));
+        if (plannerProperties.actualRouteRerankEnabled()
+                && !hasFixedEvent
+                && localCandidates.size() > 1) {
+            List<List<Place>> rerankOrders = rerankOrdersWithinBudget(
+                    day, localCandidates, routeSearch, tripDays, dayIndex);
+            if (rerankOrders.size() > 1) {
+                routeOrder = dayRouteOptimizer.bestOf(
+                        day,
+                        rerankOrders,
+                        (origin, destination) -> estimatedRoute(
+                                routeSearch, executionMetrics, origin, destination),
+                        preference,
+                        this::stayMinutes
+                ).places();
+            }
+        }
+        return fixedEventPlanner.optimizeOrder(
+                day, routeOrder, fixedEventByPlaceId,
+                plannerRouteEstimator::estimate, this::stayMinutes);
+    }
+
+    private List<List<Place>> rerankOrdersWithinBudget(
+            ScheduleDay day,
+            List<DayRouteOptimizer.OptimizedDayRoute> candidates,
+            RouteSearchContext routeSearch,
+            int tripDays,
+            int dayIndex
+    ) {
+        int requestRemainingBudget = plannerProperties.maxRouteEstimateProviderCalls()
+                - routeSearch.providerEstimateCount();
+        int perDayBudget = (plannerProperties.maxRouteEstimateProviderCalls()
+                + Math.max(1, tripDays) - 1) / Math.max(1, tripDays);
+        int remainingDays = Math.max(1, tripDays - dayIndex);
+        int fairRemainingBudget = requestRemainingBudget / remainingDays;
+        int remainingBudget = Math.min(fairRemainingBudget, perDayBudget);
+        if (remainingBudget <= 0) return List.of();
+
+        Set<RouteKey> requiredProviderRoutes = new LinkedHashSet<>();
+        List<List<Place>> accepted = new ArrayList<>();
+        for (DayRouteOptimizer.OptimizedDayRoute candidate : candidates) {
+            Set<RouteKey> nextRoutes = new LinkedHashSet<>(requiredProviderRoutes);
+            nextRoutes.addAll(providerRouteKeys(day, candidate.places(), routeSearch));
+            if (nextRoutes.size() > remainingBudget) break;
+            requiredProviderRoutes = nextRoutes;
+            accepted.add(candidate.places());
+        }
+        return List.copyOf(accepted);
+    }
+
+    private Set<RouteKey> providerRouteKeys(
+            ScheduleDay day,
+            List<Place> order,
+            RouteSearchContext routeSearch
+    ) {
+        Set<RouteKey> keys = new LinkedHashSet<>();
+        TransitPoint previous = day.getStartLongitude() == null ? null : new TransitPoint(
+                day.getStartPlaceName(), day.getStartLongitude(), day.getStartLatitude());
+        for (Place place : order) {
+            TransitPoint destination = new TransitPoint(
+                    place.getName(), place.getLongitude(), place.getLatitude());
+            addProviderRouteKey(keys, routeSearch, previous, destination);
+            previous = destination;
+        }
+        if (previous != null && day.getEndLongitude() != null) {
+            addProviderRouteKey(keys, routeSearch, previous, new TransitPoint(
+                    day.getEndPlaceName(), day.getEndLongitude(), day.getEndLatitude()));
+        }
+        return keys;
+    }
+
+    private void addProviderRouteKey(
+            Set<RouteKey> keys,
+            RouteSearchContext routeSearch,
+            TransitPoint origin,
+            TransitPoint destination
+    ) {
+        if (origin == null || destination == null) return;
+        RouteKey key = new RouteKey(origin, destination);
+        if (routeSearch.estimates.containsKey(key)
+                || distanceMeters(origin.longitude(), origin.latitude(),
+                        destination.longitude(), destination.latitude()) <= CLOSE_WALK_THRESHOLD_METERS) {
+            return;
+        }
+        keys.add(key);
+    }
+
+    private void createDayStopsAndRoutes(
+            ScheduleDay day,
+            List<Place> orderedPlaces,
+            PlaceCandidateProvider.ResolvedPlaces resolvedPlaces,
+            Map<Long, SchedulePreviewCreateRequest.FixedEvent> fixedEventByPlaceId,
+            ScheduleCreateRequest request,
+            RouteSearchContext routeSearch,
+            PlannerExecutionMetrics executionMetrics
+    ) {
+        TransitPoint previous = day.getStartLongitude() == null ? null : new TransitPoint(
+                day.getStartPlaceName(), day.getStartLongitude(), day.getStartLatitude());
+        for (int stopIndex = 0; stopIndex < orderedPlaces.size(); stopIndex++) {
+            Place place = orderedPlaces.get(stopIndex);
+            TransitPoint destination = new TransitPoint(
+                    place.getName(), place.getLongitude(), place.getLatitude());
+            TransitRouteResult inboundRoute = previous == null ? null : selectedRoute(
+                    routeSearch, executionMetrics, previous, destination);
+            ScheduleStop stop = new ScheduleStop(day, place, stopIndex + 1, stayMinutes(place));
+            SchedulePreviewCreateRequest.FixedEvent fixedEvent = fixedEventByPlaceId.get(place.getId());
+            if (fixedEvent != null) stop.applyFixedEvent(
+                    fixedEvent.clientEventId(), fixedEvent.name(),
+                    java.time.OffsetDateTime.parse(fixedEvent.startsAt()),
+                    java.time.OffsetDateTime.parse(fixedEvent.endsAt()));
+            stop.updateDeliveryInfo(
+                    jsonArray(selectionReasons(
+                            place,
+                            !resolvedPlaces.mustVisitPlaceIds().contains(place.getId()),
+                            request
+                    )),
+                    jsonArray(stopWarnings(place, request))
+            );
+            if (inboundRoute != null) createRoute(day, stop, "INBOUND", stopIndex + 1, inboundRoute);
+            previous = destination;
+        }
+        if (!orderedPlaces.isEmpty() && day.getEndLongitude() != null) {
+            TransitRouteResult finalRoute = selectedRoute(
+                    routeSearch,
+                    executionMetrics,
+                    previous,
+                    new TransitPoint(day.getEndPlaceName(), day.getEndLongitude(), day.getEndLatitude())
+            );
+            createRoute(day, null, "FINAL", orderedPlaces.size() + 1, finalRoute);
+        }
+    }
+
+    private Place optionalPlaceToRemove(
+            ScheduleDay day,
+            List<Place> orderedPlaces,
+            Set<Long> mustVisitPlaceIds,
+            Set<Long> fixedEventPlaceIds,
+            ScheduleCreateRequest request
+    ) {
+        if (orderedPlaces.size() <= MIN_STOPS_PER_DAY) return null;
+        List<Place> optional = orderedPlaces.stream()
+                .filter(place -> !mustVisitPlaceIds.contains(place.getId()))
+                .filter(place -> !fixedEventPlaceIds.contains(place.getId()))
+                .toList();
+        if (optional.isEmpty()) return null;
+        long nonMealCount = orderedPlaces.stream().filter(place -> !MealTimePolicy.isMealPlace(place)).count();
+        List<Place> preferredRemoval = nonMealCount > 1
+                ? optional.stream().filter(place -> !MealTimePolicy.isMealPlace(place)).toList()
+                : optional.stream().filter(MealTimePolicy::isMealPlace).toList();
+        if (preferredRemoval.isEmpty()) preferredRemoval = optional;
+        ScheduleCreateRequest.Location start = locationForScore(day, true, request);
+        ScheduleCreateRequest.Location end = locationForScore(day, false, request);
+        return preferredRemoval.stream()
+                .max(Comparator.comparingInt(place -> placePreferenceScorer
+                        .score(place, start, end, request).totalScore()))
+                .orElse(null);
+    }
+
+    private ScheduleCreateRequest.Location locationForScore(
+            ScheduleDay day,
+            boolean start,
+            ScheduleCreateRequest request
+    ) {
+        BigDecimal longitude = start ? day.getStartLongitude() : day.getEndLongitude();
+        BigDecimal latitude = start ? day.getStartLatitude() : day.getEndLatitude();
+        String name = start ? day.getStartPlaceName() : day.getEndPlaceName();
+        if (longitude != null && latitude != null) {
+            return new ScheduleCreateRequest.Location(name, longitude, latitude);
+        }
+        if (!start && request.endLocation() != null) return request.endLocation();
+        return request.startLocation();
+    }
+
+    private TransitRouteResult selectedRoute(
+            RouteSearchContext routeSearch,
             PlannerExecutionMetrics executionMetrics,
             TransitPoint origin,
-            TransitPoint destination,
-            RouteResolutionMode resolutionMode,
-            TransitRouteEstimate estimate
+            TransitPoint destination
+    ) {
+        return resolveRoute(routeSearch, executionMetrics, origin, destination);
+    }
+
+    private TransitRouteResult resolveRoute(
+            RouteSearchContext routeSearch,
+            PlannerExecutionMetrics executionMetrics,
+            TransitPoint origin,
+            TransitPoint destination
     ) {
         executionMetrics.routeResolutionCount++;
         RouteKey key = new RouteKey(origin, destination);
-        TransitRouteEstimate cached = routeCache.get(key);
+        TransitRouteResult cached = routeSearch.details.get(key);
         if (cached != null) {
             executionMetrics.routeCacheHitCount++;
             return cached;
         }
-        TransitRouteEstimate result = routeBetween(
-                origin,
-                destination,
-                executionMetrics,
-                resolutionMode,
-                estimate
-        );
-        routeCache.put(key, result);
+        TransitRouteResult result = detailedRouteBetween(
+                routeSearch, origin, destination, executionMetrics);
+        routeSearch.details.put(key, result);
         return result;
     }
 
@@ -680,12 +1163,51 @@ public class ScheduleService {
         }
     }
 
-    private TransitRouteEstimate routeBetween(
+    private TransitRouteResult estimatedRoute(
+            RouteSearchContext routeSearch,
+            PlannerExecutionMetrics executionMetrics,
+            TransitPoint origin,
+            TransitPoint destination
+    ) {
+        executionMetrics.routeEstimateResolutionCount++;
+        RouteKey key = new RouteKey(origin, destination);
+        TransitRouteEstimate cached = routeSearch.estimates.get(key);
+        if (cached != null) {
+            executionMetrics.routeEstimateCacheHitCount++;
+            return cached.route();
+        }
+
+        int distanceMeters = distanceMeters(
+                origin.longitude(), origin.latitude(), destination.longitude(), destination.latitude());
+        TransitRouteEstimate estimate;
+        if (distanceMeters <= CLOSE_WALK_THRESHOLD_METERS) {
+            estimate = TransitRouteEstimate.detailed(
+                    walkRoute(origin, destination, distanceMeters, false));
+        } else {
+            try {
+                routeSearch.providerEstimateCount++;
+                executionMetrics.providerEstimateCallCount++;
+                estimate = transitRouteProvider.findRouteEstimate(origin, destination);
+            } catch (BusinessException exception) {
+                executionMetrics.providerEstimateFailureCount++;
+                if (isFallbackEligible(exception)
+                        && distanceMeters <= PROVIDER_FAILURE_WALK_FALLBACK_METERS) {
+                    estimate = TransitRouteEstimate.detailed(
+                            walkRoute(origin, destination, distanceMeters, true));
+                } else {
+                    throw exception;
+                }
+            }
+        }
+        routeSearch.estimates.put(key, estimate);
+        return estimate.route();
+    }
+
+    private TransitRouteResult detailedRouteBetween(
+            RouteSearchContext routeSearch,
             TransitPoint origin,
             TransitPoint destination,
-            PlannerExecutionMetrics executionMetrics,
-            RouteResolutionMode resolutionMode,
-            TransitRouteEstimate estimate
+            PlannerExecutionMetrics executionMetrics
     ) {
         int distanceMeters = distanceMeters(
                 origin.longitude(),
@@ -694,21 +1216,21 @@ public class ScheduleService {
                 destination.latitude()
         );
         if (distanceMeters <= CLOSE_WALK_THRESHOLD_METERS) {
-            return TransitRouteEstimate.detailed(walkRoute(origin, destination, distanceMeters, false));
+            return walkRoute(origin, destination, distanceMeters, false);
+        }
+        TransitRouteEstimate estimate = routeSearch.estimates.get(new RouteKey(origin, destination));
+        if (estimate != null && !estimate.requiresDetail()) {
+            return estimate.route();
         }
         try {
             executionMetrics.providerCallCount++;
-            if (resolutionMode == RouteResolutionMode.ESTIMATE) {
-                return transitRouteProvider.findRouteEstimate(origin, destination);
-            }
-            TransitRouteResult detailedRoute = estimate == null
+            return estimate == null
                     ? transitRouteProvider.findRoute(origin, destination)
                     : transitRouteProvider.findRouteDetail(origin, destination, estimate);
-            return TransitRouteEstimate.detailed(detailedRoute);
         } catch (BusinessException exception) {
             executionMetrics.providerFailureCount++;
             if (isFallbackEligible(exception) && distanceMeters <= PROVIDER_FAILURE_WALK_FALLBACK_METERS) {
-                return TransitRouteEstimate.detailed(walkRoute(origin, destination, distanceMeters, true));
+                return walkRoute(origin, destination, distanceMeters, true);
             }
             throw exception;
         }
@@ -837,18 +1359,24 @@ public class ScheduleService {
     }
 
     private ScheduleResponse toResponse(Schedule schedule) {
+        boolean previewBased = schedule.getPreview() != null;
         return new ScheduleResponse(
                 schedule.getId(),
                 schedule.getStatus(),
                 schedule.getStartDate(),
                 schedule.getEndDate(),
-                schedule.getDailyStartTime(),
-                schedule.getDailyEndTime(),
+                previewBased ? null : schedule.getDailyStartTime(),
+                previewBased ? null : schedule.getDailyEndTime(),
                 schedule.getStyleSummary(),
                 schedule.getDays()
                         .stream()
                         .map(day -> toDayResponse(schedule, day))
-                        .toList()
+                        .toList(),
+                null,
+                previewBased ? schedule.getPreview().getId() : null,
+                previewBased ? new ScheduleResponse.PlanningAssumptions(
+                        schedule.getTimeZone(), schedule.getLodgingMode(), schedule.getRouteCoverage(),
+                        jsonArrayValues(schedule.getPlanningWarningsJson())) : null
         );
     }
 
@@ -865,7 +1393,9 @@ public class ScheduleService {
                 response.dailyEndTime(),
                 response.styleSummary(),
                 response.days(),
-                evaluation
+                evaluation,
+                response.previewId(),
+                response.planningAssumptions()
         );
     }
 
@@ -899,18 +1429,31 @@ public class ScheduleService {
                 new ScheduleEvaluationReport.QualityScore(
                         scoreResult.totalScore(),
                         scoreResult.metrics().stream().mapToInt(ScheduleScoreResult.Metric::maxScore).sum(),
+                        evaluationCoveragePercent(scoreResult),
+                        unusedMinutes(schedule),
+                        longTransitWarnings(response),
+                        routeConfidence(schedule, routes),
                         scoreResult.metrics().stream()
                                 .map(metric -> new ScheduleEvaluationReport.Metric(
                                         metric.id(),
                                         metric.label(),
                                         metric.score(),
                                         metric.maxScore(),
-                                        metric.reason()
+                                        metric.reason(),
+                                        metric.status()
                                 ))
                                 .toList()
                 ),
                 new ScheduleEvaluationReport.Operations(
                         generationMillis,
+                        executionMetrics.planningMode,
+                        executionMetrics.aiPlanConfidence,
+                        executionMetrics.multiDayPlanCandidateCount,
+                        executionMetrics.multiDayPlanRerankedCount,
+                        executionMetrics.routeEstimateResolutionCount,
+                        executionMetrics.routeEstimateCacheHitCount,
+                        executionMetrics.providerEstimateCallCount,
+                        executionMetrics.providerEstimateFailureCount,
                         executionMetrics.routeResolutionCount,
                         executionMetrics.routeCacheHitCount,
                         executionMetrics.providerCallCount,
@@ -935,9 +1478,60 @@ public class ScheduleService {
         );
     }
 
+    private int evaluationCoveragePercent(ScheduleScoreResult scoreResult) {
+        int total = scoreResult.metrics().stream().mapToInt(ScheduleScoreResult.Metric::maxScore).sum();
+        int evaluated = scoreResult.metrics().stream()
+                .filter(metric -> "EVALUATED".equals(metric.status()))
+                .mapToInt(ScheduleScoreResult.Metric::maxScore)
+                .sum();
+        return total == 0 ? 0 : (int) Math.round(evaluated * 100.0 / total);
+    }
+
+    private int unusedMinutes(Schedule schedule) {
+        return schedule.getDays().stream()
+                .mapToInt(day -> (int) Math.max(0,
+                        Duration.between(day.getStartTime(), day.getEndTime()).toMinutes()
+                                - feasibilityChecker.activeMinutes(day)))
+                .sum();
+    }
+
+    private List<ScheduleEvaluationReport.LongTransitWarning> longTransitWarnings(
+            ScheduleResponse response
+    ) {
+        return response.days().stream()
+                .flatMap(day -> java.util.stream.Stream.concat(
+                                day.stops().stream().map(ScheduleResponse.Stop::inboundTransit),
+                                java.util.stream.Stream.of(day.finalTransit()))
+                        .filter(Objects::nonNull)
+                        .filter(route -> route.totalMinutes() > 60)
+                        .map(route -> new ScheduleEvaluationReport.LongTransitWarning(
+                                day.dayNo(), route.routeOrder(), route.originName(),
+                                route.destinationName(), route.totalMinutes())))
+                .toList();
+    }
+
+    private String routeConfidence(
+            Schedule schedule,
+            List<ScheduleResponse.Transit> routes
+    ) {
+        if (routes.isEmpty()) return "UNKNOWN";
+        if (routes.stream().anyMatch(route -> "FAKE".equals(route.provider())
+                || "UNKNOWN".equals(route.provider()))) {
+            return "LOW";
+        }
+        boolean fallbackRoute = routes.stream().anyMatch(ScheduleResponse.Transit::fallbackUsed);
+        boolean fallbackGeometry = schedule.getDays().stream()
+                .flatMap(day -> day.getTransitRoutes().stream())
+                .flatMap(route -> route.getRouteLines().stream())
+                .anyMatch(TransitRouteLine::isFallbackUsed);
+        return fallbackRoute || fallbackGeometry ? "MEDIUM" : "HIGH";
+    }
+
     private ScheduleResponse.Day toDayResponse(Schedule schedule, ScheduleDay day) {
         List<ScheduleResponse.Stop> stops = new ArrayList<>();
         Map<UUID, TransitRoute> inboundRouteByStopId = inboundRouteByStopId(day);
+        List<MealTimePolicy.MealSlot> mealSlots = MealTimePolicy.activeSlots(day);
+        Set<MealTimePolicy.MealSlot> assignedMealSlots = EnumSet.noneOf(MealTimePolicy.MealSlot.class);
         LocalTime cursor = day.getStartTime();
         for (ScheduleStop stop : day.getStops()) {
             ScheduleResponse.Transit inboundTransit = null;
@@ -947,8 +1541,34 @@ public class ScheduleService {
                 cursor = cursor.plusMinutes(inboundRoute.getTotalMinutes());
             }
             LocalTime arriveAt = cursor;
-            LocalTime departAt = arriveAt.plusMinutes(stop.getStayMinutes());
-            stops.add(toStopResponse(stop, arriveAt, departAt, inboundTransit));
+            LocalTime departAt;
+            String mealTimeSlot = null;
+            int waitingMinutesBefore = 0;
+            if (stop.getFixedStartsAt() != null) {
+                LocalTime fixedStart = stop.getFixedStartsAt()
+                        .atZoneSameInstant(java.time.ZoneId.of("Asia/Seoul")).toLocalTime();
+                arriveAt = arriveAt.isBefore(fixedStart) ? fixedStart : arriveAt;
+                departAt = stop.getFixedEndsAt()
+                        .atZoneSameInstant(java.time.ZoneId.of("Asia/Seoul")).toLocalTime();
+                MealTimePolicy.Alignment alignment = MealTimePolicy.alignArrival(
+                        arriveAt, stop.getPlace(), mealSlots, assignedMealSlots);
+                if (alignment.slot() != null) {
+                    assignedMealSlots.add(alignment.slot());
+                    mealTimeSlot = alignment.slot().name();
+                }
+            } else {
+                MealTimePolicy.Alignment alignment = MealTimePolicy.alignArrival(
+                        arriveAt, stop.getPlace(), mealSlots, assignedMealSlots);
+                arriveAt = alignment.arrival();
+                waitingMinutesBefore = alignment.waitingMinutes();
+                if (alignment.slot() != null) {
+                    assignedMealSlots.add(alignment.slot());
+                    mealTimeSlot = alignment.slot().name();
+                }
+                departAt = arriveAt.plusMinutes(stop.getStayMinutes());
+            }
+            stops.add(toStopResponse(
+                    stop, arriveAt, departAt, inboundTransit, mealTimeSlot, waitingMinutesBefore));
             cursor = departAt;
         }
 
@@ -965,16 +1585,18 @@ public class ScheduleService {
                 day.getDate(),
                 day.getStartTime(),
                 day.getEndTime(),
-                new ScheduleResponse.DayLocation(
+                day.getStartLongitude() == null ? null : new ScheduleResponse.DayLocation(
                         day.getStartPlaceName(),
                         day.getStartLongitude(),
                         day.getStartLatitude()
                 ),
-                new ScheduleResponse.DayLocation(
+                day.getEndLongitude() == null ? null : new ScheduleResponse.DayLocation(
                         day.getEndPlaceName(),
                         day.getEndLongitude(),
                         day.getEndLatitude()
                 ),
+                day.getStartLocationSource(),
+                day.getEndLocationSource(),
                 daySummary(schedule, day),
                 stops,
                 finalTransit
@@ -994,7 +1616,9 @@ public class ScheduleService {
             ScheduleStop stop,
             LocalTime arriveAt,
             LocalTime departAt,
-            ScheduleResponse.Transit inboundTransit
+            ScheduleResponse.Transit inboundTransit,
+            String mealTimeSlot,
+            int waitingMinutesBefore
     ) {
         Place place = stop.getPlace();
         return new ScheduleResponse.Stop(
@@ -1007,6 +1631,7 @@ public class ScheduleService {
                         place.getId(),
                         place.getName(),
                         place.getCategory(),
+                        PlaceCategoryLabelResolver.resolve(place.getCategory(), place.getContentTypeId()),
                         place.getAddress(),
                         place.getLongitude(),
                         place.getLatitude(),
@@ -1014,6 +1639,8 @@ public class ScheduleService {
                         operatingInfo(place)
                 ),
                 inboundTransit,
+                mealTimeSlot,
+                waitingMinutesBefore,
                 jsonArrayValues(stop.getSelectionReasonsJson()),
                 jsonArrayValues(stop.getWarningsJson())
         );
@@ -1106,6 +1733,7 @@ public class ScheduleService {
             TransitSegment segment = segmentMatch.segment();
             segmentStartIndex = segmentMatch.nextIndex();
             int segmentOrder = segment == null ? routeLine.getLineOrder() : segment.getSegmentOrder();
+            List<List<BigDecimal>> coordinates = coordinates(routeLine.getCoordinatesJson());
             response.add(new ScheduleMapResponse.RouteLine(
                     day.getDayNo(),
                     route.getRouteOrder(),
@@ -1115,13 +1743,29 @@ public class ScheduleService {
                     routeLineStartName(schedule, day, route, segment, segmentOrder),
                     routeLineEndName(schedule, day, route, segment, segmentOrder),
                     routeLine.getDurationMinutes(),
-                    routeLine.getDistanceMeters(),
+                    routeLineDistanceMeters(routeLine.getDistanceMeters(), coordinates),
                     routeLine.getInstruction(),
                     routeLine.isFallbackUsed(),
-                    coordinates(routeLine.getCoordinatesJson())
+                    coordinates
             ));
         }
         return response;
+    }
+
+    private int routeLineDistanceMeters(
+            Integer providerDistanceMeters,
+            List<List<BigDecimal>> coordinates
+    ) {
+        if (providerDistanceMeters != null && providerDistanceMeters > 0) {
+            return providerDistanceMeters;
+        }
+        double total = 0;
+        for (int index = 1; index < coordinates.size(); index++) {
+            List<BigDecimal> previous = coordinates.get(index - 1);
+            List<BigDecimal> current = coordinates.get(index);
+            total += distanceMeters(previous.get(0), previous.get(1), current.get(0), current.get(1));
+        }
+        return Math.max(0, (int) Math.round(total));
     }
 
     private SegmentMatch nextMatchingSegment(List<TransitSegment> segments, int startIndex, String mode) {
@@ -1223,16 +1867,31 @@ public class ScheduleService {
         } else {
             reasons.add("출발지와 도착지 기준 동선 점수가 높은 장소입니다.");
         }
-        answerId(request, "THEME").ifPresent(answerId -> {
-            if (placePreferenceScorer.themeScore(place, request) < 0) {
-                reasons.add(themeReason(answerId));
+        if (placePreferenceScorer.themeScore(place, request) < 0) {
+            request.selectedAnswers().stream()
+                    .filter(answer -> "THEME".equals(answer.questionId()))
+                    .map(ScheduleCreateRequest.SelectedAnswer::answerId)
+                    .map(this::themeReason)
+                    .filter(Objects::nonNull)
+                    .forEach(reasons::add);
+            if (hasAnswer(request, "PROMPT_PREFER_SEA_VIEW")) {
+                reasons.add("바다를 선호하는 추가 요청을 반영했습니다.");
             }
-        });
+            if (hasAnswer(request, "PROMPT_PREFER_FOOD")) {
+                reasons.add("음식 장소를 선호하는 추가 요청을 반영했습니다.");
+            }
+        }
+        if (hasAnswer(request, "PROMPT_LOW_WALKING")) {
+            reasons.add("도보 부담을 줄여 달라는 추가 요청을 반영했습니다.");
+        }
         if (hasAnswer(request, "COMPANION_PARENTS") || hasAnswer(request, "COMPANION_FAMILY_WITH_CHILD")) {
             reasons.add("동행 조건을 고려해 무리한 이동을 줄이는 방향으로 배치했습니다.");
         }
         if (hasAnswer(request, "TRANSIT_SIMPLE")) {
             reasons.add("환승을 줄이는 선호 조건을 반영했습니다.");
+        }
+        if (MealTimePolicy.isMealPlace(place)) {
+            reasons.add("점심 또는 저녁 식사 시간대에 이용할 수 있는 장소입니다.");
         }
         return reasons.stream()
                 .filter(reason -> reason != null && !reason.isBlank())
@@ -1245,6 +1904,9 @@ public class ScheduleService {
             case "THEME_FOOD" -> "맛집 테마와 일치하는 장소입니다.";
             case "THEME_HISTORY_CULTURE" -> "역사·문화 테마와 일치하는 장소입니다.";
             case "THEME_NATURE" -> "바다·자연 테마와 일치하는 장소입니다.";
+            case "THEME_SEA" -> "바다 테마와 일치하는 장소입니다.";
+            case "THEME_SHOPPING" -> "쇼핑 테마와 일치하는 장소입니다.";
+            case "THEME_HEALING" -> "휴식 테마와 일치하는 장소입니다.";
             case "THEME_NIGHT_VIEW" -> "야경 테마와 일치하는 장소입니다.";
             case "THEME_EVENT" -> "축제·행사 테마와 일치하는 장소입니다.";
             case "THEME_LOCAL" -> "로컬 테마와 일치하는 장소입니다.";
@@ -1304,7 +1966,20 @@ public class ScheduleService {
         if (stopNames.isBlank()) {
             return day.getStartPlaceName() + "에서 출발하는 빈 일정입니다.";
         }
+        if ("LAST_STOP".equals(day.getEndLocationSource())) {
+            return day.getStartPlaceName() + " 출발 → " + stopNames;
+        }
         return day.getStartPlaceName() + " 출발 → " + stopNames + " → " + day.getEndPlaceName() + " 도착";
+    }
+
+    private void resolvePlannerEndpoints(ScheduleDay day, List<Place> orderedPlaces) {
+        if (orderedPlaces.isEmpty()) return;
+        day.resolvePlannerEndpoints(orderedPlaces.get(0), orderedPlaces.get(orderedPlaces.size() - 1));
+    }
+
+    private boolean samePoint(TransitPoint left, TransitPoint right) {
+        return left.longitude().compareTo(right.longitude()) == 0
+                && left.latitude().compareTo(right.latitude()) == 0;
     }
 
     private String routeSummary(TransitRoute route) {
@@ -1362,6 +2037,8 @@ public class ScheduleService {
     private Map<UUID, StopTime> stopTimes(Schedule schedule, ScheduleDay day) {
         Map<UUID, StopTime> times = new HashMap<>();
         Map<UUID, TransitRoute> inboundRouteByStopId = inboundRouteByStopId(day);
+        List<MealTimePolicy.MealSlot> mealSlots = MealTimePolicy.activeSlots(day);
+        Set<MealTimePolicy.MealSlot> assignedMealSlots = EnumSet.noneOf(MealTimePolicy.MealSlot.class);
         LocalTime cursor = day.getStartTime();
         for (ScheduleStop stop : day.getStops()) {
             TransitRoute inboundRoute = inboundRouteByStopId.get(stop.getId());
@@ -1369,7 +2046,23 @@ public class ScheduleService {
                 cursor = cursor.plusMinutes(inboundRoute.getTotalMinutes());
             }
             LocalTime arriveAt = cursor;
-            LocalTime departAt = arriveAt.plusMinutes(stop.getStayMinutes());
+            LocalTime departAt;
+            if (stop.getFixedStartsAt() != null) {
+                LocalTime fixedStart = stop.getFixedStartsAt()
+                        .atZoneSameInstant(java.time.ZoneId.of("Asia/Seoul")).toLocalTime();
+                arriveAt = arriveAt.isBefore(fixedStart) ? fixedStart : arriveAt;
+                departAt = stop.getFixedEndsAt()
+                        .atZoneSameInstant(java.time.ZoneId.of("Asia/Seoul")).toLocalTime();
+                MealTimePolicy.Alignment alignment = MealTimePolicy.alignArrival(
+                        arriveAt, stop.getPlace(), mealSlots, assignedMealSlots);
+                if (alignment.slot() != null) assignedMealSlots.add(alignment.slot());
+            } else {
+                MealTimePolicy.Alignment alignment = MealTimePolicy.alignArrival(
+                        arriveAt, stop.getPlace(), mealSlots, assignedMealSlots);
+                arriveAt = alignment.arrival();
+                if (alignment.slot() != null) assignedMealSlots.add(alignment.slot());
+                departAt = arriveAt.plusMinutes(stop.getStayMinutes());
+            }
             times.put(stop.getId(), new StopTime(arriveAt, departAt));
             cursor = departAt;
         }
@@ -1409,15 +2102,29 @@ public class ScheduleService {
 
     private static final class PlannerExecutionMetrics {
 
+        private String planningMode = "RULE_BASED";
+        private Integer aiPlanConfidence;
+        private int multiDayPlanCandidateCount;
+        private int multiDayPlanRerankedCount;
+        private int routeEstimateResolutionCount;
+        private int routeEstimateCacheHitCount;
+        private int providerEstimateCallCount;
+        private int providerEstimateFailureCount;
         private int routeResolutionCount;
         private int routeCacheHitCount;
         private int providerCallCount;
         private int providerFailureCount;
     }
 
-    private enum RouteResolutionMode {
-        ESTIMATE,
-        DETAILED
+    private static final class RouteSearchContext {
+
+        private final Map<RouteKey, TransitRouteEstimate> estimates = new HashMap<>();
+        private final Map<RouteKey, TransitRouteResult> details = new HashMap<>();
+        private int providerEstimateCount;
+
+        private int providerEstimateCount() {
+            return providerEstimateCount;
+        }
     }
 
     private record RouteKey(TransitPoint origin, TransitPoint destination) {
@@ -1426,7 +2133,29 @@ public class ScheduleService {
     private record StopTime(LocalTime arriveAt, LocalTime departAt) {
     }
 
+    private record MultiDayPlanOrder(
+            MultiDayPlanOptimizer.OptimizedPlan plan,
+            List<List<Place>> orders
+    ) {
+    }
+
+    private record MultiDayPlanResult(
+            MultiDayPlanOptimizer.OptimizedPlan plan,
+            List<List<Place>> orders,
+            long actualCost
+    ) {
+    }
+
     private record SegmentMatch(TransitSegment segment, int nextIndex) {
+    }
+
+    private record PreviewPlanningOptions(
+            SchedulePreview preview,
+            List<SchedulePreviewResponse.ResolvedDay> resolvedDays,
+            List<String> planningWarnings,
+            List<SchedulePreviewCreateRequest.FixedEvent> fixedEvents,
+            String customPrompt
+    ) {
     }
 
     private List<List<BigDecimal>> coordinates(String coordinatesJson) {

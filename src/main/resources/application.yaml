@@ -37,6 +37,11 @@ external:
     api-key: ${ODSAY_API_KEY:}
     connect-timeout: 3s
     read-timeout: 10s
+    min-request-interval: ${ODSAY_MIN_REQUEST_INTERVAL:150ms}
+    cache:
+      path-ttl: ${ODSAY_ROUTE_CACHE_TTL:30m}
+      detail-ttl: ${ODSAY_ROUTE_DETAIL_CACHE_TTL:5m}
+      max-entries: ${ODSAY_ROUTE_CACHE_MAX_ENTRIES:2048}
   busan-bims:
     enabled: ${BUSAN_BIMS_ENABLED:false}
     base-url: ${BUSAN_BIMS_BASE_URL:https://apis.data.go.kr/6260000/BusanBIMS}
@@ -52,6 +57,18 @@ external:
       enabled: ${TMAP_WALKING_ENABLED:false}
 
 app:
+  schedule-planner:
+    actual-route-rerank-enabled: ${SCHEDULE_ACTUAL_ROUTE_RERANK_ENABLED:true}
+    actual-route-rerank-candidates: ${SCHEDULE_ACTUAL_ROUTE_RERANK_CANDIDATES:3}
+    multi-day-actual-rerank-candidates: ${SCHEDULE_MULTI_DAY_ACTUAL_RERANK_CANDIDATES:3}
+    max-route-estimate-provider-calls: ${SCHEDULE_MAX_ROUTE_ESTIMATE_PROVIDER_CALLS:30}
+  ai-planner:
+    enabled: ${AI_PLANNER_ENABLED:false}
+    base-url: ${OPENAI_BASE_URL:https://api.openai.com}
+    api-key: ${OPENAI_API_KEY:}
+    model: ${AI_PLANNER_MODEL:gpt-5.6-luna}
+    connect-timeout: 3s
+    read-timeout: 8s
   place-ingestion:
     tour-api:
       enabled: ${TOUR_API_PLACE_INGESTION_ENABLED:false}

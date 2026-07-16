@@ -8,6 +8,9 @@ import static org.mockito.Mockito.when;
 
 import com.server.common.error.BusinessException;
 import com.server.common.error.ErrorCode;
+import com.server.external.metrics.ExternalCallMetricsCollector;
+import com.server.external.openai.AiScheduleProposalClient;
+import com.server.external.openai.OpenAiPlanningProperties;
 import com.server.place.domain.Place;
 import com.server.place.repository.PlaceRepository;
 import com.server.schedule.domain.Schedule;
@@ -20,8 +23,19 @@ import com.server.schedule.dto.ScheduleCreateRequest;
 import com.server.schedule.dto.ScheduleMapResponse;
 import com.server.schedule.dto.ScheduleResponse;
 import com.server.schedule.dto.ScheduleUpdateRequest;
+import com.server.schedule.evaluation.ScheduleHardGateEvaluator;
 import com.server.schedule.evaluation.ScheduleScoreEvaluator;
 import com.server.schedule.evaluation.ScheduleScoreResult;
+import com.server.schedule.planner.AiSchedulePlanGenerator;
+import com.server.schedule.planner.DayPlaceAllocator;
+import com.server.schedule.planner.DayRouteOptimizer;
+import com.server.schedule.planner.FixedEventPlanner;
+import com.server.schedule.planner.MultiDayPlanOptimizer;
+import com.server.schedule.planner.PlaceCandidateProvider;
+import com.server.schedule.planner.PlacePreferenceScorer;
+import com.server.schedule.planner.PlannerRouteEstimator;
+import com.server.schedule.planner.ScheduleFeasibilityChecker;
+import com.server.schedule.planner.SchedulePlannerProperties;
 import com.server.schedule.repository.ScheduleRepository;
 import com.server.transit.service.TransitPoint;
 import com.server.transit.service.TransitRouteEstimate;
@@ -34,6 +48,7 @@ import java.time.LocalTime;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -50,11 +65,7 @@ class ScheduleServiceTest {
             TransitRouteProvider.class,
             Mockito.CALLS_REAL_METHODS
     );
-    private final ScheduleService scheduleService = new ScheduleService(
-            scheduleRepository,
-            placeRepository,
-            transitRouteProvider
-    );
+    private final ScheduleService scheduleService = service(disabledAiGenerator());
 
     @Test
     @DisplayName("필수 방문 장소와 대중교통 경로를 포함한 일정을 생성한다")
@@ -78,7 +89,11 @@ class ScheduleServiceTest {
         assertThat(response.days().get(0).stops().get(0).place().id()).isEqualTo(101L);
         assertThat(response.days().get(0).stops().get(0).arriveAt()).isEqualTo(LocalTime.parse("09:25"));
         assertThat(response.days().get(0).stops().get(0).departAt()).isEqualTo(LocalTime.parse("10:25"));
-        assertThat(response.days().get(0).stops().get(0).selectionReasons())
+        ScheduleResponse.Stop mustVisitStop = response.days().get(0).stops().stream()
+                .filter(stop -> stop.place().id().equals(101L))
+                .findFirst()
+                .orElseThrow();
+        assertThat(mustVisitStop.selectionReasons())
                 .contains("사용자가 반드시 방문할 장소로 선택했습니다.");
         assertThat(response.days().get(0).stops().get(0).inboundTransit().totalMinutes()).isEqualTo(25);
         assertThat(response.days().get(0).stops().get(0).inboundTransit().routeType()).isEqualTo("INBOUND");
@@ -91,7 +106,7 @@ class ScheduleServiceTest {
         assertThat(response.evaluation().hardGate().passed()).isTrue();
         assertThat(response.evaluation().hardGate().violations()).isEmpty();
         assertThat(response.evaluation().qualityScore().maxScore()).isEqualTo(100);
-        assertThat(response.evaluation().operations().providerCallCount()).isEqualTo(4);
+        assertThat(response.evaluation().operations().providerCallCount()).isZero();
         assertThat(response.evaluation().operations().providerFailureCount()).isZero();
         assertThat(response.evaluation().operations().routeCount()).isEqualTo(4);
         verify(transitRouteProvider, Mockito.times(4))
@@ -105,7 +120,7 @@ class ScheduleServiceTest {
     }
 
     @Test
-    @DisplayName("일차 내 모든 방문 순서를 비교하고 경로 쌍은 요청당 한 번만 조회한다")
+    @DisplayName("좌표 기준 상위 순서를 실제 경로로 재평가한다")
     void createOptimizesVisitOrderWithRouteCache() {
         Place placeA = place(101L, "A", "129.0800", "35.1500");
         Place placeB = place(102L, "B", "129.1200", "35.1800");
@@ -119,11 +134,15 @@ class ScheduleServiceTest {
                 "A>부산역", 10,
                 "B>부산역", 50
         );
-        when(transitRouteProvider.findRoute(Mockito.any(), Mockito.any())).thenAnswer(invocation -> {
+        Mockito.doAnswer(invocation -> {
             TransitPoint origin = invocation.getArgument(0);
             TransitPoint destination = invocation.getArgument(1);
-            return route(routeMinutes.get(origin.name() + ">" + destination.name()));
-        });
+            return TransitRouteEstimate.estimated(
+                    route(routeMinutes.get(origin.name() + ">" + destination.name())),
+                    new TransitRouteEstimate.DetailContext() { });
+        }).when(transitRouteProvider).findRouteEstimate(Mockito.any(), Mockito.any());
+        Mockito.doAnswer(invocation -> ((TransitRouteEstimate) invocation.getArgument(2)).route())
+                .when(transitRouteProvider).findRouteDetail(Mockito.any(), Mockito.any(), Mockito.any());
         when(scheduleRepository.save(Mockito.any(Schedule.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
 
@@ -133,37 +152,144 @@ class ScheduleServiceTest {
                 .extracting(stop -> stop.place().name())
                 .containsExactly("B", "A");
         assertThat(response.days().get(0).finalTransit().totalMinutes()).isEqualTo(10);
-        assertThat(response.evaluation().operations().routeResolutionCount()).isEqualTo(6);
+        assertThat(response.evaluation().operations().providerEstimateCallCount()).isEqualTo(6);
+        assertThat(response.evaluation().operations().routeResolutionCount()).isEqualTo(3);
         assertThat(response.evaluation().operations().routeCacheHitCount()).isZero();
-        assertThat(response.evaluation().operations().providerCallCount()).isEqualTo(6);
-        verify(transitRouteProvider, Mockito.times(6)).findRoute(Mockito.any(), Mockito.any());
+        assertThat(response.evaluation().operations().providerCallCount()).isEqualTo(3);
+        verify(transitRouteProvider, Mockito.times(6)).findRouteEstimate(Mockito.any(), Mockito.any());
+        verify(transitRouteProvider, Mockito.times(3))
+                .findRouteDetail(Mockito.any(), Mockito.any(), Mockito.any());
+        verify(transitRouteProvider, never()).findRoute(Mockito.any(), Mockito.any());
     }
 
     @Test
-    @DisplayName("방문 순서 비교는 경량 경로를 사용하고 선택된 경로만 상세화한다")
+    @DisplayName("상위 순서는 경량 경로로 비교하고 선택된 구간만 상세 조회한다")
     void createUsesEstimateDuringOptimizationAndDetailsSelectedRoutes() {
         Place firstPlace = place(101L, "A", "129.0800", "35.1500");
         Place secondPlace = place(102L, "B", "129.1200", "35.1800");
-        TransitRouteEstimate.DetailContext detailContext = new TransitRouteEstimate.DetailContext() {
-        };
-        TransitRouteEstimate estimate = TransitRouteEstimate.estimated(estimateRoute(25), detailContext);
         when(placeRepository.findAllById(List.of(101L, 102L))).thenReturn(List.of(firstPlace, secondPlace));
-        Mockito.doReturn(estimate)
-                .when(transitRouteProvider)
-                .findRouteEstimate(Mockito.any(), Mockito.any());
-        when(transitRouteProvider.findRoute(Mockito.any(), Mockito.any()))
-                .thenReturn(route());
+        Mockito.doReturn(TransitRouteEstimate.estimated(
+                        route(), new TransitRouteEstimate.DetailContext() { }))
+                .when(transitRouteProvider).findRouteEstimate(Mockito.any(), Mockito.any());
+        Mockito.doAnswer(invocation -> ((TransitRouteEstimate) invocation.getArgument(2)).route())
+                .when(transitRouteProvider).findRouteDetail(Mockito.any(), Mockito.any(), Mockito.any());
         when(scheduleRepository.save(Mockito.any(Schedule.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
 
         ScheduleResponse response = scheduleService.create(oneDayRequest(List.of(101L, 102L)));
 
         assertThat(response.days().get(0).stops()).hasSize(2);
-        assertThat(response.evaluation().operations().routeResolutionCount()).isEqualTo(9);
+        assertThat(response.evaluation().operations().providerEstimateCallCount()).isEqualTo(6);
+        assertThat(response.evaluation().operations().routeResolutionCount()).isEqualTo(3);
         verify(transitRouteProvider, Mockito.times(6)).findRouteEstimate(Mockito.any(), Mockito.any());
         verify(transitRouteProvider, Mockito.times(3))
-                .findRouteDetail(Mockito.any(), Mockito.any(), Mockito.same(estimate));
-        verify(transitRouteProvider, Mockito.times(3)).findRoute(Mockito.any(), Mockito.any());
+                .findRouteDetail(Mockito.any(), Mockito.any(), Mockito.any());
+        verify(transitRouteProvider, never()).findRoute(Mockito.any(), Mockito.any());
+    }
+
+    @Test
+    @DisplayName("AI가 선택한 일차별 장소 구성을 실제 일정에 반영한다")
+    void createUsesAiGeneratedPlaceAssignment() {
+        Place deterministicFirst = place(101L, "규칙 후보", "129.0600", "35.1300");
+        Place aiSelected = place(102L, "AI 선택 후보", "129.1700", "35.1800");
+        when(placeRepository.findAll()).thenReturn(List.of(deterministicFirst, aiSelected));
+        when(transitRouteProvider.findRoute(Mockito.any(), Mockito.any())).thenReturn(route(10));
+        when(scheduleRepository.save(Mockito.any(Schedule.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+        AiScheduleProposalClient client = proposalRequest -> {
+            long selectedId = proposalRequest.candidates().stream()
+                    .filter(candidate -> "AI 선택 후보".equals(candidate.name()))
+                    .findFirst()
+                    .orElseThrow()
+                    .placeId();
+            return new AiScheduleProposalClient.Proposal(
+                    List.of(new AiScheduleProposalClient.DayProposal(1, List.of(selectedId))),
+                    96,
+                    "사용자 선호에 맞는 장소 선택"
+            );
+        };
+        AiSchedulePlanGenerator generator = new AiSchedulePlanGenerator(
+                client,
+                new OpenAiPlanningProperties(
+                        true, "http://localhost", "test-key", "test-model", null, null)
+        );
+        ScheduleService aiScheduleService = service(generator);
+
+        ScheduleResponse response = aiScheduleService.create(twoHourRequest(
+                List.of(new ScheduleCreateRequest.SelectedAnswer("PACE", "PACE_RELAXED")),
+                List.of()
+        ));
+
+        assertThat(response.days().get(0).stops())
+                .extracting(stop -> stop.place().id())
+                .containsExactly(102L);
+        assertThat(response.evaluation().operations().planningMode()).isEqualTo("AI_GENERATED");
+        assertThat(response.evaluation().operations().aiPlanConfidence()).isEqualTo(96);
+        assertThat(response.evaluation().hardGate().passed()).isTrue();
+    }
+
+    @Test
+    @DisplayName("다일 장소 배치안을 실제 경로로 재평가해 날짜 배정을 변경한다")
+    void createReranksMultiDayAssignmentsWithActualRoutes() {
+        Place westA = place(101L, "A", "129.0300", "35.1000");
+        Place westB = place(102L, "B", "129.0400", "35.1100");
+        Place eastC = place(103L, "C", "129.1700", "35.1600");
+        when(placeRepository.findAllById(List.of(101L, 102L, 103L)))
+                .thenReturn(List.of(westA, westB, eastC));
+        Mockito.doAnswer(invocation -> {
+            TransitPoint origin = invocation.getArgument(0);
+            TransitPoint destination = invocation.getArgument(1);
+            int minutes = preferredMultiDayRoute(origin.name(), destination.name()) ? 5 : 80;
+            return TransitRouteEstimate.estimated(
+                    route(minutes), new TransitRouteEstimate.DetailContext() { });
+        }).when(transitRouteProvider).findRouteEstimate(Mockito.any(), Mockito.any());
+        Mockito.doAnswer(invocation -> ((TransitRouteEstimate) invocation.getArgument(2)).route())
+                .when(transitRouteProvider).findRouteDetail(Mockito.any(), Mockito.any(), Mockito.any());
+        Mockito.doAnswer(invocation -> {
+            TransitPoint origin = invocation.getArgument(0);
+            TransitPoint destination = invocation.getArgument(1);
+            return route(preferredMultiDayRoute(origin.name(), destination.name()) ? 5 : 80);
+        }).when(transitRouteProvider).findRoute(Mockito.any(), Mockito.any());
+        when(scheduleRepository.save(Mockito.any(Schedule.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        ScheduleCreateRequest request = new ScheduleCreateRequest(
+                LocalDate.parse("2026-07-20"),
+                LocalDate.parse("2026-07-21"),
+                LocalTime.parse("09:00"),
+                LocalTime.parse("13:00"),
+                location("서부 출발", "128.9900", "35.1000"),
+                location("동부 도착", "129.2100", "35.1650"),
+                List.of(new ScheduleCreateRequest.SelectedAnswer("COMPANION", "COMPANION_FRIENDS")),
+                List.of(101L, 102L, 103L),
+                List.of(
+                        dayCondition(1, "09:00", "13:00",
+                                location("서부 출발", "128.9900", "35.1000"),
+                                location("서부 도착", "128.9950", "35.1100")),
+                        dayCondition(2, "09:00", "11:00",
+                                location("동부 출발", "129.2050", "35.1550"),
+                                location("동부 도착", "129.2100", "35.1650"))
+                )
+        );
+
+        ScheduleResponse response = scheduleService.create(request);
+
+        assertThat(response.days().get(0).stops())
+                .extracting(stop -> stop.place().name())
+                .containsExactlyInAnyOrder("B", "C");
+        assertThat(response.days().get(1).stops())
+                .extracting(stop -> stop.place().name())
+                .containsExactly("A");
+        assertThat(response.evaluation().operations().multiDayPlanCandidateCount()).isEqualTo(3);
+        assertThat(response.evaluation().operations().multiDayPlanRerankedCount()).isEqualTo(3);
+        assertThat(response.evaluation().operations().providerEstimateCallCount()).isLessThanOrEqualTo(30);
+    }
+
+    private boolean preferredMultiDayRoute(String origin, String destination) {
+        return ("서부 출발".equals(origin) && Set.of("B", "C").contains(destination))
+                || (Set.of("B", "C").contains(origin) && Set.of("B", "C", "서부 도착").contains(destination))
+                || ("동부 출발".equals(origin) && "A".equals(destination))
+                || ("A".equals(origin) && "동부 도착".equals(destination));
     }
 
     @Test
@@ -225,11 +351,23 @@ class ScheduleServiceTest {
         assertThat(response.days().get(0).stops()).hasSize(3);
         assertThat(response.days().get(0).stops())
                 .extracting(stop -> stop.place().id())
-                .containsExactly(101L, 102L, 103L);
-        assertThat(response.days().get(0).stops().get(0).selectionReasons())
+                .containsExactlyInAnyOrder(101L, 102L, 103L);
+        ScheduleResponse.Stop mustVisitStop = response.days().get(0).stops().stream()
+                .filter(stop -> stop.place().id().equals(101L))
+                .findFirst()
+                .orElseThrow();
+        assertThat(mustVisitStop.selectionReasons())
                 .contains("사용자가 반드시 방문할 장소로 선택했습니다.");
-        assertThat(response.days().get(0).stops().get(1).selectionReasons())
-                .contains("출발지와 도착지 기준 동선 점수가 높은 장소입니다.");
+        ScheduleResponse.Stop mealStop = response.days().get(0).stops().stream()
+                .filter(stop -> stop.place().id().equals(103L))
+                .findFirst()
+                .orElseThrow();
+        assertThat(mealStop.selectionReasons())
+                .contains(
+                        "출발지와 도착지 기준 동선 점수가 높은 장소입니다.",
+                        "점심 또는 저녁 식사 시간대에 이용할 수 있는 장소입니다.");
+        assertThat(mealStop.arriveAt())
+                .isBetween(LocalTime.parse("11:00"), LocalTime.parse("14:00"));
     }
 
     @Test
@@ -369,7 +507,7 @@ class ScheduleServiceTest {
     }
 
     @Test
-    @DisplayName("저부담 후보가 최소 밀도보다 적으면 부담 후보를 복원해 빈 날짜를 방지한다")
+    @DisplayName("저도보 조건에서는 장소 수보다 부담 장소 제외를 우선한다")
     void createAutoDistributesPartialCandidatesAcrossDays() {
         Place nampoPlace = place(2L, "광복로패션거리", "12", "129.0327", "35.1000");
         Place gamcheonPlace = place(3L, "감천문화마을", "12", "129.0107", "35.0975");
@@ -386,11 +524,11 @@ class ScheduleServiceTest {
         assertThat(response.days()).hasSize(3);
         assertThat(response.days())
                 .extracting(day -> day.stops().size())
-                .containsExactly(2, 1, 1);
+                .containsExactly(1, 1, 1);
         assertThat(response.days())
                 .flatExtracting(ScheduleResponse.Day::stops)
                 .extracting(stop -> stop.place().id())
-                .contains(3L);
+                .doesNotContain(3L);
     }
 
     @Test
@@ -412,6 +550,73 @@ class ScheduleServiceTest {
         assertThat(response.days().get(0).stops())
                 .extracting(stop -> stop.place().id())
                 .containsExactly(3L);
+    }
+
+    @Test
+    @DisplayName("종일 일정은 음식점 후보를 점심과 저녁 시간대에 배치한다")
+    void createPlacesMealRecommendationsAtLunchAndDinner() {
+        Place attraction = place(61L, "송도구름산책로", "12", "129.0176", "35.0763");
+        Place lunchPlace = place(62L, "남포 로컬 식당", "39", "129.0327", "35.1000");
+        Place dinnerPlace = place(63L, "광안리 저녁 맛집", "39", "129.1187", "35.1532");
+        Place alternative = place(64L, "부산근현대역사관", "14", "129.0370", "35.1030");
+        Place secondAttraction = place(65L, "태종대유원지", "12", "129.0870", "35.0530");
+        when(placeRepository.findAll()).thenReturn(List.of(
+                alternative, dinnerPlace, attraction, lunchPlace, secondAttraction));
+        when(transitRouteProvider.findRoute(Mockito.any(TransitPoint.class), Mockito.any(TransitPoint.class)))
+                .thenReturn(route());
+        when(scheduleRepository.save(Mockito.any(Schedule.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        ScheduleResponse response = scheduleService.create(packedOneDayRequest());
+        List<ScheduleResponse.Stop> mealStops = response.days().get(0).stops().stream()
+                .filter(stop -> stop.place().name().contains("식당") || stop.place().name().contains("맛집"))
+                .toList();
+
+        assertThat(response.days().get(0).stops()).hasSize(5);
+        assertThat(mealStops).hasSize(2);
+        assertThat(response.days().get(0).stops()).filteredOn(stop -> stop.mealTimeSlot() == null)
+                .hasSize(3);
+        assertThat(mealStops.get(0).arriveAt())
+                .isBetween(LocalTime.parse("11:00"), LocalTime.parse("14:00"));
+        assertThat(mealStops.get(1).arriveAt())
+                .isBetween(LocalTime.parse("17:00"), LocalTime.parse("19:00"));
+        assertThat(mealStops).extracting(ScheduleResponse.Stop::mealTimeSlot)
+                .containsExactly("LUNCH", "DINNER");
+        assertThat(mealStops).extracting(ScheduleResponse.Stop::waitingMinutesBefore)
+                .allMatch(minutes -> minutes >= 0);
+        assertThat(mealStops)
+                .allSatisfy(stop -> assertThat(stop.selectionReasons())
+                        .contains("점심 또는 저녁 식사 시간대에 이용할 수 있는 장소입니다."));
+        assertThat(response.evaluation().hardGate().passed()).isTrue();
+        assertThat(response.evaluation().qualityScore().unusedMinutes())
+                .isGreaterThanOrEqualTo(mealStops.stream()
+                        .mapToInt(ScheduleResponse.Stop::waitingMinutesBefore)
+                        .sum());
+    }
+
+    @Test
+    @DisplayName("실제 경로가 길면 필수 조건을 유지하면서 선택 방문지를 줄여 일정을 완성한다")
+    void createReducesOptionalStopsWhenDetailedRoutesDoNotFit() {
+        Place attraction = place(71L, "송도구름산책로", "12", "129.0176", "35.0763");
+        Place lunchPlace = place(72L, "남포 로컬 식당", "39", "129.0327", "35.1000");
+        Place dinnerPlace = place(73L, "광안리 저녁 맛집", "39", "129.1187", "35.1532");
+        Place museum = place(74L, "부산근현대역사관", "14", "129.0370", "35.1030");
+        Place park = place(75L, "태종대유원지", "12", "129.0870", "35.0530");
+        when(placeRepository.findAll()).thenReturn(List.of(
+                museum, dinnerPlace, attraction, lunchPlace, park));
+        when(transitRouteProvider.findRoute(Mockito.any(), Mockito.any()))
+                .thenReturn(route(150));
+        when(scheduleRepository.save(Mockito.any(Schedule.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        ScheduleResponse response = scheduleService.create(oneDayRequest(null));
+
+        assertThat(response.days().get(0).stops())
+                .isNotEmpty()
+                .hasSizeLessThan(5);
+        assertThat(response.evaluation().hardGate().passed()).isTrue();
+        assertThat(response.evaluation().qualityScore().unusedMinutes()).isGreaterThanOrEqualTo(0);
+        verify(scheduleRepository).save(Mockito.any(Schedule.class));
     }
 
     @Test
@@ -757,8 +962,8 @@ class ScheduleServiceTest {
     }
 
     @Test
-    @DisplayName("일정 수정에서 하루 3곳을 초과하면 거부한다")
-    void updateRejectsMoreThanThreeStopsPerDay() {
+    @DisplayName("일정 수정에서 하루 5곳을 초과하면 거부한다")
+    void updateRejectsMoreThanFiveStopsPerDay() {
         UUID scheduleId = UUID.randomUUID();
         Schedule schedule = schedule();
         new ScheduleDay(schedule, 1, LocalDate.parse("2026-06-23"));
@@ -767,7 +972,9 @@ class ScheduleServiceTest {
                 new ScheduleUpdateRequest.Stop(null, 1L, 1, 1, 60),
                 new ScheduleUpdateRequest.Stop(null, 2L, 1, 2, 60),
                 new ScheduleUpdateRequest.Stop(null, 3L, 1, 3, 60),
-                new ScheduleUpdateRequest.Stop(null, 4L, 1, 4, 60)
+                new ScheduleUpdateRequest.Stop(null, 4L, 1, 4, 60),
+                new ScheduleUpdateRequest.Stop(null, 5L, 1, 5, 60),
+                new ScheduleUpdateRequest.Stop(null, 6L, 1, 6, 60)
         ));
 
         assertThatThrownBy(() -> scheduleService.update(scheduleId, request))
@@ -776,6 +983,38 @@ class ScheduleServiceTest {
                 .isEqualTo(ErrorCode.INVALID_SCHEDULE_CONDITION);
         verify(placeRepository, never()).findAllById(Mockito.any());
         verify(transitRouteProvider, never()).findRoute(Mockito.any(), Mockito.any());
+    }
+
+    private ScheduleService service(AiSchedulePlanGenerator aiSchedulePlanGenerator) {
+        PlacePreferenceScorer preferenceScorer = new PlacePreferenceScorer();
+        return new ScheduleService(
+                scheduleRepository,
+                placeRepository,
+                transitRouteProvider,
+                new ScheduleRequestValidator(),
+                new DayRouteOptimizer(),
+                new SchedulePersistenceService(scheduleRepository),
+                new ScheduleHardGateEvaluator(),
+                new ScheduleScoreEvaluator(),
+                new MultiDayPlanOptimizer(new DayPlaceAllocator(), preferenceScorer),
+                new ScheduleFeasibilityChecker(),
+                preferenceScorer,
+                new PlaceCandidateProvider(placeRepository, preferenceScorer),
+                new ExternalCallMetricsCollector(),
+                new FixedEventPlanner(),
+                new PlannerRouteEstimator(),
+                SchedulePlannerProperties.defaults(),
+                aiSchedulePlanGenerator
+        );
+    }
+
+    private AiSchedulePlanGenerator disabledAiGenerator() {
+        return new AiSchedulePlanGenerator(
+                request -> {
+                    throw new AssertionError("비활성 AI 클라이언트는 호출되면 안 됩니다.");
+                },
+                new OpenAiPlanningProperties(false, null, "", null, null, null)
+        );
     }
 
     private ScheduleCreateRequest request(List<Long> mustVisitPlaceIds) {
@@ -801,6 +1040,22 @@ class ScheduleServiceTest {
                 new ScheduleCreateRequest.Location("부산역", new BigDecimal("129.0403"), new BigDecimal("35.1151")),
                 List.of(new ScheduleCreateRequest.SelectedAnswer("COMPANION", "COMPANION_PARENTS")),
                 mustVisitPlaceIds
+        );
+    }
+
+    private ScheduleCreateRequest packedOneDayRequest() {
+        return new ScheduleCreateRequest(
+                LocalDate.parse("2026-06-23"),
+                LocalDate.parse("2026-06-23"),
+                LocalTime.parse("09:00"),
+                LocalTime.parse("19:00"),
+                new ScheduleCreateRequest.Location("부산역", new BigDecimal("129.0403"), new BigDecimal("35.1151")),
+                new ScheduleCreateRequest.Location("부산역", new BigDecimal("129.0403"), new BigDecimal("35.1151")),
+                List.of(
+                        new ScheduleCreateRequest.SelectedAnswer("COMPANION", "COMPANION_PARENTS"),
+                        new ScheduleCreateRequest.SelectedAnswer("PACE", "PACE_PACKED")
+                ),
+                List.of()
         );
     }
 
@@ -917,13 +1172,4 @@ class ScheduleServiceTest {
         );
     }
 
-    private TransitRouteResult estimateRoute(int totalMinutes) {
-        return new TransitRouteResult(
-                totalMinutes,
-                1550,
-                List.of(new TransitRouteResult.Segment("BUS", "26", "부산역", "남부민2동")),
-                List.of(),
-                "{\"provider\":\"ESTIMATE\"}"
-        );
-    }
 }

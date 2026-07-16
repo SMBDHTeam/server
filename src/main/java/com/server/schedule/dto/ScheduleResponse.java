@@ -12,11 +12,13 @@ public record ScheduleResponse(
         String status,
         LocalDate startDate,
         LocalDate endDate,
-        LocalTime dailyStartTime,
-        LocalTime dailyEndTime,
+        @JsonInclude(JsonInclude.Include.NON_NULL) LocalTime dailyStartTime,
+        @JsonInclude(JsonInclude.Include.NON_NULL) LocalTime dailyEndTime,
         String styleSummary,
         List<Day> days,
-        @JsonInclude(JsonInclude.Include.NON_NULL) ScheduleEvaluationReport evaluation
+        @JsonInclude(JsonInclude.Include.NON_NULL) ScheduleEvaluationReport evaluation,
+        @JsonInclude(JsonInclude.Include.NON_NULL) UUID previewId,
+        @JsonInclude(JsonInclude.Include.NON_NULL) PlanningAssumptions planningAssumptions
 ) {
     public ScheduleResponse(
             UUID id,
@@ -26,7 +28,7 @@ public record ScheduleResponse(
             String styleSummary,
             List<Day> days
     ) {
-        this(id, status, startDate, endDate, null, null, styleSummary, days, null);
+        this(id, status, startDate, endDate, null, null, styleSummary, days, null, null, null);
     }
 
     public ScheduleResponse(
@@ -39,8 +41,30 @@ public record ScheduleResponse(
             String styleSummary,
             List<Day> days
     ) {
-        this(id, status, startDate, endDate, dailyStartTime, dailyEndTime, styleSummary, days, null);
+        this(id, status, startDate, endDate, dailyStartTime, dailyEndTime, styleSummary, days, null, null, null);
     }
+
+    public ScheduleResponse(
+            UUID id,
+            String status,
+            LocalDate startDate,
+            LocalDate endDate,
+            LocalTime dailyStartTime,
+            LocalTime dailyEndTime,
+            String styleSummary,
+            List<Day> days,
+            ScheduleEvaluationReport evaluation
+    ) {
+        this(id, status, startDate, endDate, dailyStartTime, dailyEndTime, styleSummary, days,
+                evaluation, null, null);
+    }
+
+    public record PlanningAssumptions(
+            String timeZone,
+            String lodgingMode,
+            String routeCoverage,
+            List<String> warnings
+    ) { }
 
     public record Day(
             int dayNo,
@@ -49,6 +73,8 @@ public record ScheduleResponse(
             LocalTime endTime,
             DayLocation startLocation,
             DayLocation endLocation,
+            String startLocationSource,
+            String endLocationSource,
             String summary,
             List<Stop> stops,
             Transit finalTransit
@@ -58,11 +84,27 @@ public record ScheduleResponse(
                 LocalDate date,
                 LocalTime startTime,
                 LocalTime endTime,
+                DayLocation startLocation,
+                DayLocation endLocation,
                 String summary,
                 List<Stop> stops,
                 Transit finalTransit
         ) {
-            this(dayNo, date, startTime, endTime, null, null, summary, stops, finalTransit);
+            this(dayNo, date, startTime, endTime, startLocation, endLocation,
+                    null, null, summary, stops, finalTransit);
+        }
+
+        public Day(
+                int dayNo,
+                LocalDate date,
+                LocalTime startTime,
+                LocalTime endTime,
+                String summary,
+                List<Stop> stops,
+                Transit finalTransit
+        ) {
+            this(dayNo, date, startTime, endTime, null, null,
+                    null, null, summary, stops, finalTransit);
         }
 
         public Day(
@@ -71,7 +113,8 @@ public record ScheduleResponse(
                 List<Stop> stops,
                 Transit finalTransit
         ) {
-            this(dayNo, date, null, null, null, null, null, stops, finalTransit);
+            this(dayNo, date, null, null, null, null,
+                    null, null, null, stops, finalTransit);
         }
     }
 
@@ -90,9 +133,26 @@ public record ScheduleResponse(
             int stayMinutes,
             Place place,
             Transit inboundTransit,
+            String mealTimeSlot,
+            int waitingMinutesBefore,
             List<String> selectionReasons,
             List<String> warnings
     ) {
+        public Stop(
+                UUID id,
+                int order,
+                LocalTime arriveAt,
+                LocalTime departAt,
+                int stayMinutes,
+                Place place,
+                Transit inboundTransit,
+                List<String> selectionReasons,
+                List<String> warnings
+        ) {
+            this(id, order, arriveAt, departAt, stayMinutes, place, inboundTransit,
+                    null, 0, selectionReasons, warnings);
+        }
+
         public Stop(
                 UUID id,
                 int order,
@@ -100,7 +160,8 @@ public record ScheduleResponse(
                 Place place,
                 Transit inboundTransit
         ) {
-            this(id, order, null, null, stayMinutes, place, inboundTransit, List.of(), List.of());
+            this(id, order, null, null, stayMinutes, place, inboundTransit,
+                    null, 0, List.of(), List.of());
         }
     }
 
@@ -108,6 +169,7 @@ public record ScheduleResponse(
             Long id,
             String name,
             String category,
+            String categoryLabel,
             String address,
             BigDecimal longitude,
             BigDecimal latitude,
@@ -117,10 +179,25 @@ public record ScheduleResponse(
         public Place(
                 Long id,
                 String name,
+                String category,
+                String address,
+                BigDecimal longitude,
+                BigDecimal latitude,
+                String primaryImageUrl,
+                OperatingInfo operatingInfo
+        ) {
+            this(id, name, category,
+                    com.server.place.support.PlaceCategoryLabelResolver.resolve(category, null),
+                    address, longitude, latitude, primaryImageUrl, operatingInfo);
+        }
+
+        public Place(
+                Long id,
+                String name,
                 BigDecimal longitude,
                 BigDecimal latitude
         ) {
-            this(id, name, null, null, longitude, latitude, null, null);
+            this(id, name, null, "관광지", null, longitude, latitude, null, null);
         }
     }
 
