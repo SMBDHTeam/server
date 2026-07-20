@@ -90,9 +90,6 @@ jobs:
           ODSAY_API_KEY: ${{ secrets.ODSAY_API_KEY }}
           BUSAN_BIMS_API_KEY: ${{ secrets.BUSAN_BIMS_API_KEY }}
           SKT_API_KEY: ${{ secrets.SKT_API_KEY }}
-
-          # 브라우저 API 호출 허용 Origin. 미설정 시 애플리케이션 기본값을 사용한다.
-          CORS_ALLOWED_ORIGINS: ${{ vars.CORS_ALLOWED_ORIGINS }}
         run: |
           # SSH private key를 GitHub Actions runner 안에 임시 파일로 저장한다.
           mkdir -p ~/.ssh
@@ -122,9 +119,6 @@ jobs:
             printf 'BUSAN_BIMS_API_KEY=%s\n' "$BUSAN_BIMS_API_KEY"
             printf 'TMAP_WALKING_ENABLED=true\n'
             printf 'SKT_API_KEY=%s\n' "$SKT_API_KEY"
-            if [ -n "$CORS_ALLOWED_ORIGINS" ]; then
-              printf 'CORS_ALLOWED_ORIGINS=%s\n' "$CORS_ALLOWED_ORIGINS"
-            fi
           } > .env.dev
 
           chmod 600 .env.dev
