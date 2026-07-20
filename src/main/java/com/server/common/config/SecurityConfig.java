@@ -31,7 +31,9 @@ public class SecurityConfig {
                 "http://localhost:3000",
                 "http://127.0.0.1:3000",
                 "http://localhost:8080",
-                "http://127.0.0.1:8080"
+                "http://127.0.0.1:8080",
+                "https://busantour.site",
+                "https://www.busantour.site"
         ));
         configuration.setAllowedMethods(java.util.List.of("GET", "POST", "PATCH", "DELETE", "OPTIONS"));
         configuration.setAllowedHeaders(java.util.List.of("Content-Type", "X-Trace-Id", "Idempotency-Key"));
