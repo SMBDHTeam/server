@@ -36,6 +36,12 @@ import com.server.schedule.planner.PlacePreferenceScorer;
 import com.server.schedule.planner.PlannerRouteEstimator;
 import com.server.schedule.planner.ScheduleFeasibilityChecker;
 import com.server.schedule.planner.SchedulePlannerProperties;
+import com.server.schedule.planner.ScheduleRepairEngine;
+import com.server.schedule.planner.RouteReorderRepair;
+import com.server.schedule.planner.StayDurationRepair;
+import com.server.schedule.planner.NearbyReplacementRepair;
+import com.server.schedule.planner.CrossDayMoveRepair;
+import com.server.schedule.planner.LowUtilityRemovalRepair;
 import com.server.schedule.repository.ScheduleRepository;
 import com.server.transit.service.TransitPoint;
 import com.server.transit.service.TransitRouteEstimate;
@@ -1032,7 +1038,13 @@ class ScheduleServiceTest {
                 new FixedEventPlanner(),
                 new PlannerRouteEstimator(),
                 SchedulePlannerProperties.defaults(),
-                aiSchedulePlanGenerator
+                aiSchedulePlanGenerator,
+                new ScheduleRepairEngine(
+                        new RouteReorderRepair(),
+                        new StayDurationRepair(),
+                        new NearbyReplacementRepair(),
+                        new CrossDayMoveRepair(),
+                        new LowUtilityRemovalRepair())
         );
     }
 
