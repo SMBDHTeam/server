@@ -97,6 +97,39 @@ class MultiDayPlanOptimizerTest {
     }
 
     @Test
+    void addsNearbyOptionalStopWhenTheDayWouldOtherwiseHaveALargeActivityGap() {
+        ScheduleDay day = days().get(0);
+        List<Place> candidates = List.of(
+                place(1L, "부산역 광장", "129.0410", "35.1155"),
+                place(2L, "남포 산책로", "129.0300", "35.1030"),
+                place(3L, "용두산 전망", "129.0330", "35.1005"),
+                place(4L, "근처 공원", "129.0360", "35.1060")
+        );
+        PlaceCountPolicy relaxed = DailyScheduleTargetPolicy.policy(600, List.of(
+                new ScheduleCreateRequest.SelectedAnswer("PACE", "PACE_RELAXED")));
+
+        List<Place> selected = optimizer.optimizeWithPolicies(
+                candidates, Set.of(), List.of(day), List.of(relaxed), request(List.of(
+                        new ScheduleCreateRequest.SelectedAnswer("PACE", "PACE_RELAXED")))).get(0);
+
+        assertThat(selected).hasSize(4);
+    }
+
+    @Test
+    void permitsTheAbsoluteMinimumWhenNoAdditionalCandidateExists() {
+        ScheduleDay day = days().get(0);
+        PlaceCountPolicy policy = new PlaceCountPolicy(2, 3, 4, 5, 70);
+
+        List<Place> selected = optimizer.optimizeWithPolicies(
+                List.of(
+                        place(1L, "부산역 광장", "129.0410", "35.1155"),
+                        place(2L, "남포 산책로", "129.0300", "35.1030")),
+                Set.of(), List.of(day), List.of(policy), request()).get(0);
+
+        assertThat(selected).hasSize(2);
+    }
+
+    @Test
     void satisfiesThemeWithoutSelectingOnlyTheSameExperience() {
         ScheduleDay day = days().get(0);
         Place firstVillage = place(1L, "감천문화마을", "12", "129.0106", "35.0974");
