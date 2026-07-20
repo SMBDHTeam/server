@@ -116,8 +116,15 @@ src/main/resources/application-prod.yml
 
 # Nginx reverse proxy
 
-user/front --> nginx(80) --> springboot_container(8080)
-cors-->nginx에서 처리할 예정
+```text
+user/front --HTTP 80--> nginx --301--> HTTPS 443 --> nginx --> springboot_container(127.0.0.1:8080)
+```
+
+- 개발 API 도메인은 `api.busantour.site`이며 Nginx 설정은 `ops/nginx/api.busantour.site.conf`를 기준으로 한다.
+- TLS 인증서는 Let's Encrypt/Certbot으로 발급하고 `certbot.timer`가 자동 갱신한다.
+- CORS는 Nginx가 아닌 Spring Security에서 처리한다. GitHub Actions repository variable
+  `CORS_ALLOWED_ORIGINS`에 쉼표로 구분한 Origin 목록을 설정하면 `.env.dev`로 전달한다.
+  변수가 없으면 애플리케이션 기본 Origin 목록을 사용한다.
 
 ---
 

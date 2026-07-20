@@ -64,6 +64,21 @@ class SecurityConfigTest {
                 ));
     }
 
+    @Test
+    @DisplayName("배포 프론트의 V2 생성 preflight 요청을 허용한다")
+    void deployedFrontendAllowsScheduleV2CorsPreflight() throws Exception {
+        mockMvc.perform(options("/api/v1/schedules")
+                        .header("Origin", "https://www.busantour.site")
+                        .header("Access-Control-Request-Method", "POST")
+                        .header("Access-Control-Request-Headers", "Content-Type, Idempotency-Key"))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Access-Control-Allow-Origin", "https://www.busantour.site"))
+                .andExpect(header().string(
+                        "Access-Control-Allow-Headers",
+                        org.hamcrest.Matchers.containsString("Idempotency-Key")
+                ));
+    }
+
     @TestConfiguration
     static class TestConfig {
 
