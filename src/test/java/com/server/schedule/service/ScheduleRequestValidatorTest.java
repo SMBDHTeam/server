@@ -27,7 +27,7 @@ class ScheduleRequestValidatorTest {
         List<Question> questions = List.of(
                 question("COMPANION", "COMPANION_FRIENDS"),
                 question("PACE", "PACE_BALANCED"),
-                question("THEME", "THEME_SHOPPING"),
+                question("THEME", 1, 3, "THEME_SHOPPING", "THEME_NATURE"),
                 question("MOBILITY", "MOBILITY_NORMAL"),
                 question("TRANSIT", "TRANSIT_SIMPLE")
         );
@@ -37,11 +37,73 @@ class ScheduleRequestValidatorTest {
     }
 
     @Test
+    void acceptsMultipleThemeAnswersWithinQuestionLimit() {
+        List<Question> questions = List.of(
+                question("COMPANION", "COMPANION_FRIENDS"),
+                question("PACE", "PACE_BALANCED"),
+                question("THEME", 1, 3, "THEME_SHOPPING", "THEME_NATURE", "THEME_HEALING"),
+                question("MOBILITY", "MOBILITY_NORMAL"),
+                question("TRANSIT", "TRANSIT_SIMPLE")
+        );
+        when(questionRepository.findByActiveTrueOrderByDisplayOrderAsc()).thenReturn(questions);
+        ScheduleCreateRequest request = new ScheduleCreateRequest(
+                LocalDate.parse("2026-07-20"),
+                LocalDate.parse("2026-07-20"),
+                LocalTime.parse("09:00"),
+                LocalTime.parse("19:00"),
+                location("부산역", "129.0403", "35.1151"),
+                location("부산역", "129.0403", "35.1151"),
+                List.of(
+                        new ScheduleCreateRequest.SelectedAnswer("COMPANION", "COMPANION_FRIENDS"),
+                        new ScheduleCreateRequest.SelectedAnswer("PACE", "PACE_BALANCED"),
+                        new ScheduleCreateRequest.SelectedAnswer("THEME", "THEME_SHOPPING"),
+                        new ScheduleCreateRequest.SelectedAnswer("THEME", "THEME_NATURE"),
+                        new ScheduleCreateRequest.SelectedAnswer("MOBILITY", "MOBILITY_NORMAL"),
+                        new ScheduleCreateRequest.SelectedAnswer("TRANSIT", "TRANSIT_SIMPLE")
+                ),
+                List.of()
+        );
+
+        assertThatCode(() -> validator.validate(request)).doesNotThrowAnyException();
+    }
+
+    @Test
+    void rejectsDuplicateAnswerInsideSameQuestion() {
+        List<Question> questions = List.of(
+                question("COMPANION", "COMPANION_FRIENDS"),
+                question("PACE", "PACE_BALANCED"),
+                question("THEME", 1, 3, "THEME_SHOPPING", "THEME_NATURE"),
+                question("MOBILITY", "MOBILITY_NORMAL"),
+                question("TRANSIT", "TRANSIT_SIMPLE")
+        );
+        when(questionRepository.findByActiveTrueOrderByDisplayOrderAsc()).thenReturn(questions);
+        ScheduleCreateRequest request = new ScheduleCreateRequest(
+                LocalDate.parse("2026-07-20"),
+                LocalDate.parse("2026-07-20"),
+                LocalTime.parse("09:00"),
+                LocalTime.parse("19:00"),
+                location("부산역", "129.0403", "35.1151"),
+                location("부산역", "129.0403", "35.1151"),
+                List.of(
+                        new ScheduleCreateRequest.SelectedAnswer("COMPANION", "COMPANION_FRIENDS"),
+                        new ScheduleCreateRequest.SelectedAnswer("PACE", "PACE_BALANCED"),
+                        new ScheduleCreateRequest.SelectedAnswer("THEME", "THEME_SHOPPING"),
+                        new ScheduleCreateRequest.SelectedAnswer("THEME", "THEME_SHOPPING"),
+                        new ScheduleCreateRequest.SelectedAnswer("MOBILITY", "MOBILITY_NORMAL"),
+                        new ScheduleCreateRequest.SelectedAnswer("TRANSIT", "TRANSIT_SIMPLE")
+                ),
+                List.of()
+        );
+
+        assertInvalid(request);
+    }
+
+    @Test
     void rejectsMissingRequiredQuestion() {
         List<Question> questions = List.of(
                 question("COMPANION", "COMPANION_FRIENDS"),
                 question("PACE", "PACE_BALANCED"),
-                question("THEME", "THEME_SHOPPING"),
+                question("THEME", 1, 3, "THEME_SHOPPING"),
                 question("MOBILITY", "MOBILITY_NORMAL"),
                 question("TRANSIT", "TRANSIT_SIMPLE")
         );
@@ -65,7 +127,7 @@ class ScheduleRequestValidatorTest {
         List<Question> questions = List.of(
                 question("COMPANION", "COMPANION_FRIENDS"),
                 question("PACE", "PACE_BALANCED"),
-                question("THEME", "THEME_SHOPPING"),
+                question("THEME", 1, 3, "THEME_SHOPPING"),
                 question("MOBILITY", "MOBILITY_NORMAL"),
                 question("TRANSIT", "TRANSIT_SIMPLE")
         );
@@ -164,13 +226,22 @@ class ScheduleRequestValidatorTest {
     }
 
     private Question question(String questionId, String answerId) {
+        return question(questionId, 1, 1, answerId);
+    }
+
+    private Question question(String questionId, int minSelections, int maxSelections, String... answerIds) {
         Question question = mock(Question.class);
-        Answer answer = mock(Answer.class);
         when(question.getId()).thenReturn(questionId);
         when(question.isRequired()).thenReturn(true);
-        when(question.getAnswers()).thenReturn(List.of(answer));
-        when(answer.getId()).thenReturn(answerId);
-        when(answer.isActive()).thenReturn(true);
+        when(question.getMinSelections()).thenReturn(minSelections);
+        when(question.getMaxSelections()).thenReturn(maxSelections);
+        List<Answer> answers = java.util.Arrays.stream(answerIds).map(id -> {
+            Answer answer = mock(Answer.class);
+            when(answer.getId()).thenReturn(id);
+            when(answer.isActive()).thenReturn(true);
+            return answer;
+        }).toList();
+        when(question.getAnswers()).thenReturn(answers);
         return question;
     }
 

@@ -46,6 +46,7 @@ import com.server.schedule.planner.ScheduleRepairStrategy;
 import com.server.schedule.planner.RepairCandidate;
 import com.server.schedule.planner.AiSchedulePlanGenerator;
 import com.server.schedule.planner.VisitDurationPolicy;
+import com.server.external.aitheme.PlaceThemePredictionClient.PlaceThemeInsight;
 import com.server.schedule.repository.ScheduleRepository;
 import com.server.transit.service.TransitPoint;
 import com.server.transit.service.TransitRouteProvider;
@@ -1257,6 +1258,14 @@ public class ScheduleService {
                 .findFirst();
     }
 
+    private List<String> answerIds(ScheduleCreateRequest request, String questionId) {
+        return request.selectedAnswers().stream()
+                .filter(answer -> questionId.equals(answer.questionId()))
+                .map(ScheduleCreateRequest.SelectedAnswer::answerId)
+                .filter(Objects::nonNull)
+                .toList();
+    }
+
     private void createRoute(
             ScheduleDay day,
             ScheduleStop stop,
@@ -2042,10 +2051,31 @@ public class ScheduleService {
         if (MealTimePolicy.isMealPlace(place)) {
             reasons.add("점심 또는 저녁 식사 시간대에 이용할 수 있는 장소입니다.");
         }
+        aiSelectionReason(place, request).ifPresent(reasons::add);
         return reasons.stream()
                 .filter(reason -> reason != null && !reason.isBlank())
                 .distinct()
                 .toList();
+    }
+
+    private Optional<String> aiSelectionReason(Place place, ScheduleCreateRequest request) {
+        Optional<PlaceThemeInsight> insight = placePreferenceScorer.predictInsight(place);
+        if (insight.isEmpty()) {
+            return Optional.empty();
+        }
+        List<String> requestedThemes = answerIds(request, "THEME");
+        boolean relevant = requestedThemes.stream()
+                .map(TourApiTheme::fromAnswerId)
+                .flatMap(Optional::stream)
+                .anyMatch(insight.get()::matches);
+        if (!relevant && !insight.get().mealPlace() && insight.get().semanticTags().isEmpty()) {
+            return Optional.empty();
+        }
+        String reason = insight.get().reason();
+        if (reason == null || reason.isBlank()) {
+            return Optional.empty();
+        }
+        return Optional.of("AI 해석 기준: " + reason);
     }
 
     private String themeReason(String answerId) {
