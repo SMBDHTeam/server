@@ -2,12 +2,9 @@ package com.server.schedule.planner;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.server.external.aitheme.PlaceThemePredictionClient;
-import com.server.external.aitheme.PlaceThemePredictionClient.PlaceThemeInsight;
 import com.server.external.openai.AiScheduleProposalClient;
 import com.server.external.openai.OpenAiPlanningProperties;
 import com.server.place.domain.Place;
-import com.server.place.support.TourApiTheme;
 import com.server.schedule.domain.Schedule;
 import com.server.schedule.domain.ScheduleDay;
 import com.server.schedule.dto.ScheduleCreateRequest;
@@ -96,70 +93,6 @@ class AiSchedulePlanGeneratorTest {
         assertThat(result.source()).isEqualTo("AI_FALLBACK");
     }
 
-    @Test
-    void generatesThemeInsightProposalWithoutOpenAiKey() {
-        AiSchedulePlanGenerator generator = new AiSchedulePlanGenerator(
-                request -> {
-                    throw new AssertionError("must not call OpenAI without a key");
-                },
-                new OpenAiPlanningProperties(
-                        true, "http://localhost", "", "test-model", null, null),
-                new PlaceThemePredictionClient() {
-                    @Override
-                    public java.util.Optional<TourApiTheme> predictPrimaryTheme(Place place) {
-                        return predictInsight(place).map(PlaceThemeInsight::primaryTheme);
-                    }
-
-                    @Override
-                    public java.util.Optional<PlaceThemeInsight> predictInsight(Place place) {
-                        if (place.getId().equals(101L)) {
-                            return java.util.Optional.of(new PlaceThemeInsight(
-                                    TourApiTheme.NATURE,
-                                    List.of(TourApiTheme.HEALING),
-                                    List.of("beach"),
-                                    false,
-                                    true,
-                                    "nature_beach",
-                                    "자연 중심 장소"
-                            ));
-                        }
-                        if (place.getId().equals(102L)) {
-                            return java.util.Optional.of(new PlaceThemeInsight(
-                                    TourApiTheme.FOOD,
-                                    List.of(TourApiTheme.HEALING),
-                                    List.of("food_street"),
-                                    true,
-                                    true,
-                                    "food_street",
-                                    "식사 중심 장소"
-                            ));
-                        }
-                        return java.util.Optional.empty();
-                    }
-                }
-        );
-
-        var result = generator.generate(
-                List.of(
-                        place(101L, "광안리", "12", "관광지"),
-                        place(102L, "광안리 식당", "39", "음식점")
-                ),
-                Set.of(),
-                List.of(day("11:00", "16:00")),
-                List.of(2),
-                natureFoodRequest(),
-                Map.of(),
-                null
-        );
-
-        assertThat(result.source()).isEqualTo("AI_THEME_PROPOSED");
-        assertThat(result.confidence()).isEqualTo(72);
-        assertThat(result.hasProposal()).isTrue();
-        assertThat(result.placesByDay().get(0))
-                .extracting(Place::getId)
-                .containsExactly(101L, 102L);
-    }
-
     private AiSchedulePlanGenerator generator(AiScheduleProposalClient client, boolean enabled) {
         return new AiSchedulePlanGenerator(client, new OpenAiPlanningProperties(
                 enabled, "http://localhost", "test-key", "test-model", null, null));
@@ -181,19 +114,6 @@ class AiSchedulePlanGeneratorTest {
                 LocalTime.parse("11:00"), LocalTime.parse("16:00"),
                 location(), location(),
                 List.of(new ScheduleCreateRequest.SelectedAnswer("PACE", "PACE_RELAXED")),
-                List.of());
-    }
-
-    private ScheduleCreateRequest natureFoodRequest() {
-        return new ScheduleCreateRequest(
-                LocalDate.parse("2026-07-20"), LocalDate.parse("2026-07-20"),
-                LocalTime.parse("11:00"), LocalTime.parse("16:00"),
-                location(), location(),
-                List.of(
-                        new ScheduleCreateRequest.SelectedAnswer("THEME", "THEME_NATURE"),
-                        new ScheduleCreateRequest.SelectedAnswer("THEME", "THEME_FOOD"),
-                        new ScheduleCreateRequest.SelectedAnswer("MOBILITY", "MOBILITY_LOW_WALK")
-                ),
                 List.of());
     }
 

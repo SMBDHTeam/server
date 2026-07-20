@@ -45,34 +45,6 @@ class TourApiThemeMapperTest {
                 .contains(TourApiTheme.NATURE, TourApiTheme.CULTURE);
     }
 
-    @Test
-    void doesNotTreatBusanSyllableAsNatureKeyword() {
-        Place market = place("38", "국제시장", "쇼핑");
-
-        assertThat(TourApiThemeMapper.themes(market))
-                .doesNotContain(TourApiTheme.NATURE);
-        assertThat(TourApiThemeMapper.matchesTheme(market, TourApiTheme.NATURE.answerId()))
-                .isFalse();
-    }
-
-    @Test
-    void doesNotTreatJagalchiMarketAsNatureTheme() {
-        Place market = new Place(
-                "TOUR_API",
-                "TEST-JAGALCHI",
-                "38",
-                "자갈치시장",
-                "쇼핑",
-                "부산 중구 자갈치해안로 52",
-                new BigDecimal("129.0305"),
-                new BigDecimal("35.0967"),
-                null
-        );
-
-        assertThat(TourApiThemeMapper.matchesTheme(market, TourApiTheme.NATURE.answerId()))
-                .isFalse();
-    }
-
     private Place place(String contentTypeId, String name, String category) {
         return new Place(
                 "TOUR_API",

@@ -4,10 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
-import com.server.external.aitheme.PlaceThemePredictionClient;
-import com.server.external.aitheme.PlaceThemePredictionClient.PlaceThemeInsight;
 import com.server.place.domain.Place;
-import com.server.place.support.TourApiTheme;
 import com.server.place.repository.PlaceRepository;
 import com.server.schedule.domain.Schedule;
 import com.server.schedule.domain.ScheduleDay;
@@ -16,7 +13,6 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.List;
-import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
 
@@ -25,8 +21,6 @@ class PlaceCandidateProviderTest {
     private final PlaceRepository placeRepository = mock(PlaceRepository.class);
     private final PlaceCandidateProvider provider = new PlaceCandidateProvider(
             placeRepository, new PlacePreferenceScorer());
-    private final PlaceCandidateProvider aiProvider = new PlaceCandidateProvider(
-            placeRepository, new PlacePreferenceScorer(new StubThemePredictionClient()));
 
     @Test
     void preservesDifferentExperiencesWhenOneThemeHasManyMatchingPlaces() {
@@ -55,24 +49,6 @@ class PlaceCandidateProviderTest {
                 .count();
         assertThat(result.places()).hasSize(9);
         assertThat(experienceTypeCount).isGreaterThanOrEqualTo(3);
-    }
-
-    @Test
-    void prefersAiThemeBundleWithDistinctClusters() {
-        when(placeRepository.findAll()).thenReturn(List.of(
-                place(1L, "광안리해수욕장", "12", "129.1186", "35.1532"),
-                place(2L, "송도해수욕장", "12", "129.0172", "35.0770"),
-                place(3L, "부산박물관", "14", "129.0840", "35.1296"),
-                place(4L, "자갈치시장", "38", "129.0305", "35.0967"),
-                place(5L, "태종대공원", "12", "129.0899", "35.0527")
-        ));
-
-        PlaceCandidateProvider.ResolvedPlaces result = aiProvider.resolve(
-                request(), List.of(3), List.of(day()));
-
-        assertThat(result.places())
-                .extracting(Place::getName)
-                .contains("광안리해수욕장", "태종대공원");
     }
 
     private ScheduleCreateRequest request() {
@@ -117,31 +93,5 @@ class PlaceCandidateProviderTest {
 
     private BigDecimal decimal(String value) {
         return new BigDecimal(value);
-    }
-
-    private static final class StubThemePredictionClient implements PlaceThemePredictionClient {
-        @Override
-        public java.util.Optional<com.server.place.support.TourApiTheme> predictPrimaryTheme(Place place) {
-            return predictInsight(place).map(PlaceThemeInsight::primaryTheme);
-        }
-
-        @Override
-        public Optional<PlaceThemeInsight> predictInsight(Place place) {
-            return switch (place.getName()) {
-                case "광안리해수욕장" -> Optional.of(new PlaceThemeInsight(
-                        TourApiTheme.NATURE, List.of(TourApiTheme.HEALING),
-                        List.of("beach"), false, true, "nature_beach", "자연 중심 장소"));
-                case "송도해수욕장" -> Optional.of(new PlaceThemeInsight(
-                        TourApiTheme.NATURE, List.of(TourApiTheme.HEALING),
-                        List.of("beach"), false, true, "nature_beach", "자연 중심 장소"));
-                case "태종대공원" -> Optional.of(new PlaceThemeInsight(
-                        TourApiTheme.NATURE, List.of(TourApiTheme.HEALING),
-                        List.of("park"), false, true, "nature_park", "자연 중심 장소"));
-                case "자갈치시장" -> Optional.of(new PlaceThemeInsight(
-                        TourApiTheme.SHOPPING, List.of(TourApiTheme.FOOD),
-                        List.of("market"), true, true, "shopping_market", "시장 중심 장소"));
-                default -> Optional.empty();
-            };
-        }
     }
 }

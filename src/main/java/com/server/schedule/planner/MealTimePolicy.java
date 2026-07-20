@@ -14,8 +14,6 @@ import java.util.Set;
 public final class MealTimePolicy {
 
     private static final int MINIMUM_WINDOW_OVERLAP_MINUTES = 45;
-    private static final int MAX_LUNCH_EARLY_WAIT_MINUTES = 60;
-    private static final int MAX_DINNER_EARLY_WAIT_MINUTES = 90;
 
     private MealTimePolicy() {
     }
@@ -66,7 +64,6 @@ public final class MealTimePolicy {
             if (assignedSlots.contains(slot) || arrival.isAfter(slot.end())) continue;
             LocalTime aligned = arrival.isBefore(slot.start()) ? slot.start() : arrival;
             int waitingMinutes = (int) Duration.between(arrival, aligned).toMinutes();
-            if (waitingMinutes > maxEarlyWaitMinutes(slot)) continue;
             return new Alignment(aligned, slot, waitingMinutes);
         }
         return new Alignment(arrival, null, 0);
@@ -128,13 +125,6 @@ public final class MealTimePolicy {
             if (value.contains(token)) return true;
         }
         return false;
-    }
-
-    private static int maxEarlyWaitMinutes(MealSlot slot) {
-        return switch (slot) {
-            case LUNCH -> MAX_LUNCH_EARLY_WAIT_MINUTES;
-            case DINNER -> MAX_DINNER_EARLY_WAIT_MINUTES;
-        };
     }
 
     public enum MealSlot {

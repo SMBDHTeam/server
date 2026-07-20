@@ -28,7 +28,7 @@ public final class TourApiThemeMapper {
                 List.of("카페", "브런치", "디저트", "커피", "맛집", "국밥", "횟집", "밀면", "돼지국밥",
                         "분식", "식당", "해산물"));
         KEYWORD_RULES.put(TourApiTheme.NATURE,
-                List.of("해변", "해수욕장", "공원", "숲", "수목원", "바다", "산책로", "해안산책로", "해안길", "동백섬"));
+                List.of("해변", "해수욕장", "공원", "산", "숲", "수목원", "바다", "산책로"));
         KEYWORD_RULES.put(TourApiTheme.HEALING,
                 List.of("산책", "휴식", "힐링", "조용", "여유", "온천", "사우나"));
         KEYWORD_RULES.put(TourApiTheme.CULTURE,

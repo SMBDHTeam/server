@@ -13,7 +13,6 @@ import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -106,11 +105,9 @@ public class PlaceCandidateProvider {
                 .sorted(Comparator.comparingInt(PlacePreferenceScorer.ScoredPlace::totalScore)
                         .thenComparing(candidate -> candidate.place().getId()))
                 .toList();
-        candidates = scorer.rerankByAiTheme(candidates, request);
         List<Place> selected = new ArrayList<>();
         Set<String> contentTypes = new HashSet<>();
         selectMealPlaces(candidates, selected, contentTypes, mealTargetCount);
-        selectAiThemeBundle(candidates, selected, requiredPlaces, contentTypes, targetCount, request);
         selectStrongPreferences(candidates, selected, requiredPlaces, contentTypes, targetCount, request);
         selectExperienceDiverse(candidates, selected, requiredPlaces, contentTypes, targetCount);
         select(candidates, selected, requiredPlaces, contentTypes, targetCount, true);
@@ -155,50 +152,6 @@ public class PlaceCandidateProvider {
             }
             selected.add(place);
             contentTypes.add(place.getContentTypeId() == null ? "" : place.getContentTypeId());
-        }
-    }
-
-    private void selectAiThemeBundle(
-            List<PlacePreferenceScorer.ScoredPlace> candidates,
-            List<Place> selected,
-            List<Place> requiredPlaces,
-            Set<String> contentTypes,
-            int targetCount,
-            ScheduleCreateRequest request
-    ) {
-        Set<String> selectedClusters = Stream.concat(requiredPlaces.stream(), selected.stream())
-                .map(scorer::predictInsight)
-                .flatMap(Optional::stream)
-                .map(insight -> insight.clusterKey() == null ? "" : insight.clusterKey())
-                .filter(clusterKey -> !clusterKey.isBlank())
-                .collect(Collectors.toSet());
-        List<PlacePreferenceScorer.ScoredPlace> prioritized = candidates.stream()
-                .sorted(Comparator
-                        .comparingInt((PlacePreferenceScorer.ScoredPlace candidate) ->
-                                scorer.aiRecommendationPriority(candidate.place(), request))
-                        .thenComparingInt(PlacePreferenceScorer.ScoredPlace::totalScore)
-                        .thenComparing(candidate -> candidate.place().getId()))
-                .toList();
-        for (PlacePreferenceScorer.ScoredPlace candidate : prioritized) {
-            if (selected.size() >= targetCount) return;
-            Place place = candidate.place();
-            int priority = scorer.aiRecommendationPriority(place, request);
-            if (priority == Integer.MAX_VALUE || priority > 2
-                    || selected.contains(place)
-                    || scorer.mobilityPenalty(place, request) > 0
-                    || tooClose(place, requiredPlaces)
-                    || tooClose(place, selected)) {
-                continue;
-            }
-            Optional<String> clusterKey = scorer.predictInsight(place)
-                    .map(insight -> insight.clusterKey() == null ? "" : insight.clusterKey())
-                    .filter(value -> !value.isBlank());
-            if (clusterKey.isPresent() && selectedClusters.contains(clusterKey.get())) {
-                continue;
-            }
-            selected.add(place);
-            contentTypes.add(place.getContentTypeId() == null ? "" : place.getContentTypeId());
-            clusterKey.ifPresent(selectedClusters::add);
         }
     }
 

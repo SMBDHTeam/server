@@ -14,7 +14,6 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.stream.Collectors;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
@@ -87,9 +86,12 @@ public class ScheduleRequestValidator {
     }
 
     private void validateSelectedAnswers(List<ScheduleCreateRequest.SelectedAnswer> selectedAnswers) {
-        Map<String, List<ScheduleCreateRequest.SelectedAnswer>> answersByQuestion = selectedAnswers.stream()
-                .collect(Collectors.groupingBy(ScheduleCreateRequest.SelectedAnswer::questionId));
-        Set<String> selectedQuestionIds = answersByQuestion.keySet();
+        Set<String> selectedQuestionIds = new HashSet<>();
+        for (ScheduleCreateRequest.SelectedAnswer selectedAnswer : selectedAnswers) {
+            if (!selectedQuestionIds.add(selectedAnswer.questionId())) {
+                invalid();
+            }
+        }
         if (questionRepository == null) {
             return;
         }
@@ -97,20 +99,9 @@ public class ScheduleRequestValidator {
         List<Question> questions = questionRepository.findByActiveTrueOrderByDisplayOrderAsc();
         Map<String, Question> questionById = new HashMap<>();
         questions.forEach(question -> questionById.put(question.getId(), question));
-        for (Map.Entry<String, List<ScheduleCreateRequest.SelectedAnswer>> entry : answersByQuestion.entrySet()) {
-            Question question = questionById.get(entry.getKey());
-            if (question == null) {
-                invalid();
-            }
-            Set<String> distinctAnswerIds = new HashSet<>();
-            for (ScheduleCreateRequest.SelectedAnswer selectedAnswer : entry.getValue()) {
-                if (!distinctAnswerIds.add(selectedAnswer.answerId())
-                        || !containsActiveAnswer(question, selectedAnswer.answerId())) {
-                    invalid();
-                }
-            }
-            int selectedCount = distinctAnswerIds.size();
-            if (selectedCount < question.getMinSelections() || selectedCount > question.getMaxSelections()) {
+        for (ScheduleCreateRequest.SelectedAnswer selectedAnswer : selectedAnswers) {
+            Question question = questionById.get(selectedAnswer.questionId());
+            if (question == null || !containsActiveAnswer(question, selectedAnswer.answerId())) {
                 invalid();
             }
         }
