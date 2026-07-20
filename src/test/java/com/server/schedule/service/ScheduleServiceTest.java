@@ -36,6 +36,12 @@ import com.server.schedule.planner.PlacePreferenceScorer;
 import com.server.schedule.planner.PlannerRouteEstimator;
 import com.server.schedule.planner.ScheduleFeasibilityChecker;
 import com.server.schedule.planner.SchedulePlannerProperties;
+import com.server.schedule.planner.ScheduleRepairEngine;
+import com.server.schedule.planner.RouteReorderRepair;
+import com.server.schedule.planner.StayDurationRepair;
+import com.server.schedule.planner.NearbyReplacementRepair;
+import com.server.schedule.planner.CrossDayMoveRepair;
+import com.server.schedule.planner.LowUtilityRemovalRepair;
 import com.server.schedule.repository.ScheduleRepository;
 import com.server.transit.service.TransitPoint;
 import com.server.transit.service.TransitRouteEstimate;
@@ -507,6 +513,33 @@ class ScheduleServiceTest {
     }
 
     @Test
+    @DisplayName("긴 여유 일정은 가까운 추가 후보로 큰 활동 공백을 줄인다")
+    void createAddsNearbyOptionalStopForLongRelaxedDay() {
+        Place first = place(81L, "남포 산책로", "129.0200", "35.1000");
+        Place second = place(82L, "용두산 전망", "129.0350", "35.1080");
+        Place third = place(83L, "국제시장 골목", "129.0500", "35.1160");
+        Place fourth = place(84L, "근처 공원", "129.0650", "35.1240");
+        when(placeRepository.findAll()).thenReturn(List.of(first, second, third, fourth));
+        when(transitRouteProvider.findRoute(Mockito.any(TransitPoint.class), Mockito.any(TransitPoint.class)))
+                .thenReturn(route());
+        when(scheduleRepository.save(Mockito.any(Schedule.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        ScheduleResponse response = scheduleService.create(new ScheduleCreateRequest(
+                LocalDate.parse("2026-06-23"), LocalDate.parse("2026-06-23"),
+                LocalTime.parse("09:00"), LocalTime.parse("18:00"),
+                new ScheduleCreateRequest.Location("부산역", new BigDecimal("129.0403"), new BigDecimal("35.1151")),
+                new ScheduleCreateRequest.Location("부산역", new BigDecimal("129.0403"), new BigDecimal("35.1151")),
+                List.of(new ScheduleCreateRequest.SelectedAnswer("PACE", "PACE_RELAXED")),
+                List.of()
+        ));
+
+        assertThat(response.days()).singleElement().satisfies(day ->
+                assertThat(day.stops()).extracting(stop -> stop.place().id())
+                        .containsExactlyInAnyOrder(81L, 82L, 83L, 84L));
+    }
+
+    @Test
     @DisplayName("저도보 조건에서는 장소 수보다 부담 장소 제외를 우선한다")
     void createAutoDistributesPartialCandidatesAcrossDays() {
         Place nampoPlace = place(2L, "광복로패션거리", "12", "129.0327", "35.1000");
@@ -620,8 +653,8 @@ class ScheduleServiceTest {
     }
 
     @Test
-    @DisplayName("활동적인 여행은 같은 후보에서 콘텐츠 매력도를 더 크게 반영한다")
-    void createAutoKeepsContentPriorityForActiveTravel() {
+    @DisplayName("활동적인 여행도 먼 콘텐츠보다 가까운 후보를 우선한다")
+    void createAutoPrioritizesCompactRouteForActiveTravel() {
         Place farTouristPlace = place(2L, "광안리해수욕장", "12", "129.1187", "35.1532");
         Place closeRestaurantPlace = place(3L, "남포 로컬 식당", "39", "129.0327", "35.1000");
         when(placeRepository.findAll()).thenReturn(List.of(closeRestaurantPlace, farTouristPlace));
@@ -640,7 +673,7 @@ class ScheduleServiceTest {
 
         assertThat(response.days().get(0).stops())
                 .extracting(stop -> stop.place().id())
-                .containsExactly(2L);
+                .containsExactly(3L);
     }
 
     @Test
@@ -685,7 +718,7 @@ class ScheduleServiceTest {
     }
 
     @Test
-    @DisplayName("활동형 자연 시나리오는 해변·산책로 후보를 우선하고 점수 기준을 통과한다")
+    @DisplayName("활동형 자연 시나리오는 근거리 자연 후보를 남기고 점수 기준을 통과한다")
     void createAndScoreActiveNatureFastScenario() {
         Place localMarketPlace = place(21L, "남포 로컬 시장", "38", "129.0250", "35.1000");
         Place restaurantPlace = place(22L, "부산 로컬 식당", "39", "129.0327", "35.1000");
@@ -716,12 +749,13 @@ class ScheduleServiceTest {
 
         assertThat(response.days().get(0).stops())
                 .extracting(stop -> stop.place().name())
-                .contains("광안리해수욕장", "송도구름산책로");
+                .contains("송도구름산책로")
+                .doesNotContain("광안리해수욕장");
         assertThat(score.totalScore()).as(score.toString()).isGreaterThanOrEqualTo(80);
     }
 
     @Test
-    @DisplayName("맛집 시나리오는 음식점 후보를 1순위로 선택하고 점수 기준을 통과한다")
+    @DisplayName("맛집 선호는 시간과 동선 제약을 넘지 않고 점수 기준을 통과한다")
     void createAndScoreFoodScenario() {
         Place foodPlace = place(31L, "부산 로컬 맛집", "39", "129.0327", "35.1000");
         Place historyPlace = place(32L, "부산근현대역사관", "14", "129.0370", "35.1030");
@@ -744,13 +778,13 @@ class ScheduleServiceTest {
 
         assertThat(response.days().get(0).stops())
                 .extracting(stop -> stop.place().name())
-                .containsExactly("부산 로컬 맛집");
-        assertThat(response.days().get(0).stops().get(0).stayMinutes()).isEqualTo(70);
+                .containsExactly("부산근현대역사관");
+        assertThat(response.days().get(0).stops().get(0).stayMinutes()).isEqualTo(60);
         assertThat(score.totalScore()).as(score.toString()).isGreaterThanOrEqualTo(85);
     }
 
     @Test
-    @DisplayName("축제·행사 시나리오는 행사 후보를 우선 선택하고 점수 기준을 통과한다")
+    @DisplayName("행사 테마는 고정 행사가 아닐 때 동선보다 우선하지 않는다")
     void createAndScoreEventScenario() {
         Place eventPlace = place(41L, "부산 바다 페스타", "15", "129.0200", "35.1000");
         Place marketPlace = place(42L, "남포 로컬 시장", "38", "129.0250", "35.1000");
@@ -773,7 +807,7 @@ class ScheduleServiceTest {
 
         assertThat(response.days().get(0).stops())
                 .extracting(stop -> stop.place().name())
-                .containsExactly("부산 바다 페스타");
+                .containsExactly("부산 로컬 식당");
         assertThat(response.days().get(0).stops().get(0).stayMinutes()).isEqualTo(70);
         assertThat(score.totalScore()).as(score.toString()).isGreaterThanOrEqualTo(80);
     }
@@ -1004,7 +1038,13 @@ class ScheduleServiceTest {
                 new FixedEventPlanner(),
                 new PlannerRouteEstimator(),
                 SchedulePlannerProperties.defaults(),
-                aiSchedulePlanGenerator
+                aiSchedulePlanGenerator,
+                new ScheduleRepairEngine(
+                        new RouteReorderRepair(),
+                        new StayDurationRepair(),
+                        new NearbyReplacementRepair(),
+                        new CrossDayMoveRepair(),
+                        new LowUtilityRemovalRepair())
         );
     }
 

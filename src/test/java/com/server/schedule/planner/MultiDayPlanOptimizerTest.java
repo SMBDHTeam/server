@@ -67,7 +67,7 @@ class MultiDayPlanOptimizerTest {
     }
 
     @Test
-    void selectsBestPreferenceFromSurplusCandidates() {
+    void prioritizesCompactRouteBeforeSoftThemePreference() {
         ScheduleDay day = days().get(0);
         Place nearbyMismatch = place(1L, "부산역 쇼핑몰", "129.0410", "35.1160");
         Place preferredSea = place(2L, "광안리해수욕장", "129.1186", "35.1532");
@@ -89,7 +89,44 @@ class MultiDayPlanOptimizerTest {
         assertThat(result).hasSize(1);
         assertThat(result.get(0)).singleElement()
                 .extracting(Place::getId)
-                .isEqualTo(2L);
+                .isEqualTo(1L);
+        assertThat(optimizer.ranked(
+                List.of(nearbyMismatch, preferredSea, optionalPark),
+                Set.of(), List.of(day), List.of(1), request, 1).get(0)
+                .objective().preferenceCost()).isPositive();
+    }
+
+    @Test
+    void addsNearbyOptionalStopWhenTheDayWouldOtherwiseHaveALargeActivityGap() {
+        ScheduleDay day = days().get(0);
+        List<Place> candidates = List.of(
+                place(1L, "부산역 광장", "129.0410", "35.1155"),
+                place(2L, "남포 산책로", "129.0300", "35.1030"),
+                place(3L, "용두산 전망", "129.0330", "35.1005"),
+                place(4L, "근처 공원", "129.0360", "35.1060")
+        );
+        PlaceCountPolicy relaxed = DailyScheduleTargetPolicy.policy(600, List.of(
+                new ScheduleCreateRequest.SelectedAnswer("PACE", "PACE_RELAXED")));
+
+        List<Place> selected = optimizer.optimizeWithPolicies(
+                candidates, Set.of(), List.of(day), List.of(relaxed), request(List.of(
+                        new ScheduleCreateRequest.SelectedAnswer("PACE", "PACE_RELAXED")))).get(0);
+
+        assertThat(selected).hasSize(4);
+    }
+
+    @Test
+    void permitsTheAbsoluteMinimumWhenNoAdditionalCandidateExists() {
+        ScheduleDay day = days().get(0);
+        PlaceCountPolicy policy = new PlaceCountPolicy(2, 3, 4, 5, 70);
+
+        List<Place> selected = optimizer.optimizeWithPolicies(
+                List.of(
+                        place(1L, "부산역 광장", "129.0410", "35.1155"),
+                        place(2L, "남포 산책로", "129.0300", "35.1030")),
+                Set.of(), List.of(day), List.of(policy), request()).get(0);
+
+        assertThat(selected).hasSize(2);
     }
 
     @Test
@@ -121,7 +158,7 @@ class MultiDayPlanOptimizerTest {
     }
 
     @Test
-    void avoidsRepeatingTheSamePreferredExperienceAcrossDays() {
+    void keepsThemeMatchesWithoutForcingEveryDayIntoTheSameExperience() {
         List<Place> candidates = List.of(
                 place(1L, "광안리해수욕장", "12", "129.0200", "35.1000"),
                 place(2L, "송정해변", "12", "129.0300", "35.1100"),
@@ -138,16 +175,16 @@ class MultiDayPlanOptimizerTest {
         List<List<Place>> result = optimizer.optimize(
                 candidates, Set.of(), days(), List.of(2, 2), request);
 
-        assertThat(result).allSatisfy(day -> assertThat(day.stream()
-                .map(PlaceExperienceClassifier::classify)
-                .anyMatch(profile -> profile.type()
-                        == PlaceExperienceClassifier.ExperienceType.BEACH_WALK)).isTrue());
         long beachCount = result.stream().flatMap(List::stream)
                 .map(PlaceExperienceClassifier::classify)
                 .filter(profile -> profile.type()
                         == PlaceExperienceClassifier.ExperienceType.BEACH_WALK)
                 .count();
+        assertThat(beachCount).isPositive();
         assertThat(beachCount).isLessThan(4L);
+        assertThat(result).flatExtracting(day -> day)
+                .extracting(Place::getId)
+                .doesNotHaveDuplicates();
     }
 
     @Test
@@ -163,7 +200,7 @@ class MultiDayPlanOptimizerTest {
                 candidates, Set.of(), days(), List.of(2, 2), request(), 3);
 
         assertThat(plans).hasSize(3);
-        assertThat(plans).extracting(MultiDayPlanOptimizer.OptimizedPlan::estimatedCost)
+        assertThat(plans).extracting(MultiDayPlanOptimizer.OptimizedPlan::objective)
                 .isSorted();
         assertThat(plans.stream().map(plan -> plan.placesByDay().stream()
                         .map(day -> day.stream().map(Place::getId).sorted()

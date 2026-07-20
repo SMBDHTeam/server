@@ -12,6 +12,11 @@ public class ScheduleFeasibilityChecker {
 
     private static final int MIN_STAY_MINUTES = 30;
 
+    public boolean isWithinAvailableTime(ScheduleDay day) {
+        long availableMinutes = Duration.between(day.getStartTime(), day.getEndTime()).toMinutes();
+        return plannedMinutes(day) <= availableMinutes;
+    }
+
     public boolean fitWithinAvailableTime(ScheduleDay day) {
         long availableMinutes = Duration.between(day.getStartTime(), day.getEndTime()).toMinutes();
         long overrunMinutes = plannedMinutes(day) - availableMinutes;
