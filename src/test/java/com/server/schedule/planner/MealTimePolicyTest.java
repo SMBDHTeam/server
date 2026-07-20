@@ -37,6 +37,19 @@ class MealTimePolicyTest {
 
         assertThat(lunch.arrival()).isEqualTo(LocalTime.parse("11:00"));
         assertThat(lunch.slot()).isEqualTo(MealTimePolicy.MealSlot.LUNCH);
+        assertThat(dinner.arrival()).isEqualTo(LocalTime.parse("13:10"));
+        assertThat(dinner.slot()).isNull();
+    }
+
+    @Test
+    void alignsDinnerOnlyWhenEarlyWaitIsReasonable() {
+        ScheduleDay day = day("09:00", "19:00");
+        Place restaurant = place("광안리 저녁 식당");
+        var assigned = EnumSet.of(MealTimePolicy.MealSlot.LUNCH);
+
+        MealTimePolicy.Alignment dinner = MealTimePolicy.alignArrival(
+                LocalTime.parse("15:50"), restaurant, MealTimePolicy.activeSlots(day), assigned);
+
         assertThat(dinner.arrival()).isEqualTo(LocalTime.parse("17:00"));
         assertThat(dinner.slot()).isEqualTo(MealTimePolicy.MealSlot.DINNER);
     }
