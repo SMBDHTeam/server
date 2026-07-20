@@ -28,6 +28,7 @@ import com.server.schedule.evaluation.ScheduleScoreResult;
 import com.server.schedule.planner.DayPlaceAllocator;
 import com.server.schedule.planner.DayRouteOptimizer;
 import com.server.schedule.planner.DailyScheduleTargetPolicy;
+import com.server.schedule.planner.PlaceCountPolicy;
 import com.server.schedule.planner.ScheduleFeasibilityChecker;
 import com.server.schedule.planner.FixedEventPlanner;
 import com.server.schedule.planner.PlacePreferenceScorer;
@@ -37,6 +38,7 @@ import com.server.schedule.planner.MealTimePolicy;
 import com.server.schedule.planner.PlannerRouteEstimator;
 import com.server.schedule.planner.SchedulePlannerProperties;
 import com.server.schedule.planner.AiSchedulePlanGenerator;
+import com.server.schedule.planner.VisitDurationPolicy;
 import com.server.schedule.repository.ScheduleRepository;
 import com.server.transit.service.TransitPoint;
 import com.server.transit.service.TransitRouteProvider;
@@ -73,8 +75,6 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class ScheduleService {
 
-    private static final int DEFAULT_STAY_MINUTES = 60;
-    private static final int MIN_STOPS_PER_DAY = 1;
     private static final int CLOSE_WALK_THRESHOLD_METERS = 1_200;
     private static final int PROVIDER_FAILURE_WALK_FALLBACK_METERS = 1_500;
     private static final double EARTH_RADIUS_METERS = 6_371_000.0;
@@ -163,10 +163,10 @@ public class ScheduleService {
         PlannerExecutionMetrics executionMetrics = new PlannerExecutionMetrics();
         if (planningOptions == null) requestValidator.validate(request);
         int tripDays = tripDays(request);
-        List<Integer> dailyStopTargets = planningOptions == null
-                ? dailyStopTargets(request, tripDays)
+        List<PlaceCountPolicy> dailyPlaceCountPolicies = planningOptions == null
+                ? dailyPlaceCountPolicies(request, tripDays)
                 : planningOptions.resolvedDays().stream()
-                        .map(day -> stopsForAvailableMinutes(
+                        .map(day -> placeCountPolicyForAvailableMinutes(
                                 Duration.between(day.availableFrom(), day.availableUntil()).toMinutes(), request))
                         .toList();
         ScheduleCreateRequest.Location overallStart = planningOptions == null
@@ -195,14 +195,15 @@ public class ScheduleService {
                 : createResolvedDays(schedule, planningOptions.resolvedDays());
         List<SchedulePreviewCreateRequest.FixedEvent> fixedEvents = planningOptions == null
                 ? List.of() : planningOptions.fixedEvents();
-        dailyStopTargets = targetsWithRequiredCapacity(
-                dailyStopTargets, days, request.mustVisitPlaceIdsOrEmpty().size(), fixedEvents);
+        dailyPlaceCountPolicies = policiesWithRequiredCapacity(
+                dailyPlaceCountPolicies, days, request.mustVisitPlaceIdsOrEmpty().size(), fixedEvents);
+        List<Integer> dailyStopTargets = targetCounts(dailyPlaceCountPolicies);
         PlaceCandidateProvider.ResolvedPlaces resolvedPlaces = placeCandidateProvider.resolve(
                 request, dailyStopTargets, days);
-        dailyStopTargets = targetsForAvailableCandidates(
-                dailyStopTargets, days, resolvedPlaces.places().size(), fixedEvents);
+        dailyPlaceCountPolicies = policiesForAvailableCandidates(
+                dailyPlaceCountPolicies, days, resolvedPlaces.places().size(), fixedEvents);
         int reducedOptionalStops = createStopsAndRoutes(
-                days, resolvedPlaces, dailyStopTargets, request, executionMetrics,
+                days, resolvedPlaces, dailyPlaceCountPolicies, request, executionMetrics,
                 fixedEvents,
                 planningOptions == null ? null : planningOptions.customPrompt());
         if (planningOptions != null) {
@@ -491,7 +492,7 @@ public class ScheduleService {
                 .orElse(request.endLocation());
     }
 
-    private List<Integer> dailyStopTargets(ScheduleCreateRequest request, int tripDays) {
+    private List<PlaceCountPolicy> dailyPlaceCountPolicies(ScheduleCreateRequest request, int tripDays) {
         Map<Integer, ScheduleCreateRequest.DayCondition> dayConditions = request.daysOrEmpty()
                 .stream()
                 .collect(Collectors.toMap(ScheduleCreateRequest.DayCondition::dayNo, Function.identity()));
@@ -500,22 +501,26 @@ public class ScheduleService {
                     ScheduleCreateRequest.DayCondition condition = dayConditions.get(dayNo);
                     LocalTime startTime = condition == null ? request.dailyStartTime() : condition.startTime();
                     LocalTime endTime = condition == null ? request.dailyEndTime() : condition.endTime();
-                    return stopsForAvailableMinutes(Duration.between(startTime, endTime).toMinutes(), request);
+                    return placeCountPolicyForAvailableMinutes(
+                            Duration.between(startTime, endTime).toMinutes(), request);
                 })
                 .toList();
     }
 
-    private int stopsForAvailableMinutes(long availableMinutes, ScheduleCreateRequest request) {
-        return DailyScheduleTargetPolicy.target(availableMinutes, request.selectedAnswers());
+    private PlaceCountPolicy placeCountPolicyForAvailableMinutes(
+            long availableMinutes,
+            ScheduleCreateRequest request
+    ) {
+        return DailyScheduleTargetPolicy.policy(availableMinutes, request.selectedAnswers());
     }
 
-    private List<Integer> targetsWithRequiredCapacity(
-            List<Integer> targets,
+    private List<PlaceCountPolicy> policiesWithRequiredCapacity(
+            List<PlaceCountPolicy> policies,
             List<ScheduleDay> days,
             int requiredPlaceCount,
             List<SchedulePreviewCreateRequest.FixedEvent> fixedEvents
     ) {
-        List<Integer> adjusted = new ArrayList<>(targets);
+        List<PlaceCountPolicy> adjusted = new ArrayList<>(policies);
         for (int index = 0; index < days.size(); index++) {
             LocalDate date = days.get(index).getDate();
             int fixedCount = (int) fixedEvents.stream()
@@ -523,29 +528,27 @@ public class ScheduleService {
                             .atZoneSameInstant(java.time.ZoneId.of("Asia/Seoul"))
                             .toLocalDate().equals(date))
                     .count();
-            adjusted.set(index, Math.max(adjusted.get(index), fixedCount));
+            adjusted.set(index, adjusted.get(index).withRequiredCount(fixedCount));
         }
-        int remainingRequiredCapacity = requiredPlaceCount - adjusted.stream().mapToInt(Integer::intValue).sum();
-        for (int index = 0; index < adjusted.size() && remainingRequiredCapacity > 0; index++) {
-            int additionalCapacity = DailyScheduleTargetPolicy.MAX_STOPS_PER_DAY - adjusted.get(index);
-            int added = Math.min(additionalCapacity, remainingRequiredCapacity);
-            adjusted.set(index, adjusted.get(index) + added);
-            remainingRequiredCapacity -= added;
-        }
-        if (remainingRequiredCapacity > 0) {
+        int maximumCapacity = adjusted.stream().mapToInt(PlaceCountPolicy::maximum).sum();
+        if (requiredPlaceCount > maximumCapacity) {
             throw new BusinessException(ErrorCode.MUST_VISIT_PLACE_LIMIT_EXCEEDED);
         }
         return List.copyOf(adjusted);
     }
 
-    private List<Integer> targetsForAvailableCandidates(
-            List<Integer> targets,
+    private List<Integer> targetCounts(List<PlaceCountPolicy> policies) {
+        return policies.stream().map(PlaceCountPolicy::targetCount).toList();
+    }
+
+    private List<PlaceCountPolicy> policiesForAvailableCandidates(
+            List<PlaceCountPolicy> policies,
             List<ScheduleDay> days,
             int candidateCount,
             List<SchedulePreviewCreateRequest.FixedEvent> fixedEvents
     ) {
-        List<Integer> adjusted = new ArrayList<>(targets);
-        int targetCount = adjusted.stream().mapToInt(Integer::intValue).sum();
+        List<Integer> adjustedTargets = new ArrayList<>(targetCounts(policies));
+        int targetCount = adjustedTargets.stream().mapToInt(Integer::intValue).sum();
         List<Integer> minimumTargets = new ArrayList<>();
         for (ScheduleDay day : days) {
             int fixedCount = (int) fixedEvents.stream()
@@ -557,15 +560,24 @@ public class ScheduleService {
         }
         while (targetCount > candidateCount) {
             int index = -1;
-            for (int candidateIndex = 0; candidateIndex < adjusted.size(); candidateIndex++) {
-                if (adjusted.get(candidateIndex) > minimumTargets.get(candidateIndex)
-                        && (index < 0 || adjusted.get(candidateIndex) > adjusted.get(index))) {
+            for (int candidateIndex = 0; candidateIndex < adjustedTargets.size(); candidateIndex++) {
+                if (adjustedTargets.get(candidateIndex) > minimumTargets.get(candidateIndex)
+                        && (index < 0 || adjustedTargets.get(candidateIndex) > adjustedTargets.get(index))) {
                     index = candidateIndex;
                 }
             }
             if (index < 0) break;
-            adjusted.set(index, adjusted.get(index) - 1);
+            adjustedTargets.set(index, adjustedTargets.get(index) - 1);
             targetCount--;
+        }
+        List<PlaceCountPolicy> adjusted = new ArrayList<>();
+        for (int index = 0; index < policies.size(); index++) {
+            int target = adjustedTargets.get(index);
+            if (target == 0 || target == policies.get(index).targetCount()) {
+                adjusted.add(policies.get(index));
+            } else {
+                adjusted.add(policies.get(index).limitToAvailableCandidates(target));
+            }
         }
         return List.copyOf(adjusted);
     }
@@ -605,12 +617,13 @@ public class ScheduleService {
     private int createStopsAndRoutes(
             List<ScheduleDay> days,
             PlaceCandidateProvider.ResolvedPlaces resolvedPlaces,
-            List<Integer> dailyStopTargets,
+            List<PlaceCountPolicy> dailyPlaceCountPolicies,
             ScheduleCreateRequest request,
             PlannerExecutionMetrics executionMetrics,
             List<SchedulePreviewCreateRequest.FixedEvent> fixedEvents,
             String customPrompt
     ) {
+        List<Integer> dailyStopTargets = targetCounts(dailyPlaceCountPolicies);
         List<Place> places = resolvedPlaces.places();
         Map<LocalDate, Set<Long>> fixedPlaceIdsByDate = fixedEvents.stream().collect(Collectors.groupingBy(
                 event -> java.time.OffsetDateTime.parse(event.startsAt())
@@ -623,11 +636,11 @@ public class ScheduleService {
                 () -> aiSchedulePlanGenerator.generate(
                         places, resolvedPlaces.mustVisitPlaceIds(), days, dailyStopTargets,
                         request, fixedPlaceIdsByDate, customPrompt));
-        List<MultiDayPlanOptimizer.OptimizedPlan> deterministicCandidates = multiDayPlanOptimizer.ranked(
+        List<MultiDayPlanOptimizer.OptimizedPlan> deterministicCandidates = multiDayPlanOptimizer.rankedWithPolicies(
                 places,
                 resolvedPlaces.mustVisitPlaceIds(),
                 days,
-                dailyStopTargets,
+                dailyPlaceCountPolicies,
                 request,
                 plannerProperties.multiDayActualRerankCandidates()
         );
@@ -647,7 +660,8 @@ public class ScheduleService {
                         ? "AI_GENERATED" : "AI_ASSISTED")
                 : aiProposal.source();
         placesByDay = fixedEventPlanner.placeOnRequiredDays(
-                placesByDay, days, dailyStopTargets, fixedPlaceIdsByDate);
+                placesByDay, days, dailyPlaceCountPolicies.stream()
+                        .map(PlaceCountPolicy::maximum).toList(), fixedPlaceIdsByDate);
         int reducedOptionalStops = 0;
         for (int dayIndex = 0; dayIndex < days.size(); dayIndex++) {
             ScheduleDay day = days.get(dayIndex);
@@ -667,7 +681,8 @@ public class ScheduleService {
                 }
                 Place removable = optionalPlaceToRemove(
                         day, orderedPlaces, resolvedPlaces.mustVisitPlaceIds(),
-                        fixedEventByPlaceId.keySet(), request);
+                        fixedEventByPlaceId.keySet(), request,
+                        dailyPlaceCountPolicies.get(dayIndex).absoluteMinimum());
                 if (removable == null) {
                     throw new BusinessException("END_CONSTRAINT".equals(day.getEndLocationSource())
                             ? ErrorCode.END_CONSTRAINT_UNREACHABLE : ErrorCode.INVALID_SCHEDULE_CONDITION);
@@ -1011,9 +1026,10 @@ public class ScheduleService {
             List<Place> orderedPlaces,
             Set<Long> mustVisitPlaceIds,
             Set<Long> fixedEventPlaceIds,
-            ScheduleCreateRequest request
+            ScheduleCreateRequest request,
+            int absoluteMinimum
     ) {
-        if (orderedPlaces.size() <= MIN_STOPS_PER_DAY) return null;
+        if (orderedPlaces.size() <= absoluteMinimum) return null;
         List<Place> optional = orderedPlaces.stream()
                 .filter(place -> !mustVisitPlaceIds.contains(place.getId()))
                 .filter(place -> !fixedEventPlaceIds.contains(place.getId()))
@@ -1086,13 +1102,7 @@ public class ScheduleService {
     }
 
     private int stayMinutes(Place place) {
-        if (Objects.equals(place.getContentTypeId(), "15")) {
-            return 90;
-        }
-        if (Objects.equals(place.getContentTypeId(), "39")) {
-            return 75;
-        }
-        return DEFAULT_STAY_MINUTES;
+        return VisitDurationPolicy.minutes(place);
     }
 
     private boolean hasAnswer(ScheduleCreateRequest request, String answerId) {

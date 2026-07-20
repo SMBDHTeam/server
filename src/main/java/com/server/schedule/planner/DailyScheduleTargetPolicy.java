@@ -17,18 +17,41 @@ public final class DailyScheduleTargetPolicy {
     }
 
     public static int target(long availableMinutes, List<ScheduleCreateRequest.SelectedAnswer> answers) {
+        return policy(availableMinutes, answers).targetCount();
+    }
+
+    public static PlaceCountPolicy policy(
+            long availableMinutes,
+            List<ScheduleCreateRequest.SelectedAnswer> answers
+    ) {
+        if (availableMinutes <= 120) {
+            return new PlaceCountPolicy(1, 1, 1, 1, 50);
+        }
+        if (availableMinutes < 240) {
+            return new PlaceCountPolicy(1, 1, 2, 2, 50);
+        }
         if (hasAnswer(answers, "PACE_PACKED")) {
-            if (availableMinutes >= EIGHT_HOURS) return 5;
-            if (availableMinutes >= SIX_HOURS) return 4;
-            return availableMinutes >= 240 ? 3 : 1;
+            if (availableMinutes >= EIGHT_HOURS) {
+                return new PlaceCountPolicy(2, 4, 5, 5, 85);
+            }
+            if (availableMinutes >= SIX_HOURS) {
+                return new PlaceCountPolicy(2, 3, 4, 5, 85);
+            }
+            return new PlaceCountPolicy(2, 2, 3, 3, 85);
         }
         if (hasAnswer(answers, "PACE_RELAXED")) {
-            if (availableMinutes >= SIX_HOURS) return 3;
-            return availableMinutes >= 240 ? 2 : 1;
+            if (availableMinutes >= SIX_HOURS) {
+                return new PlaceCountPolicy(2, 3, 3, 4, 55);
+            }
+            return new PlaceCountPolicy(2, 2, 3, 3, 55);
         }
-        if (availableMinutes >= EIGHT_HOURS) return 4;
-        if (availableMinutes >= SIX_HOURS) return 3;
-        return availableMinutes >= 240 ? 2 : 1;
+        if (availableMinutes >= EIGHT_HOURS) {
+            return new PlaceCountPolicy(2, 3, 4, 5, 70);
+        }
+        if (availableMinutes >= SIX_HOURS) {
+            return new PlaceCountPolicy(2, 3, 4, 4, 70);
+        }
+        return new PlaceCountPolicy(2, 2, 3, 3, 70);
     }
 
     private static boolean hasAnswer(

@@ -12,6 +12,7 @@ import com.server.place.repository.PlaceRepository;
 import com.server.schedule.repository.ScheduleRepository;
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -176,14 +177,20 @@ class ScheduleV2E2ETest {
                 .andReturn();
         String previewId = JsonPath.read(preview.getResponse().getContentAsString(), "$.previewId");
 
-        mockMvc.perform(post("/api/v1/schedules")
+        MvcResult created = mockMvc.perform(post("/api/v1/schedules")
                         .header("Idempotency-Key", "221f975e-9135-44b9-b771-9503a1b9cf91")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"previewId\":\"" + previewId + "\"}"))
-                .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.days[0].stops[2].place.id").value(eventPlaceId))
-                .andExpect(jsonPath("$.days[0].stops[2].arriveAt").value("18:00:00"))
-                .andExpect(jsonPath("$.days[0].stops[2].departAt").value("19:00:00"));
+                        .andExpect(status().isCreated())
+                .andReturn();
+        List<Map<String, Object>> stops = JsonPath.read(
+                created.getResponse().getContentAsString(), "$.days[0].stops");
+        Map<String, Object> eventStop = stops.stream()
+                .filter(stop -> ((Number) ((Map<?, ?>) stop.get("place")).get("id")).longValue() == eventPlaceId)
+                .findFirst()
+                .orElseThrow();
+        assertThat(eventStop.get("arriveAt")).isEqualTo("18:00:00");
+        assertThat(eventStop.get("departAt")).isEqualTo("19:00:00");
 
         Integer eventCount = jdbcTemplate.queryForObject(
                 "select count(*) from schedule_fixed_events where client_event_id = 'event-evening'",

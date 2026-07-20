@@ -507,6 +507,33 @@ class ScheduleServiceTest {
     }
 
     @Test
+    @DisplayName("긴 여유 일정은 가까운 추가 후보로 큰 활동 공백을 줄인다")
+    void createAddsNearbyOptionalStopForLongRelaxedDay() {
+        Place first = place(81L, "남포 산책로", "129.0200", "35.1000");
+        Place second = place(82L, "용두산 전망", "129.0350", "35.1080");
+        Place third = place(83L, "국제시장 골목", "129.0500", "35.1160");
+        Place fourth = place(84L, "근처 공원", "129.0650", "35.1240");
+        when(placeRepository.findAll()).thenReturn(List.of(first, second, third, fourth));
+        when(transitRouteProvider.findRoute(Mockito.any(TransitPoint.class), Mockito.any(TransitPoint.class)))
+                .thenReturn(route());
+        when(scheduleRepository.save(Mockito.any(Schedule.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        ScheduleResponse response = scheduleService.create(new ScheduleCreateRequest(
+                LocalDate.parse("2026-06-23"), LocalDate.parse("2026-06-23"),
+                LocalTime.parse("09:00"), LocalTime.parse("18:00"),
+                new ScheduleCreateRequest.Location("부산역", new BigDecimal("129.0403"), new BigDecimal("35.1151")),
+                new ScheduleCreateRequest.Location("부산역", new BigDecimal("129.0403"), new BigDecimal("35.1151")),
+                List.of(new ScheduleCreateRequest.SelectedAnswer("PACE", "PACE_RELAXED")),
+                List.of()
+        ));
+
+        assertThat(response.days()).singleElement().satisfies(day ->
+                assertThat(day.stops()).extracting(stop -> stop.place().id())
+                        .containsExactlyInAnyOrder(81L, 82L, 83L, 84L));
+    }
+
+    @Test
     @DisplayName("저도보 조건에서는 장소 수보다 부담 장소 제외를 우선한다")
     void createAutoDistributesPartialCandidatesAcrossDays() {
         Place nampoPlace = place(2L, "광복로패션거리", "12", "129.0327", "35.1000");
