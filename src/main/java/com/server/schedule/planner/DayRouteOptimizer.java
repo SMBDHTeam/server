@@ -5,13 +5,11 @@ import com.server.place.domain.Place;
 import com.server.schedule.domain.ScheduleDay;
 import com.server.transit.service.TransitPoint;
 import com.server.transit.service.TransitRouteResult;
-import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.EnumSet;
-import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -27,18 +25,6 @@ public class DayRouteOptimizer {
     private static final int MEAL_SLOT_MISS_PENALTY = 10_000;
     private static final int DAY_OVERRUN_MINUTE_PENALTY = 1_000;
     private static final int MINIMUM_FEASIBLE_STAY_MINUTES = 30;
-    private static final int CONSECUTIVE_SAME_EXPERIENCE_PENALTY = 12;
-    private static final int CONSECUTIVE_SAME_SEMANTIC_GROUP_PENALTY = 4;
-    private static final int REGION_TRANSITION_PENALTY = 4;
-    private static final int REGION_REENTRY_PENALTY = 30;
-    private static final int DIRECTION_REVERSAL_90_DEGREES_PENALTY = 3;
-    private static final int DIRECTION_REVERSAL_120_DEGREES_PENALTY = 9;
-    private static final int DIRECTION_REVERSAL_150_DEGREES_PENALTY = 18;
-    private static final double DETOUR_RATIO_TOLERANCE = 1.15;
-    private static final int DETOUR_PENALTY_PER_RATIO = 80;
-    private static final int MIN_DIRECTION_ANALYSIS_LEG_METERS = 1_000;
-    private static final int BASE_RETURN_RADIUS_METERS = 1_000;
-    private static final double EARTH_RADIUS_METERS = 6_371_000.0;
 
     public OptimizedDayRoute optimize(
             ScheduleDay day,
@@ -184,7 +170,7 @@ public class DayRouteOptimizer {
             if (alignment.slot() != null) {
                 assignedMealSlots.add(alignment.slot());
             }
-            optimizationCost += VisitTimePolicy.penalty(place, cursor);
+            optimizationCost += VisitScheduleEvaluator.timeSuitabilityPenalty(place, cursor);
             cursor = cursor.plusMinutes(Math.min(
                     stayMinutes.applyAsInt(place), MINIMUM_FEASIBLE_STAY_MINUTES));
             previous = destination;
@@ -209,7 +195,7 @@ public class DayRouteOptimizer {
         }
         optimizationCost += waitingMinutes;
         optimizationCost += MealTimePolicy.orderPenalty(day, order);
-        optimizationCost += consecutiveExperiencePenalty(order);
+        optimizationCost += ExperienceSequenceEvaluator.consecutivePenalty(order);
         RouteFlowMetrics routeFlow = routeFlow(day, order);
         optimizationCost += routeFlow.totalPenalty();
         return new OptimizedDayRoute(
@@ -223,29 +209,7 @@ public class DayRouteOptimizer {
     }
 
     public static RouteFlowMetrics routeFlow(ScheduleDay day, List<Place> order) {
-        List<RoutePoint> points = routePoints(day, order);
-        if (points.size() < 2) return RouteFlowMetrics.empty();
-        int transitions = 0;
-        int reentries = 0;
-        Set<PlacePreferenceScorer.Neighborhood> departedRegions = new HashSet<>();
-        PlacePreferenceScorer.Neighborhood currentRegion = points.get(0).region();
-        for (int index = 1; index < points.size(); index++) {
-            RoutePoint next = points.get(index);
-            if (currentRegion != next.region()) {
-                transitions++;
-                departedRegions.add(currentRegion);
-                boolean terminalBaseReturn = index == points.size() - 1
-                        && sameBase(points.get(0), next);
-                if (departedRegions.contains(next.region()) && !terminalBaseReturn) {
-                    reentries++;
-                }
-                currentRegion = next.region();
-            }
-        }
-        int directionPenalty = directionReversalPenalty(points);
-        int totalPenalty = transitions * REGION_TRANSITION_PENALTY
-                + reentries * REGION_REENTRY_PENALTY + directionPenalty;
-        return new RouteFlowMetrics(transitions, reentries, directionPenalty, 1.0, totalPenalty);
+        return routeFlowMetrics(RouteFlowEvaluator.evaluate(day, order));
     }
 
     private List<OptimizedDayRoute> applyDetourRatios(
@@ -253,14 +217,15 @@ public class DayRouteOptimizer {
             List<OptimizedDayRoute> candidates
     ) {
         double shortestDistance = candidates.stream()
-                .mapToDouble(candidate -> coordinateRouteDistance(day, candidate.places()))
+                .mapToDouble(candidate -> RouteFlowEvaluator.coordinateRouteDistance(day, candidate.places()))
                 .filter(distance -> distance > 0)
                 .min().orElse(0);
         if (shortestDistance == 0) return List.copyOf(candidates);
         return candidates.stream().map(candidate -> {
-            double detourRatio = coordinateRouteDistance(day, candidate.places()) / shortestDistance;
+            double detourRatio = RouteFlowEvaluator.coordinateRouteDistance(day, candidate.places()) / shortestDistance;
             RouteFlowMetrics flow = candidate.routeFlow();
-            RouteFlowMetrics detourAwareFlow = flow.withDetourRatio(detourRatio);
+            RouteFlowMetrics detourAwareFlow = routeFlowMetrics(RouteFlowEvaluator.withDetourRatio(
+                    routeFlowEvaluation(flow), detourRatio));
             return new OptimizedDayRoute(
                     candidate.places(), candidate.inboundRoutes(), candidate.finalRoute(),
                     candidate.totalMinutes(), candidate.optimizationCost()
@@ -269,122 +234,22 @@ public class DayRouteOptimizer {
         }).toList();
     }
 
-    private static int detourPenalty(double detourRatio) {
-        if (detourRatio <= DETOUR_RATIO_TOLERANCE) return 0;
-        return (int) Math.ceil((detourRatio - DETOUR_RATIO_TOLERANCE)
-                * DETOUR_PENALTY_PER_RATIO);
+    private static RouteFlowMetrics routeFlowMetrics(RouteFlowEvaluator.Evaluation evaluation) {
+        return new RouteFlowMetrics(
+                evaluation.regionTransitionCount(),
+                evaluation.regionReentryCount(),
+                evaluation.directionReversalPenalty(),
+                evaluation.detourRatio(),
+                evaluation.totalPenalty());
     }
 
-    private static List<RoutePoint> routePoints(ScheduleDay day, List<Place> order) {
-        List<RoutePoint> points = new ArrayList<>();
-        if (day.getStartLongitude() != null && day.getStartLatitude() != null) {
-            points.add(point(day.getStartLongitude(), day.getStartLatitude()));
-        }
-        for (Place place : order) {
-            points.add(point(place.getLongitude(), place.getLatitude()));
-        }
-        if (day.getEndLongitude() != null && day.getEndLatitude() != null) {
-            points.add(point(day.getEndLongitude(), day.getEndLatitude()));
-        }
-        return List.copyOf(points);
-    }
-
-    private static RoutePoint point(BigDecimal longitude, BigDecimal latitude) {
-        return new RoutePoint(
-                longitude, latitude, PlacePreferenceScorer.Neighborhood.from(longitude, latitude));
-    }
-
-    private static boolean sameBase(RoutePoint start, RoutePoint end) {
-        return distanceMeters(start.longitude(), start.latitude(), end.longitude(), end.latitude())
-                <= BASE_RETURN_RADIUS_METERS;
-    }
-
-    private static int directionReversalPenalty(List<RoutePoint> points) {
-        int penalty = 0;
-        for (int index = 1; index < points.size() - 1; index++) {
-            RoutePoint previous = points.get(index - 1);
-            RoutePoint current = points.get(index);
-            RoutePoint next = points.get(index + 1);
-            if (distanceMeters(previous.longitude(), previous.latitude(), current.longitude(), current.latitude())
-                    < MIN_DIRECTION_ANALYSIS_LEG_METERS
-                    || distanceMeters(current.longitude(), current.latitude(), next.longitude(), next.latitude())
-                    < MIN_DIRECTION_ANALYSIS_LEG_METERS) {
-                continue;
-            }
-            double angle = turnAngleDegrees(previous, current, next);
-            if (angle >= 150) {
-                penalty += DIRECTION_REVERSAL_150_DEGREES_PENALTY;
-            } else if (angle >= 120) {
-                penalty += DIRECTION_REVERSAL_120_DEGREES_PENALTY;
-            } else if (angle >= 90) {
-                penalty += DIRECTION_REVERSAL_90_DEGREES_PENALTY;
-            }
-        }
-        return penalty;
-    }
-
-    private static double coordinateRouteDistance(ScheduleDay day, List<Place> order) {
-        List<RoutePoint> points = routePoints(day, order);
-        double distance = 0;
-        for (int index = 1; index < points.size(); index++) {
-            distance += distanceMeters(
-                    points.get(index - 1).longitude(), points.get(index - 1).latitude(),
-                    points.get(index).longitude(), points.get(index).latitude());
-        }
-        return distance;
-    }
-
-    private static double turnAngleDegrees(RoutePoint previous, RoutePoint current, RoutePoint next) {
-        double previousX = current.longitude().doubleValue() - previous.longitude().doubleValue();
-        double previousY = current.latitude().doubleValue() - previous.latitude().doubleValue();
-        double nextX = next.longitude().doubleValue() - current.longitude().doubleValue();
-        double nextY = next.latitude().doubleValue() - current.latitude().doubleValue();
-        double denominator = Math.hypot(previousX, previousY) * Math.hypot(nextX, nextY);
-        if (denominator == 0) return 0;
-        double cosine = Math.max(-1, Math.min(1, (previousX * nextX + previousY * nextY) / denominator));
-        return Math.toDegrees(Math.acos(cosine));
-    }
-
-    private static int distanceMeters(
-            BigDecimal fromLongitude,
-            BigDecimal fromLatitude,
-            BigDecimal toLongitude,
-            BigDecimal toLatitude
-    ) {
-        double fromLongitudeRadians = Math.toRadians(fromLongitude.doubleValue());
-        double fromLatitudeRadians = Math.toRadians(fromLatitude.doubleValue());
-        double toLongitudeRadians = Math.toRadians(toLongitude.doubleValue());
-        double toLatitudeRadians = Math.toRadians(toLatitude.doubleValue());
-        double deltaLongitude = toLongitudeRadians - fromLongitudeRadians;
-        double deltaLatitude = toLatitudeRadians - fromLatitudeRadians;
-        double a = Math.pow(Math.sin(deltaLatitude / 2), 2)
-                + Math.cos(fromLatitudeRadians) * Math.cos(toLatitudeRadians)
-                * Math.pow(Math.sin(deltaLongitude / 2), 2);
-        return (int) Math.round(EARTH_RADIUS_METERS * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
-    }
-
-    private int consecutiveExperiencePenalty(List<Place> order) {
-        int penalty = 0;
-        for (int index = 1; index < order.size(); index++) {
-            PlaceExperienceClassifier.ExperienceProfile previous =
-                    PlaceExperienceClassifier.classify(order.get(index - 1));
-            PlaceExperienceClassifier.ExperienceProfile current =
-                    PlaceExperienceClassifier.classify(order.get(index));
-            if (!isDiversityScored(previous) || !isDiversityScored(current)) continue;
-            if (previous.type() == current.type()) {
-                penalty += CONSECUTIVE_SAME_EXPERIENCE_PENALTY;
-            }
-            if (previous.semanticGroup() == current.semanticGroup()) {
-                penalty += CONSECUTIVE_SAME_SEMANTIC_GROUP_PENALTY;
-            }
-        }
-        return penalty;
-    }
-
-    private boolean isDiversityScored(PlaceExperienceClassifier.ExperienceProfile profile) {
-        return profile.type() != PlaceExperienceClassifier.ExperienceType.OTHER
-                && profile.semanticGroup() != PlaceExperienceClassifier.SemanticGroup.OTHER
-                && profile.semanticGroup() != PlaceExperienceClassifier.SemanticGroup.FOOD_REST;
+    private static RouteFlowEvaluator.Evaluation routeFlowEvaluation(RouteFlowMetrics metrics) {
+        return new RouteFlowEvaluator.Evaluation(
+                metrics.regionTransitionCount(),
+                metrics.regionReentryCount(),
+                metrics.directionReversalPenalty(),
+                metrics.detourRatio(),
+                metrics.totalPenalty());
     }
 
     private String orderKey(List<Place> places) {
@@ -466,18 +331,6 @@ public class DayRouteOptimizer {
             return new RouteFlowMetrics(0, 0, 0, 1.0, 0);
         }
 
-        private RouteFlowMetrics withDetourRatio(double detourRatio) {
-            return new RouteFlowMetrics(
-                    regionTransitionCount, regionReentryCount, directionReversalPenalty,
-                    detourRatio, totalPenalty + detourPenalty(detourRatio));
-        }
-    }
-
-    private record RoutePoint(
-            BigDecimal longitude,
-            BigDecimal latitude,
-            PlacePreferenceScorer.Neighborhood region
-    ) {
     }
 
     public record OptimizationPreference(
