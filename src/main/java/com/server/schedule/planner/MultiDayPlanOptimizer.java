@@ -100,7 +100,7 @@ public class MultiDayPlanOptimizer {
                     request,
                     enforceMealCoverage
             ).stream()
-                    .sorted(Comparator.comparingLong(Group::cost).thenComparingLong(Group::mask))
+                    .sorted(groupComparator())
                     .toList();
             groupsByDay.add(beamSearch && dayIndex == 0
                     ? beamGroups(groups, candidates.size(), requiredMask, mealMask)
@@ -108,7 +108,8 @@ public class MultiDayPlanOptimizer {
         }
 
         Map<Long, List<PlanState>> states = new TreeMap<>();
-        states.put(0L, List.of(new PlanState(0L, List.of())));
+        states.put(0L, List.of(new PlanState(
+                PlanObjectiveEvaluator.empty(), 0L, 0L, 0L, List.of())));
         for (int dayIndex = 0; dayIndex < groupsByDay.size(); dayIndex++) {
             List<Group> dayGroups = groupsByDay.get(dayIndex);
             Map<Long, List<PlanState>> nextStates;
@@ -129,8 +130,15 @@ public class MultiDayPlanOptimizer {
         List<OptimizedPlan> optimizedPlans = states.entrySet().stream()
                 .filter(entry -> (entry.getKey() & requiredMask) == requiredMask)
                 .flatMap(entry -> entry.getValue().stream())
-                .map(state -> new OptimizedPlan(state.cost(), state.placesByDay()))
-                .sorted(Comparator.comparingLong(OptimizedPlan::estimatedCost)
+                .map(state -> new OptimizedPlan(
+                        state.legacyCost(),
+                        state.objective(),
+                        state.candidateSuitabilityCost(),
+                        state.coordinateDistanceCost(),
+                        state.placesByDay()))
+                .sorted(Comparator.comparing(OptimizedPlan::objective)
+                        .thenComparingLong(OptimizedPlan::candidateSuitabilityCost)
+                        .thenComparingLong(OptimizedPlan::coordinateDistanceCost)
                         .thenComparing(plan -> planKey(plan.placesByDay())))
                 .limit(rankedLimit)
                 .toList();
@@ -148,6 +156,9 @@ public class MultiDayPlanOptimizer {
             List<Integer> dailyStopTargets
     ) {
         return new OptimizedPlan(
+                Long.MAX_VALUE,
+                fallbackObjective(),
+                Long.MAX_VALUE,
                 Long.MAX_VALUE,
                 fallbackAllocator.allocate(
                         fallbackCandidates(candidates, requiredPlaceIds, targetPlaceCount),
@@ -233,11 +244,23 @@ public class MultiDayPlanOptimizer {
     ) {
         if ((stateMask & group.mask()) != 0) return;
         long nextMask = stateMask | group.mask();
-        long nextCost = state.cost() + group.cost()
-                + crossDayExperiencePenalty(state.placesByDay(), group.places());
+        long crossDayDiversityCost = crossDayExperiencePenalty(state.placesByDay(), group.places());
+        PlanObjective nextObjective = PlanObjectiveEvaluator.combine(
+                state.objective(), group.objective());
+        nextObjective = PlanObjectiveEvaluator.addDiversityCost(nextObjective, crossDayDiversityCost);
+        long nextCandidateSuitabilityCost = state.candidateSuitabilityCost()
+                + group.candidateSuitabilityCost();
+        long nextCoordinateDistanceCost = state.coordinateDistanceCost()
+                + group.coordinateDistanceCost();
+        long nextLegacyCost = state.legacyCost() + group.legacyCost() + crossDayDiversityCost;
         List<List<Place>> assignments = new ArrayList<>(state.placesByDay());
         assignments.add(group.places());
-        PlanState candidate = new PlanState(nextCost, List.copyOf(assignments));
+        PlanState candidate = new PlanState(
+                nextObjective,
+                nextCandidateSuitabilityCost,
+                nextCoordinateDistanceCost,
+                nextLegacyCost,
+                List.copyOf(assignments));
         List<PlanState> bucket = new ArrayList<>(
                 nextStates.getOrDefault(nextMask, List.of()));
         String candidateKey = planKey(candidate.placesByDay());
@@ -245,8 +268,7 @@ public class MultiDayPlanOptimizer {
             return;
         }
         bucket.add(candidate);
-        bucket.sort(Comparator.comparingLong(PlanState::cost)
-                .thenComparing(plan -> planKey(plan.placesByDay())));
+        bucket.sort(planStateComparator());
         nextStates.put(nextMask, List.copyOf(
                 bucket.subList(0, Math.min(statesPerMask, bucket.size()))));
     }
@@ -317,7 +339,7 @@ public class MultiDayPlanOptimizer {
     ) {
         if (remaining == 0) {
             List<Place> places = List.copyOf(selected);
-            groups.add(new Group(mask, groupCost(day, places.size(), mask, costContext), places));
+            groups.add(group(day, places, mask, costContext));
             return;
         }
         for (int index = startIndex; index <= candidates.size() - remaining; index++) {
@@ -329,20 +351,42 @@ public class MultiDayPlanOptimizer {
         }
     }
 
-    private long groupCost(
+    private Group group(
             ScheduleDay day,
-            int placeCount,
+            List<Place> places,
             long mask,
             DayCostContext costContext
     ) {
-        long cost = costContext.shortestDistance(mask) / ROUTE_DISTANCE_COST_DIVISOR;
-        int requiredMeals = MealTimePolicy.requiredMealStops(day, placeCount);
+        // Visit order is unresolved here, so the coordinate minimum is the available flow estimate.
+        long coordinateDistanceCost = costContext.shortestDistance(mask);
+        int requiredMeals = MealTimePolicy.requiredMealStops(day, places.size());
         long assignedMeals = Long.bitCount(mask & costContext.mealMask());
-        cost += Math.max(0, requiredMeals - assignedMeals) * MEAL_COVERAGE_PENALTY;
+        long mealCoverageRisk = Math.max(0, requiredMeals - assignedMeals) * MEAL_COVERAGE_PENALTY;
         if (requiredMeals > 0) {
-            cost += Math.max(0, assignedMeals - requiredMeals) * EXCESS_MEAL_PENALTY;
+            mealCoverageRisk += Math.max(0, assignedMeals - requiredMeals) * EXCESS_MEAL_PENALTY;
         }
-        return cost + costContext.preferenceCost(mask);
+        long candidateSuitabilityCost = costContext.preferenceCost(mask);
+        long diversityCost = costContext.repetitionCost(mask);
+        long routeFlowCost = coordinateDistanceCost / ROUTE_DISTANCE_COST_DIVISOR;
+        PlanObjective objective = PlanObjectiveEvaluator.evaluate(
+                0,
+                mealCoverageRisk,
+                0,
+                routeFlowCost,
+                0,
+                candidateSuitabilityCost,
+                diversityCost,
+                0
+        );
+        long legacyCost = routeFlowCost + mealCoverageRisk
+                + candidateSuitabilityCost + diversityCost;
+        return new Group(
+                mask,
+                objective,
+                candidateSuitabilityCost,
+                coordinateDistanceCost,
+                legacyCost,
+                places);
     }
 
     private List<Group> beamGroups(
@@ -352,7 +396,7 @@ public class MultiDayPlanOptimizer {
             long mealMask
     ) {
         List<Group> sorted = groups.stream()
-                .sorted(Comparator.comparingLong(Group::cost).thenComparingLong(Group::mask))
+                .sorted(groupComparator())
                 .toList();
         Map<Long, Group> selected = new LinkedHashMap<>();
         sorted.stream().limit(MAX_BEAM_GROUPS_PER_DAY)
@@ -393,7 +437,9 @@ public class MultiDayPlanOptimizer {
         List<MaskedPlanState> sorted = states.entrySet().stream()
                 .flatMap(entry -> entry.getValue().stream()
                         .map(state -> new MaskedPlanState(entry.getKey(), state)))
-                .sorted(Comparator.comparingLong((MaskedPlanState item) -> item.state().cost())
+                .sorted(Comparator.comparing((MaskedPlanState item) -> item.state().objective())
+                        .thenComparingLong(item -> item.state().candidateSuitabilityCost())
+                        .thenComparingLong(item -> item.state().coordinateDistanceCost())
                         .thenComparingLong(MaskedPlanState::mask)
                         .thenComparing(item -> planKey(item.state().placesByDay())))
                 .toList();
@@ -427,6 +473,32 @@ public class MultiDayPlanOptimizer {
                         .sorted()
                         .collect(Collectors.joining(",")))
                 .collect(Collectors.joining("|"));
+    }
+
+    private static Comparator<Group> groupComparator() {
+        return Comparator.comparing(Group::objective)
+                .thenComparingLong(Group::candidateSuitabilityCost)
+                .thenComparingLong(Group::coordinateDistanceCost)
+                .thenComparingLong(Group::mask);
+    }
+
+    private static Comparator<PlanState> planStateComparator() {
+        return Comparator.comparing(PlanState::objective)
+                .thenComparingLong(PlanState::candidateSuitabilityCost)
+                .thenComparingLong(PlanState::coordinateDistanceCost)
+                .thenComparing(plan -> planKey(plan.placesByDay()));
+    }
+
+    private static PlanObjective fallbackObjective() {
+        return PlanObjectiveEvaluator.evaluate(
+                1,
+                Double.MAX_VALUE,
+                Double.MAX_VALUE,
+                Double.MAX_VALUE,
+                Double.MAX_VALUE,
+                Double.MAX_VALUE,
+                Double.MAX_VALUE,
+                Double.MAX_VALUE);
     }
 
     private ScheduleCreateRequest.Location location(
@@ -507,10 +579,23 @@ public class MultiDayPlanOptimizer {
         return mask;
     }
 
-    private record Group(long mask, long cost, List<Place> places) {
+    private record Group(
+            long mask,
+            PlanObjective objective,
+            long candidateSuitabilityCost,
+            long coordinateDistanceCost,
+            long legacyCost,
+            List<Place> places
+    ) {
     }
 
-    private record PlanState(long cost, List<List<Place>> placesByDay) {
+    private record PlanState(
+            PlanObjective objective,
+            long candidateSuitabilityCost,
+            long coordinateDistanceCost,
+            long legacyCost,
+            List<List<Place>> placesByDay
+    ) {
     }
 
     private record MaskedPlanState(long mask, PlanState state) {
@@ -519,7 +604,21 @@ public class MultiDayPlanOptimizer {
     private record BeamDiversityKey(long requiredMask, int mealCount) {
     }
 
-    public record OptimizedPlan(long estimatedCost, List<List<Place>> placesByDay) {
+    public record OptimizedPlan(
+            long estimatedCost,
+            PlanObjective objective,
+            long candidateSuitabilityCost,
+            long coordinateDistanceCost,
+            List<List<Place>> placesByDay
+    ) {
+        public OptimizedPlan(long estimatedCost, List<List<Place>> placesByDay) {
+            this(
+                    estimatedCost,
+                    PlanObjectiveEvaluator.empty(),
+                    estimatedCost,
+                    estimatedCost,
+                    placesByDay);
+        }
     }
 
     private static final class DayCostContext {
@@ -620,7 +719,7 @@ public class MultiDayPlanOptimizer {
                 cost += (long) Math.max(0, targetMatches - matchingThemeCosts.size())
                         * THEME_UNMET_PENALTY;
             }
-            return cost + repetitionCost(mask);
+            return cost;
         }
 
         private long repetitionCost(long mask) {

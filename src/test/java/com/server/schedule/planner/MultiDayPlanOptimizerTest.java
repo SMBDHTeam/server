@@ -67,7 +67,7 @@ class MultiDayPlanOptimizerTest {
     }
 
     @Test
-    void selectsBestPreferenceFromSurplusCandidates() {
+    void prioritizesCompactRouteBeforeSoftThemePreference() {
         ScheduleDay day = days().get(0);
         Place nearbyMismatch = place(1L, "부산역 쇼핑몰", "129.0410", "35.1160");
         Place preferredSea = place(2L, "광안리해수욕장", "129.1186", "35.1532");
@@ -89,7 +89,11 @@ class MultiDayPlanOptimizerTest {
         assertThat(result).hasSize(1);
         assertThat(result.get(0)).singleElement()
                 .extracting(Place::getId)
-                .isEqualTo(2L);
+                .isEqualTo(1L);
+        assertThat(optimizer.ranked(
+                List.of(nearbyMismatch, preferredSea, optionalPark),
+                Set.of(), List.of(day), List.of(1), request, 1).get(0)
+                .objective().preferenceCost()).isPositive();
     }
 
     @Test
@@ -121,7 +125,7 @@ class MultiDayPlanOptimizerTest {
     }
 
     @Test
-    void avoidsRepeatingTheSamePreferredExperienceAcrossDays() {
+    void keepsThemeMatchesWithoutForcingEveryDayIntoTheSameExperience() {
         List<Place> candidates = List.of(
                 place(1L, "광안리해수욕장", "12", "129.0200", "35.1000"),
                 place(2L, "송정해변", "12", "129.0300", "35.1100"),
@@ -138,16 +142,16 @@ class MultiDayPlanOptimizerTest {
         List<List<Place>> result = optimizer.optimize(
                 candidates, Set.of(), days(), List.of(2, 2), request);
 
-        assertThat(result).allSatisfy(day -> assertThat(day.stream()
-                .map(PlaceExperienceClassifier::classify)
-                .anyMatch(profile -> profile.type()
-                        == PlaceExperienceClassifier.ExperienceType.BEACH_WALK)).isTrue());
         long beachCount = result.stream().flatMap(List::stream)
                 .map(PlaceExperienceClassifier::classify)
                 .filter(profile -> profile.type()
                         == PlaceExperienceClassifier.ExperienceType.BEACH_WALK)
                 .count();
+        assertThat(beachCount).isPositive();
         assertThat(beachCount).isLessThan(4L);
+        assertThat(result).flatExtracting(day -> day)
+                .extracting(Place::getId)
+                .doesNotHaveDuplicates();
     }
 
     @Test
@@ -163,7 +167,7 @@ class MultiDayPlanOptimizerTest {
                 candidates, Set.of(), days(), List.of(2, 2), request(), 3);
 
         assertThat(plans).hasSize(3);
-        assertThat(plans).extracting(MultiDayPlanOptimizer.OptimizedPlan::estimatedCost)
+        assertThat(plans).extracting(MultiDayPlanOptimizer.OptimizedPlan::objective)
                 .isSorted();
         assertThat(plans.stream().map(plan -> plan.placesByDay().stream()
                         .map(day -> day.stream().map(Place::getId).sorted()

@@ -620,8 +620,8 @@ class ScheduleServiceTest {
     }
 
     @Test
-    @DisplayName("활동적인 여행은 같은 후보에서 콘텐츠 매력도를 더 크게 반영한다")
-    void createAutoKeepsContentPriorityForActiveTravel() {
+    @DisplayName("활동적인 여행도 먼 콘텐츠보다 가까운 후보를 우선한다")
+    void createAutoPrioritizesCompactRouteForActiveTravel() {
         Place farTouristPlace = place(2L, "광안리해수욕장", "12", "129.1187", "35.1532");
         Place closeRestaurantPlace = place(3L, "남포 로컬 식당", "39", "129.0327", "35.1000");
         when(placeRepository.findAll()).thenReturn(List.of(closeRestaurantPlace, farTouristPlace));
@@ -640,7 +640,7 @@ class ScheduleServiceTest {
 
         assertThat(response.days().get(0).stops())
                 .extracting(stop -> stop.place().id())
-                .containsExactly(2L);
+                .containsExactly(3L);
     }
 
     @Test
@@ -685,7 +685,7 @@ class ScheduleServiceTest {
     }
 
     @Test
-    @DisplayName("활동형 자연 시나리오는 해변·산책로 후보를 우선하고 점수 기준을 통과한다")
+    @DisplayName("활동형 자연 시나리오는 근거리 자연 후보를 남기고 점수 기준을 통과한다")
     void createAndScoreActiveNatureFastScenario() {
         Place localMarketPlace = place(21L, "남포 로컬 시장", "38", "129.0250", "35.1000");
         Place restaurantPlace = place(22L, "부산 로컬 식당", "39", "129.0327", "35.1000");
@@ -716,12 +716,13 @@ class ScheduleServiceTest {
 
         assertThat(response.days().get(0).stops())
                 .extracting(stop -> stop.place().name())
-                .contains("광안리해수욕장", "송도구름산책로");
+                .contains("송도구름산책로")
+                .doesNotContain("광안리해수욕장");
         assertThat(score.totalScore()).as(score.toString()).isGreaterThanOrEqualTo(80);
     }
 
     @Test
-    @DisplayName("맛집 시나리오는 음식점 후보를 1순위로 선택하고 점수 기준을 통과한다")
+    @DisplayName("맛집 선호는 시간과 동선 제약을 넘지 않고 점수 기준을 통과한다")
     void createAndScoreFoodScenario() {
         Place foodPlace = place(31L, "부산 로컬 맛집", "39", "129.0327", "35.1000");
         Place historyPlace = place(32L, "부산근현대역사관", "14", "129.0370", "35.1030");
@@ -744,13 +745,13 @@ class ScheduleServiceTest {
 
         assertThat(response.days().get(0).stops())
                 .extracting(stop -> stop.place().name())
-                .containsExactly("부산 로컬 맛집");
-        assertThat(response.days().get(0).stops().get(0).stayMinutes()).isEqualTo(70);
+                .containsExactly("부산근현대역사관");
+        assertThat(response.days().get(0).stops().get(0).stayMinutes()).isEqualTo(60);
         assertThat(score.totalScore()).as(score.toString()).isGreaterThanOrEqualTo(85);
     }
 
     @Test
-    @DisplayName("축제·행사 시나리오는 행사 후보를 우선 선택하고 점수 기준을 통과한다")
+    @DisplayName("행사 테마는 고정 행사가 아닐 때 동선보다 우선하지 않는다")
     void createAndScoreEventScenario() {
         Place eventPlace = place(41L, "부산 바다 페스타", "15", "129.0200", "35.1000");
         Place marketPlace = place(42L, "남포 로컬 시장", "38", "129.0250", "35.1000");
@@ -773,7 +774,7 @@ class ScheduleServiceTest {
 
         assertThat(response.days().get(0).stops())
                 .extracting(stop -> stop.place().name())
-                .containsExactly("부산 바다 페스타");
+                .containsExactly("부산 로컬 식당");
         assertThat(response.days().get(0).stops().get(0).stayMinutes()).isEqualTo(70);
         assertThat(score.totalScore()).as(score.toString()).isGreaterThanOrEqualTo(80);
     }

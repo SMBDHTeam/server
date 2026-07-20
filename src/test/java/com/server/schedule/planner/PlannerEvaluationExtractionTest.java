@@ -68,6 +68,22 @@ class PlannerEvaluationExtractionTest {
         assertThat(lowerRouteFlowCost).isLessThan(higherRouteFlowCost);
     }
 
+    @Test
+    void planObjectiveAccumulatesIndependentDayCosts() {
+        PlanObjective firstDay = PlanObjectiveEvaluator.evaluate(
+                0, 10, 5, 100, 0, 20, 30, 0);
+        PlanObjective secondDay = PlanObjectiveEvaluator.evaluate(
+                0, 20, 0, 50, 10, 40, 0, 5);
+
+        PlanObjective combined = PlanObjectiveEvaluator.combine(firstDay, secondDay);
+
+        assertThat(combined).isEqualTo(PlanObjectiveEvaluator.evaluate(
+                0, 30, 5, 150, 10, 60, 30, 5));
+        assertThat(PlanObjectiveEvaluator.addDiversityCost(combined, 7))
+                .isEqualTo(PlanObjectiveEvaluator.evaluate(
+                        0, 30, 5, 150, 10, 60, 37, 5));
+    }
+
     private ScheduleDay day(
             String startName,
             String startLongitude,
