@@ -36,7 +36,13 @@ import com.server.schedule.planner.PlaceCandidateProvider;
 import com.server.schedule.planner.MultiDayPlanOptimizer;
 import com.server.schedule.planner.MealTimePolicy;
 import com.server.schedule.planner.PlannerRouteEstimator;
+import com.server.schedule.planner.PlanObjective;
+import com.server.schedule.planner.PlanObjectiveEvaluator;
 import com.server.schedule.planner.SchedulePlannerProperties;
+import com.server.schedule.planner.ScheduleRepairContext;
+import com.server.schedule.planner.ScheduleRepairEngine;
+import com.server.schedule.planner.ScheduleRepairStrategy;
+import com.server.schedule.planner.RepairCandidate;
 import com.server.schedule.planner.AiSchedulePlanGenerator;
 import com.server.schedule.planner.VisitDurationPolicy;
 import com.server.schedule.repository.ScheduleRepository;
@@ -99,6 +105,7 @@ public class ScheduleService {
     private final PlannerRouteEstimator plannerRouteEstimator;
     private final SchedulePlannerProperties plannerProperties;
     private final AiSchedulePlanGenerator aiSchedulePlanGenerator;
+    private final ScheduleRepairEngine scheduleRepairEngine;
 
     public ScheduleService(
             ScheduleRepository scheduleRepository,
@@ -117,7 +124,8 @@ public class ScheduleService {
             FixedEventPlanner fixedEventPlanner,
             PlannerRouteEstimator plannerRouteEstimator,
             SchedulePlannerProperties plannerProperties,
-            AiSchedulePlanGenerator aiSchedulePlanGenerator
+            AiSchedulePlanGenerator aiSchedulePlanGenerator,
+            ScheduleRepairEngine scheduleRepairEngine
     ) {
         this.scheduleRepository = scheduleRepository;
         this.placeRepository = placeRepository;
@@ -136,6 +144,7 @@ public class ScheduleService {
         this.plannerRouteEstimator = plannerRouteEstimator;
         this.plannerProperties = plannerProperties;
         this.aiSchedulePlanGenerator = aiSchedulePlanGenerator;
+        this.scheduleRepairEngine = scheduleRepairEngine;
     }
 
     public ScheduleResponse create(ScheduleCreateRequest request) {
@@ -662,37 +671,166 @@ public class ScheduleService {
         placesByDay = fixedEventPlanner.placeOnRequiredDays(
                 placesByDay, days, dailyPlaceCountPolicies.stream()
                         .map(PlaceCountPolicy::maximum).toList(), fixedPlaceIdsByDate);
+        return repairAndCreateStopsAndRoutes(
+                days, placesByDay, resolvedPlaces, dailyPlaceCountPolicies, request,
+                routeSearch, executionMetrics, fixedEventByPlaceId);
+    }
+
+    private int repairAndCreateStopsAndRoutes(
+            List<ScheduleDay> days,
+            List<List<Place>> initialPlacesByDay,
+            PlaceCandidateProvider.ResolvedPlaces resolvedPlaces,
+            List<PlaceCountPolicy> dailyPlaceCountPolicies,
+            ScheduleCreateRequest request,
+            RouteSearchContext routeSearch,
+            PlannerExecutionMetrics executionMetrics,
+            Map<Long, SchedulePreviewCreateRequest.FixedEvent> fixedEventByPlaceId
+    ) {
+        List<List<Place>> placesByDay = initialPlacesByDay;
+        Map<Integer, List<Place>> orderOverrides = Map.of();
         int reducedOptionalStops = 0;
-        for (int dayIndex = 0; dayIndex < days.size(); dayIndex++) {
-            ScheduleDay day = days.get(dayIndex);
-            List<Place> dayPlaces = new ArrayList<>(placesByDay.get(dayIndex));
-            while (true) {
-                day.clearTransitRoutes();
-                day.clearStops();
-                List<Place> orderedPlaces = optimizedOrder(
-                        day, dayPlaces, fixedEventByPlaceId, request,
-                        routeSearch, executionMetrics, days.size(), dayIndex);
-                createDayStopsAndRoutes(
-                        day, orderedPlaces, resolvedPlaces, fixedEventByPlaceId,
+        int maximumRepairAttempts = 8;
+        for (int attempt = 0; attempt < maximumRepairAttempts; attempt++) {
+            List<List<Place>> orders = rebuildDays(
+                    days, placesByDay, orderOverrides, resolvedPlaces, fixedEventByPlaceId,
+                    request, routeSearch, executionMetrics);
+            int failedDayIndex = firstInfeasibleDay(days);
+            if (failedDayIndex < 0) {
+                fixedEventPlanner.validateDetailedFeasibility(days);
+                return reducedOptionalStops;
+            }
+            ScheduleRepairContext context = new ScheduleRepairContext(
+                    failedDayIndex, placesByDay, resolvedPlaces.places(), orders.get(failedDayIndex),
+                    days, dailyPlaceCountPolicies, resolvedPlaces.mustVisitPlaceIds(),
+                    fixedEventByPlaceId.keySet(), request, placePreferenceScorer);
+            RepairCandidate accepted = null;
+            for (ScheduleRepairStrategy strategy : scheduleRepairEngine.strategies()) {
+                rebuildDays(days, placesByDay, orderOverrides, resolvedPlaces,
+                        fixedEventByPlaceId, request, routeSearch, executionMetrics);
+                accepted = acceptedRepairCandidate(
+                        strategy, context, days, resolvedPlaces, fixedEventByPlaceId,
                         request, routeSearch, executionMetrics);
-                resolvePlannerEndpoints(day, orderedPlaces);
-                if (feasibilityChecker.fitWithinAvailableTime(day)) {
-                    break;
-                }
-                Place removable = optionalPlaceToRemove(
-                        day, orderedPlaces, resolvedPlaces.mustVisitPlaceIds(),
-                        fixedEventByPlaceId.keySet(), request,
-                        dailyPlaceCountPolicies.get(dayIndex).absoluteMinimum());
-                if (removable == null) {
-                    throw new BusinessException("END_CONSTRAINT".equals(day.getEndLocationSource())
-                            ? ErrorCode.END_CONSTRAINT_UNREACHABLE : ErrorCode.INVALID_SCHEDULE_CONDITION);
-                }
-                dayPlaces.remove(removable);
+                if (accepted != null) break;
+            }
+            if (accepted == null) {
+                ScheduleDay failedDay = days.get(failedDayIndex);
+                throw new BusinessException("END_CONSTRAINT".equals(failedDay.getEndLocationSource())
+                        ? ErrorCode.END_CONSTRAINT_UNREACHABLE : ErrorCode.INVALID_SCHEDULE_CONDITION);
+            }
+            if (accepted.type() == RepairCandidate.RepairType.LOW_UTILITY_REMOVAL) {
                 reducedOptionalStops++;
             }
+            if (accepted.reduceToMinimumStay()) {
+                fixedEventPlanner.validateDetailedFeasibility(days);
+                return reducedOptionalStops;
+            }
+            placesByDay = accepted.placesByDay();
+            orderOverrides = accepted.orderOverrides();
         }
-        fixedEventPlanner.validateDetailedFeasibility(days);
-        return reducedOptionalStops;
+        int failedDayIndex = firstInfeasibleDay(days);
+        if (failedDayIndex < 0) {
+            fixedEventPlanner.validateDetailedFeasibility(days);
+            return reducedOptionalStops;
+        }
+        ScheduleDay failedDay = days.get(failedDayIndex);
+        throw new BusinessException("END_CONSTRAINT".equals(failedDay.getEndLocationSource())
+                ? ErrorCode.END_CONSTRAINT_UNREACHABLE : ErrorCode.INVALID_SCHEDULE_CONDITION);
+    }
+
+    private RepairCandidate acceptedRepairCandidate(
+            ScheduleRepairStrategy strategy,
+            ScheduleRepairContext context,
+            List<ScheduleDay> days,
+            PlaceCandidateProvider.ResolvedPlaces resolvedPlaces,
+            Map<Long, SchedulePreviewCreateRequest.FixedEvent> fixedEventByPlaceId,
+            ScheduleCreateRequest request,
+            RouteSearchContext routeSearch,
+            PlannerExecutionMetrics executionMetrics
+    ) {
+        PlanObjective currentObjective = repairObjective(days, context.placeCountPolicies());
+        RepairCandidate bestImprovement = null;
+        PlanObjective bestObjective = currentObjective;
+        for (RepairCandidate candidate : strategy.repair(context)) {
+            rebuildDays(days, candidate.placesByDay(), candidate.orderOverrides(), resolvedPlaces,
+                    fixedEventByPlaceId, request, routeSearch, executionMetrics);
+            boolean feasible = candidate.reduceToMinimumStay()
+                    ? days.stream().allMatch(feasibilityChecker::fitWithinAvailableTime)
+                    : firstInfeasibleDay(days) < 0;
+            if (feasible) return candidate;
+            PlanObjective candidateObjective = repairObjective(days, context.placeCountPolicies());
+            if (!candidate.reduceToMinimumStay() && candidateObjective.compareTo(bestObjective) < 0) {
+                bestImprovement = candidate;
+                bestObjective = candidateObjective;
+            }
+        }
+        return bestImprovement;
+    }
+
+    private List<List<Place>> rebuildDays(
+            List<ScheduleDay> days,
+            List<List<Place>> placesByDay,
+            Map<Integer, List<Place>> orderOverrides,
+            PlaceCandidateProvider.ResolvedPlaces resolvedPlaces,
+            Map<Long, SchedulePreviewCreateRequest.FixedEvent> fixedEventByPlaceId,
+            ScheduleCreateRequest request,
+            RouteSearchContext routeSearch,
+            PlannerExecutionMetrics executionMetrics
+    ) {
+        List<List<Place>> orders = new ArrayList<>();
+        for (int dayIndex = 0; dayIndex < days.size(); dayIndex++) {
+            ScheduleDay day = days.get(dayIndex);
+            day.clearTransitRoutes();
+            day.clearStops();
+            List<Place> orderedPlaces = orderOverrides.getOrDefault(dayIndex, List.of());
+            if (orderedPlaces.isEmpty()) {
+                orderedPlaces = optimizedOrder(
+                        day, placesByDay.get(dayIndex), fixedEventByPlaceId, request,
+                        routeSearch, executionMetrics, days.size(), dayIndex);
+            }
+            createDayStopsAndRoutes(
+                    day, orderedPlaces, resolvedPlaces, fixedEventByPlaceId,
+                    request, routeSearch, executionMetrics);
+            resolvePlannerEndpoints(day, orderedPlaces);
+            orders.add(List.copyOf(orderedPlaces));
+        }
+        return List.copyOf(orders);
+    }
+
+    private int firstInfeasibleDay(List<ScheduleDay> days) {
+        for (int dayIndex = 0; dayIndex < days.size(); dayIndex++) {
+            if (!feasibilityChecker.isWithinAvailableTime(days.get(dayIndex))) return dayIndex;
+        }
+        return -1;
+    }
+
+    private long totalOverrunMinutes(List<ScheduleDay> days) {
+        return days.stream().mapToLong(day -> Math.max(0,
+                feasibilityChecker.plannedMinutes(day)
+                        - Duration.between(day.getStartTime(), day.getEndTime()).toMinutes())).sum();
+    }
+
+    private PlanObjective repairObjective(
+            List<ScheduleDay> days,
+            List<PlaceCountPolicy> placeCountPolicies
+    ) {
+        long routeFlowCost = 0;
+        long placeCountCost = 0;
+        for (int index = 0; index < days.size(); index++) {
+            ScheduleDay day = days.get(index);
+            routeFlowCost += DayRouteOptimizer.routeFlow(day, day.getStops().stream()
+                    .map(ScheduleStop::getPlace).toList()).totalPenalty();
+            placeCountCost += placeCountPolicies.get(index).placeCountCost(day.getStops().size());
+        }
+        return PlanObjectiveEvaluator.evaluate(
+                0,
+                totalOverrunMinutes(days),
+                0,
+                routeFlowCost,
+                0,
+                0,
+                0,
+                placeCountCost
+        );
     }
 
     private List<MultiDayPlanOptimizer.OptimizedPlan> mergeAiProposal(
