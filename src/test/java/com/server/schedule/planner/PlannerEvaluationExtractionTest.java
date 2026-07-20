@@ -14,7 +14,7 @@ import org.junit.jupiter.api.Test;
 class PlannerEvaluationExtractionTest {
 
     @Test
-    void routeFlowEvaluatorKeepsTheLegacyRouteFlowMetricsExactly() {
+    void routeFlowEvaluatorKeepsTheRouteFlowBaseline() {
         ScheduleDay day = day(
                 "해운대 출발", "129.1604", "35.1587",
                 "광안리 도착", "129.1186", "35.1532");
@@ -24,14 +24,10 @@ class PlannerEvaluationExtractionTest {
                 place("HAE_B", "12", "129.1700", "35.1640"));
 
         RouteFlowEvaluator.Evaluation evaluation = RouteFlowEvaluator.evaluate(day, places);
-        DayRouteOptimizer.RouteFlowMetrics legacyMetrics = DayRouteOptimizer.routeFlow(day, places);
 
-        assertThat(legacyMetrics.regionTransitionCount()).isEqualTo(evaluation.regionTransitionCount());
-        assertThat(legacyMetrics.regionReentryCount()).isEqualTo(evaluation.regionReentryCount());
-        assertThat(legacyMetrics.directionReversalPenalty())
-                .isEqualTo(evaluation.directionReversalPenalty());
-        assertThat(legacyMetrics.detourRatio()).isEqualTo(evaluation.detourRatio());
-        assertThat(legacyMetrics.totalPenalty()).isEqualTo(evaluation.totalPenalty());
+        assertThat(evaluation).isEqualTo(new RouteFlowEvaluator.Evaluation(3, 2, 36, 1.0, 108));
+        assertThat(RouteFlowEvaluator.withDetourRatio(evaluation, 1.5))
+                .isEqualTo(new RouteFlowEvaluator.Evaluation(3, 2, 36, 1.5, 137));
     }
 
     @Test
