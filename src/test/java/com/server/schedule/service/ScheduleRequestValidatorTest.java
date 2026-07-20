@@ -27,7 +27,7 @@ class ScheduleRequestValidatorTest {
         List<Question> questions = List.of(
                 question("COMPANION", "COMPANION_FRIENDS"),
                 question("PACE", "PACE_BALANCED"),
-                question("THEME", "THEME_LOCAL"),
+                question("THEME", "THEME_SHOPPING"),
                 question("MOBILITY", "MOBILITY_NORMAL"),
                 question("TRANSIT", "TRANSIT_SIMPLE")
         );
@@ -41,7 +41,7 @@ class ScheduleRequestValidatorTest {
         List<Question> questions = List.of(
                 question("COMPANION", "COMPANION_FRIENDS"),
                 question("PACE", "PACE_BALANCED"),
-                question("THEME", "THEME_LOCAL"),
+                question("THEME", "THEME_SHOPPING"),
                 question("MOBILITY", "MOBILITY_NORMAL"),
                 question("TRANSIT", "TRANSIT_SIMPLE")
         );
@@ -65,7 +65,7 @@ class ScheduleRequestValidatorTest {
         List<Question> questions = List.of(
                 question("COMPANION", "COMPANION_FRIENDS"),
                 question("PACE", "PACE_BALANCED"),
-                question("THEME", "THEME_LOCAL"),
+                question("THEME", "THEME_SHOPPING"),
                 question("MOBILITY", "MOBILITY_NORMAL"),
                 question("TRANSIT", "TRANSIT_SIMPLE")
         );
@@ -73,7 +73,7 @@ class ScheduleRequestValidatorTest {
         ScheduleCreateRequest request = validRequest();
         List<ScheduleCreateRequest.SelectedAnswer> invalidAnswers = request.selectedAnswers().stream()
                 .map(answer -> "PACE".equals(answer.questionId())
-                        ? new ScheduleCreateRequest.SelectedAnswer("PACE", "THEME_LOCAL")
+                        ? new ScheduleCreateRequest.SelectedAnswer("PACE", "THEME_SHOPPING")
                         : answer)
                 .toList();
 
@@ -155,7 +155,7 @@ class ScheduleRequestValidatorTest {
                 List.of(
                         new ScheduleCreateRequest.SelectedAnswer("COMPANION", "COMPANION_FRIENDS"),
                         new ScheduleCreateRequest.SelectedAnswer("PACE", "PACE_BALANCED"),
-                        new ScheduleCreateRequest.SelectedAnswer("THEME", "THEME_LOCAL"),
+                        new ScheduleCreateRequest.SelectedAnswer("THEME", "THEME_SHOPPING"),
                         new ScheduleCreateRequest.SelectedAnswer("MOBILITY", "MOBILITY_NORMAL"),
                         new ScheduleCreateRequest.SelectedAnswer("TRANSIT", "TRANSIT_SIMPLE")
                 ),

@@ -69,13 +69,13 @@ class MultiDayPlanOptimizerTest {
     @Test
     void prioritizesCompactRouteBeforeSoftThemePreference() {
         ScheduleDay day = days().get(0);
-        Place nearbyMismatch = place(1L, "부산역 쇼핑몰", "129.0410", "35.1160");
+        Place nearbyMismatch = place(1L, "부산역 쇼핑몰", "38", "129.0410", "35.1160");
         Place preferredSea = place(2L, "광안리해수욕장", "129.1186", "35.1532");
         Place optionalPark = place(3L, "부산시민공원", "129.0595", "35.1667");
         ScheduleCreateRequest request = request(List.of(
                 new ScheduleCreateRequest.SelectedAnswer("COMPANION", "COMPANION_FRIENDS"),
                 new ScheduleCreateRequest.SelectedAnswer("MOBILITY", "MOBILITY_NORMAL"),
-                new ScheduleCreateRequest.SelectedAnswer("THEME", "THEME_SEA")
+                new ScheduleCreateRequest.SelectedAnswer("THEME", "THEME_NATURE")
         ));
 
         List<List<Place>> result = optimizer.optimize(
@@ -141,7 +141,7 @@ class MultiDayPlanOptimizerTest {
         ScheduleCreateRequest request = request(List.of(
                 new ScheduleCreateRequest.SelectedAnswer("COMPANION", "COMPANION_FRIENDS"),
                 new ScheduleCreateRequest.SelectedAnswer("MOBILITY", "MOBILITY_NORMAL"),
-                new ScheduleCreateRequest.SelectedAnswer("THEME", "THEME_LOCAL")
+                new ScheduleCreateRequest.SelectedAnswer("THEME", "THEME_CULTURE")
         ));
 
         List<Place> selected = optimizer.optimize(
@@ -169,12 +169,18 @@ class MultiDayPlanOptimizerTest {
         );
         ScheduleCreateRequest request = request(List.of(
                 new ScheduleCreateRequest.SelectedAnswer("COMPANION", "COMPANION_FRIENDS"),
-                new ScheduleCreateRequest.SelectedAnswer("THEME", "THEME_SEA")
+                new ScheduleCreateRequest.SelectedAnswer("THEME", "THEME_NATURE")
         ));
 
         List<List<Place>> result = optimizer.optimize(
                 candidates, Set.of(), days(), List.of(2, 2), request);
 
+        assertThat(result).allSatisfy(day -> assertThat(day.stream()
+                .map(PlaceExperienceClassifier::classify)
+                .anyMatch(profile -> profile.environments()
+                        .contains(PlaceExperienceClassifier.EnvironmentType.COASTAL)
+                        || profile.environments().contains(PlaceExperienceClassifier.EnvironmentType.GREEN)))
+                .isTrue());
         long beachCount = result.stream().flatMap(List::stream)
                 .map(PlaceExperienceClassifier::classify)
                 .filter(profile -> profile.type()

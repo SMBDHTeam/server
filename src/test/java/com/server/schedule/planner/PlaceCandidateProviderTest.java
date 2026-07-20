@@ -57,7 +57,7 @@ class PlaceCandidateProviderTest {
                 LocalTime.parse("09:00"), LocalTime.parse("10:30"),
                 location("부산역", "129.0403", "35.1151"),
                 location("해운대", "129.1604", "35.1587"),
-                List.of(new ScheduleCreateRequest.SelectedAnswer("THEME", "THEME_LOCAL")),
+                List.of(new ScheduleCreateRequest.SelectedAnswer("THEME", "THEME_CULTURE")),
                 List.of()
         );
     }

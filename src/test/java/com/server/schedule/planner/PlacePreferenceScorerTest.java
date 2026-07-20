@@ -40,6 +40,17 @@ class PlacePreferenceScorerTest {
         assertThat(scorer.themeScore(beach, request)).isEqualTo(-750);
     }
 
+    @Test
+    @DisplayName("모델 기반 액티비티 테마도 선호 점수를 적용한다")
+    void scoresActivityTheme() {
+        Place yacht = place("V2-SCORE-3", "더베이101 요트투어", "28");
+        ScheduleCreateRequest request = request(List.of(
+                answer("THEME", "THEME_ACTIVITY")
+        ));
+
+        assertThat(scorer.themeScore(yacht, request)).isLessThan(0);
+    }
+
     private ScheduleCreateRequest request(List<ScheduleCreateRequest.SelectedAnswer> answers) {
         ScheduleCreateRequest.Location location = new ScheduleCreateRequest.Location(
                 "부산역", new BigDecimal("129.0403"), new BigDecimal("35.1151"));
