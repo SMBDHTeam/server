@@ -76,7 +76,7 @@
 - `/date`에서 날짜와 시작 위치를 함께 받으며 위치 검색은 지도·검색 모달로 연다.
 - GPS 현재 위치는 사용하지 않는다.
 - 숙소, 종료 제약, 고정 행사, 일차별 조정, 자유 요청은 서버 계약은 유지하지만 프론트 1차 기본 흐름에서는 입력하지 않는다.
-- 기본값은 `startTime=null`, `lodgingPlan.mode=UNDECIDED`, `endConstraint=null`, `fixedEvents=[]`, `dayOverrides=[]`, `customPrompt=null`이다. nullable 선택 필드는 JSON에서 생략해도 같은 의미다.
+- `lodgingPlan`은 항상 전달하며, 기본값은 `{"mode":"UNDECIDED"}`다. `startTime=null`, `endConstraint=null`, `fixedEvents=[]`, `dayOverrides=[]`, `customPrompt=null`인 선택 필드는 JSON에서 생략해도 같은 의미다.
 
 ### 4.1 필수 입력
 
@@ -85,6 +85,7 @@
 | `startDate` | 여행 시작일 |
 | `endDate` | 여행 종료일. 시작일 포함 최대 4일 |
 | `startLocation` | 첫날 여행을 시작할 위치 |
+| `lodgingPlan` | 숙소 계획. 숙소 미정이면 `{"mode":"UNDECIDED"}` |
 | `selectedAnswers` | 질문 단계 완료 후 필요한 활성 필수 선호도 질문의 답변 |
 
 `startTime`은 선택값이다.
@@ -97,7 +98,6 @@
 
 | 입력 | 의미 |
 | --- | --- |
-| `lodgingPlan` | 숙소 미정, 고정 거점, 날짜별 숙소 설정 |
 | `endConstraint` | 마지막 도착 또는 항공·기차 출발 제약 |
 | `dayOverrides` | 특정 날짜의 가용시간과 위치 변경 |
 | `mustVisitPlaceIds` | 반드시 포함할 내부 장소 ID |

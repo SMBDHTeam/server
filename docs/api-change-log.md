@@ -2,6 +2,17 @@
 
 API 계약이 변경될 때마다 최신 항목을 위에 추가한다.
 
+## 2026-07-20 (Preview 숙소 계획 입력 검증)
+
+- API: `POST /api/v1/schedule-previews`, `GET /api/v1/schedule-previews/{previewId}`
+- 구분: 요청 검증 보완 및 오류 코드 문서화
+- 이전: `lodgingPlan` 누락 요청이 명세와 필드 가이드에서 선택값으로 표시됐고, 서비스 검증 중 내부 예외가 발생할 수 있었다. 존재하지 않는 Preview의 `SCHEDULE_PREVIEW_NOT_FOUND`도 V2 오류 표에 없었다.
+- 이후: `lodgingPlan`은 필수이며 숙소 미정 요청은 `{"mode":"UNDECIDED"}`를 전달한다. 누락 시 `400 INVALID_SCHEDULE_PREVIEW_REQUEST`를 반환한다. 존재하지 않는 Preview 조회 또는 생성 요청은 `404 SCHEDULE_PREVIEW_NOT_FOUND`를 반환한다고 명시한다.
+- 이유: Preview 입력 오류를 예측 가능한 공개 오류 응답으로 반환하고 프론트 요청 계약을 구현과 일치시키기 위함
+- 호환성 파괴: 예. `lodgingPlan`을 생략한 요청은 더 이상 허용하지 않으며, 기존에도 정상 생성 계약으로 지원되지 않았다.
+- DB/ERD: 변경 없음
+- 관련 PR 또는 이슈: 없음
+
 ## 2026-07-16
 
 - API: `POST /api/v1/schedules`, `POST /api/v1/schedule-previews`

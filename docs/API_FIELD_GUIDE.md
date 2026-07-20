@@ -135,7 +135,7 @@
 | `startLocation.longitude` | number | O | 시작 위치 경도 |
 | `startLocation.latitude` | number | O | 시작 위치 위도 |
 | `startTime` | string(time) | X | 첫날 여행 시작 가능시각 |
-| `lodgingPlan` | object | X | 숙소 계획. 생략 시 `UNDECIDED` |
+| `lodgingPlan` | object | O | 숙소 계획. 숙소 미정이면 `{"mode":"UNDECIDED"}` |
 | `lodgingPlan.mode` | string | O | `UNDECIDED`, `FIXED_BASE`, `PER_NIGHT` |
 | `lodgingPlan.baseLocation` | object | 조건부 | `FIXED_BASE`일 때 필수 |
 | `lodgingPlan.nightStays` | array | 조건부 | `PER_NIGHT`일 때 필수 |

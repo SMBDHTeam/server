@@ -16,7 +16,7 @@ public record SchedulePreviewCreateRequest(
         @NotNull LocalDate endDate,
         @Valid @NotNull Location startLocation,
         LocalTime startTime,
-        @Valid LodgingPlan lodgingPlan,
+        @Valid @NotNull LodgingPlan lodgingPlan,
         @Valid EndConstraint endConstraint,
         @Valid @NotEmpty List<SelectedAnswer> selectedAnswers,
         List<Long> mustVisitPlaceIds,

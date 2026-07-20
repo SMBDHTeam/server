@@ -253,6 +253,26 @@ class ScheduleV2E2ETest {
     }
 
     @Test
+    @DisplayName("숙소 계획이 누락되면 Preview 입력 오류로 반환한다")
+    void rejectsMissingLodgingPlanWithPreviewErrorCode() throws Exception {
+        String request = """
+                {
+                  "startDate":"2026-08-10",
+                  "endDate":"2026-08-10",
+                  "startLocation":{"name":"부산역","longitude":129.0403,"latitude":35.1151},
+                  "selectedAnswers":%s
+                }
+                """.formatted(selectedAnswers());
+
+        mockMvc.perform(post("/api/v1/schedule-previews")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(request))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_SCHEDULE_PREVIEW_REQUEST"))
+                .andExpect(jsonPath("$.fieldErrors[0].field").value("lodgingPlan"));
+    }
+
+    @Test
     @DisplayName("날짜별 숙소에서 숙박일 하나가 빠지면 Preview를 생성하지 않는다")
     void rejectsMissingPerNightLodging() throws Exception {
         String request = """
@@ -345,6 +365,7 @@ class ScheduleV2E2ETest {
                   "startDate":"2026-08-10",
                   "endDate":"2026-08-10",
                   "startLocation":{"name":"부산역","longitude":129.0403,"latitude":35.1151},
+                  "lodgingPlan":{"mode":"UNDECIDED"},
                   "selectedAnswers":%s
                 }
                 """.formatted(answers);
