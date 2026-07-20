@@ -1,13 +1,17 @@
 package com.server.schedule.planner;
 
+import com.server.external.aitheme.PlaceThemePredictionClient;
+import com.server.external.aitheme.PlaceThemePredictionClient.PlaceThemeInsight;
 import com.server.place.domain.Place;
 import com.server.place.support.TourApiTheme;
 import com.server.place.support.TourApiThemeMapper;
 import com.server.schedule.dto.ScheduleCreateRequest;
 import java.math.BigDecimal;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -24,7 +28,23 @@ public class PlacePreferenceScorer {
     private static final int HILL_BURDEN_PENALTY = 6_000;
     private static final int ACTIVE_ATTRACTION_BONUS = -3_000;
     private static final int ACTIVE_MEAL_PENALTY = 1_000;
+    private static final int AI_THEME_MATCH_BONUS = -1_000;
+    private static final int AI_PRIMARY_THEME_BONUS = -2_000;
+    private static final int AI_SECONDARY_THEME_BONUS = -1_000;
+    private static final int AI_LOW_MOBILITY_BURDEN_PENALTY = 4_000;
+    private static final int AI_UNFRIENDLY_PRIORITY_PENALTY = 3;
+    private static final int AI_THEME_RERANK_LIMIT = 30;
     private static final double EARTH_RADIUS_METERS = 6_371_000.0;
+    private final PlaceThemePredictionClient placeThemePredictionClient;
+
+    public PlacePreferenceScorer() {
+        this(place -> Optional.empty());
+    }
+
+    @Autowired
+    public PlacePreferenceScorer(PlaceThemePredictionClient placeThemePredictionClient) {
+        this.placeThemePredictionClient = placeThemePredictionClient;
+    }
 
     public ScoredPlace score(
             Place place,
@@ -60,8 +80,13 @@ public class PlacePreferenceScorer {
         if (!lowMobilityProfile(request)) {
             return 0;
         }
-        return isMobilityBurden(place)
-                ? HILL_BURDEN_PENALTY : 0;
+        if (isMobilityBurden(place)) {
+            return HILL_BURDEN_PENALTY;
+        }
+        return aiInsight(place)
+                .filter(insight -> !insight.lowMobilityFriendly())
+                .map(ignored -> AI_LOW_MOBILITY_BURDEN_PENALTY)
+                .orElse(0);
     }
 
     public boolean isMobilityBurden(Place place) {
@@ -95,6 +120,73 @@ public class PlacePreferenceScorer {
         return !answerIds(request, "THEME").isEmpty()
                 || hasAnswer(request, "PROMPT_PREFER_SEA_VIEW")
                 || hasAnswer(request, "PROMPT_PREFER_FOOD");
+    }
+
+    public List<ScoredPlace> rerankByAiTheme(
+            List<ScoredPlace> candidates,
+            ScheduleCreateRequest request
+    ) {
+        List<String> themeAnswerIds = answerIds(request, "THEME");
+        if (themeAnswerIds.isEmpty() || candidates.isEmpty()) {
+            return candidates;
+        }
+        List<ScoredPlace> adjusted = new ArrayList<>(candidates);
+        int limit = Math.min(adjusted.size(), AI_THEME_RERANK_LIMIT);
+        for (int index = 0; index < limit; index++) {
+            ScoredPlace candidate = adjusted.get(index);
+            int bonus = aiThemeBonus(candidate.place(), themeAnswerIds);
+            if (bonus == 0) {
+                continue;
+            }
+            adjusted.set(index, new ScoredPlace(
+                    candidate.place(),
+                    candidate.neighborhood(),
+                    candidate.distanceFromStartMeters(),
+                    candidate.distanceFromEndMeters(),
+                    candidate.totalScore() + bonus
+            ));
+        }
+        return adjusted.stream()
+                .sorted(java.util.Comparator.comparingInt(ScoredPlace::totalScore)
+                        .thenComparing(scoredPlace -> scoredPlace.place().getId() == null
+                                ? Long.MAX_VALUE
+                                : scoredPlace.place().getId()))
+                .toList();
+    }
+
+    public Optional<PlaceThemeInsight> predictInsight(Place place) {
+        return aiInsight(place);
+    }
+
+    public int aiRecommendationPriority(Place place, ScheduleCreateRequest request) {
+        Optional<PlaceThemeInsight> insight = aiInsight(place);
+        if (insight.isEmpty()) {
+            return Integer.MAX_VALUE;
+        }
+        List<String> themeAnswerIds = answerIds(request, "THEME");
+        int priority = 10;
+        for (String answerId : themeAnswerIds) {
+            Optional<TourApiTheme> requestedTheme = TourApiTheme.fromAnswerId(answerId);
+            if (requestedTheme.isEmpty()) {
+                continue;
+            }
+            if (insight.get().primaryTheme() == requestedTheme.get()) {
+                priority = Math.min(priority, 0);
+            } else if (insight.get().secondaryThemes().contains(requestedTheme.get())) {
+                priority = Math.min(priority, 1);
+            } else if (requestedTheme.get() == TourApiTheme.FOOD && insight.get().mealPlace()) {
+                priority = Math.min(priority, 1);
+            } else if (requestedTheme.get() == TourApiTheme.HEALING
+                    && (insight.get().semanticTags().contains("park")
+                    || insight.get().semanticTags().contains("beach")
+                    || insight.get().secondaryThemes().contains(TourApiTheme.HEALING))) {
+                priority = Math.min(priority, 2);
+            }
+        }
+        if (lowMobilityProfile(request) && !insight.get().lowMobilityFriendly()) {
+            priority += AI_UNFRIENDLY_PRIORITY_PENALTY;
+        }
+        return priority;
     }
 
     public int paceScore(Place place, ScheduleCreateRequest request) {
@@ -158,8 +250,10 @@ public class PlacePreferenceScorer {
             PlaceExperienceClassifier.AvailableExperience primary,
             PlaceExperienceClassifier.AvailableExperience... secondary
     ) {
+        Optional<TourApiTheme> requestedTheme = TourApiTheme.fromAnswerId(answerId);
         if (!TourApiThemeMapper.matchesTheme(place, answerId)) {
-            return PREFERENCE_MISMATCH_PENALTY;
+            return requestedTheme.map(theme -> aiThemeContribution(place, theme))
+                    .orElse(PREFERENCE_MISMATCH_PENALTY);
         }
         PlaceExperienceClassifier.ExperienceProfile profile = PlaceExperienceClassifier.classify(place);
         int best = profile.contribution(primary);
@@ -169,12 +263,60 @@ public class PlacePreferenceScorer {
         return contributionScore(best > 0 ? best : 100, STRONG_PREFERENCE_BONUS, PREFERENCE_MISMATCH_PENALTY);
     }
 
+    private int aiThemeBonus(Place place, List<String> themeAnswerIds) {
+        if (themeAnswerIds.stream().anyMatch(answerId -> TourApiThemeMapper.matchesTheme(place, answerId))) {
+            return 0;
+        }
+        Optional<TourApiTheme> predictedTheme = placeThemePredictionClient.predictPrimaryTheme(place);
+        if (predictedTheme.isEmpty()) {
+            return 0;
+        }
+        return themeAnswerIds.stream()
+                .map(TourApiTheme::fromAnswerId)
+                .filter(Optional::isPresent)
+                .map(Optional::get)
+                .anyMatch(requested -> themeMatches(predictedTheme.get(), requested))
+                ? AI_THEME_MATCH_BONUS : 0;
+    }
+
+    private boolean themeMatches(TourApiTheme predictedTheme, TourApiTheme requestedTheme) {
+        if (requestedTheme == TourApiTheme.HEALING) {
+            return predictedTheme == TourApiTheme.HEALING
+                    || predictedTheme == TourApiTheme.NATURE
+                    || predictedTheme == TourApiTheme.FOOD;
+        }
+        return predictedTheme == requestedTheme;
+    }
+
     private int healingScore(PlaceExperienceClassifier.ExperienceProfile profile) {
         return profile.contribution(PlaceExperienceClassifier.AvailableExperience.REST) > 0
                 || profile.contribution(PlaceExperienceClassifier.AvailableExperience.PARK_REST) > 0
                 || profile.contribution(PlaceExperienceClassifier.AvailableExperience.NATURE_WALK) > 0
                 || profile.contribution(PlaceExperienceClassifier.AvailableExperience.CAFE_REST) > 0
                 ? PREFERENCE_BONUS : 0;
+    }
+
+    private int aiThemeContribution(Place place, TourApiTheme requestedTheme) {
+        return aiInsight(place)
+                .map(insight -> {
+                    if (insight.primaryTheme() == requestedTheme) {
+                        return AI_PRIMARY_THEME_BONUS;
+                    }
+                    if (insight.secondaryThemes().contains(requestedTheme)
+                            || (requestedTheme == TourApiTheme.FOOD && insight.mealPlace())
+                            || (requestedTheme == TourApiTheme.HEALING
+                            && (insight.secondaryThemes().contains(TourApiTheme.HEALING)
+                            || insight.semanticTags().contains("park")
+                            || insight.semanticTags().contains("beach")))) {
+                        return AI_SECONDARY_THEME_BONUS;
+                    }
+                    return PREFERENCE_MISMATCH_PENALTY;
+                })
+                .orElse(PREFERENCE_MISMATCH_PENALTY);
+    }
+
+    private Optional<PlaceThemeInsight> aiInsight(Place place) {
+        return placeThemePredictionClient.predictInsight(place);
     }
 
     private int contributionScore(int contribution, int fullBonus, int mismatchPenalty) {
