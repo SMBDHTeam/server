@@ -257,11 +257,11 @@ public class MultiDayPlanOptimizer {
             for (Place previous : previousDay) {
                 PlaceExperienceClassifier.ExperienceProfile previousProfile =
                         PlaceExperienceClassifier.classify(previous);
-                if (!isDiversityScored(previousProfile)) continue;
+                if (!ExperienceSequenceEvaluator.isDiversityScored(previousProfile)) continue;
                 for (Place current : currentDay) {
                     PlaceExperienceClassifier.ExperienceProfile currentProfile =
                             PlaceExperienceClassifier.classify(current);
-                    if (!isDiversityScored(currentProfile)) continue;
+                    if (!ExperienceSequenceEvaluator.isDiversityScored(currentProfile)) continue;
                     if (previousProfile.type() == currentProfile.type()) {
                         penalty += CROSS_DAY_SAME_EXPERIENCE_PENALTY;
                     }
@@ -279,12 +279,6 @@ public class MultiDayPlanOptimizer {
             }
         }
         return penalty;
-    }
-
-    private static boolean isDiversityScored(PlaceExperienceClassifier.ExperienceProfile profile) {
-        return profile.type() != PlaceExperienceClassifier.ExperienceType.OTHER
-                && profile.semanticGroup() != PlaceExperienceClassifier.SemanticGroup.OTHER
-                && profile.semanticGroup() != PlaceExperienceClassifier.SemanticGroup.FOOD_REST;
     }
 
     private List<Group> groupsForDay(
@@ -635,7 +629,7 @@ public class MultiDayPlanOptimizer {
             for (long bits = mask; bits != 0; bits &= bits - 1) {
                 PlaceExperienceClassifier.ExperienceProfile profile =
                         experienceProfiles[Long.numberOfTrailingZeros(bits)];
-                if (!isDiversityScored(profile)) continue;
+                if (!ExperienceSequenceEvaluator.isDiversityScored(profile)) continue;
                 experienceCounts[profile.type().ordinal()]++;
                 semanticGroupCounts[profile.semanticGroup().ordinal()]++;
             }
@@ -654,12 +648,12 @@ public class MultiDayPlanOptimizer {
             for (long leftBits = mask; leftBits != 0; leftBits &= leftBits - 1) {
                 int leftIndex = Long.numberOfTrailingZeros(leftBits);
                 PlaceExperienceClassifier.ExperienceProfile left = experienceProfiles[leftIndex];
-                if (!isDiversityScored(left)) continue;
+                if (!ExperienceSequenceEvaluator.isDiversityScored(left)) continue;
                 long followingBits = leftBits & (leftBits - 1);
                 for (long rightBits = followingBits; rightBits != 0; rightBits &= rightBits - 1) {
                     PlaceExperienceClassifier.ExperienceProfile right =
                             experienceProfiles[Long.numberOfTrailingZeros(rightBits)];
-                    if (!isDiversityScored(right) || left.type() == right.type()) continue;
+                    if (!ExperienceSequenceEvaluator.isDiversityScored(right) || left.type() == right.type()) continue;
                     int similarity = PlaceExperienceClassifier.similarityPercent(left, right);
                     if (similarity >= 65) {
                         penalty += (long) similarity * SIMILAR_EXPERIENCE_PROFILE_PENALTY / 100;
