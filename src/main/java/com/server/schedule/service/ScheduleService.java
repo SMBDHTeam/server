@@ -5,6 +5,7 @@ import com.server.common.error.ErrorCode;
 import com.server.external.metrics.ExternalCallMetricsCollector;
 import com.server.place.domain.Place;
 import com.server.place.repository.PlaceRepository;
+import com.server.place.support.TourApiTheme;
 import com.server.place.support.PlaceCategoryLabelResolver;
 import com.server.schedule.domain.Schedule;
 import com.server.schedule.domain.ScheduleDay;
@@ -2048,13 +2049,14 @@ public class ScheduleService {
     }
 
     private String themeReason(String answerId) {
+        if (TourApiTheme.fromAnswerId(answerId).isPresent()) {
+            return TourApiTheme.fromAnswerId(answerId)
+                    .map(theme -> theme.label() + " 테마와 일치하는 장소입니다.")
+                    .orElse(null);
+        }
         return switch (answerId) {
-            case "THEME_FOOD" -> "맛집 테마와 일치하는 장소입니다.";
-            case "THEME_HISTORY_CULTURE" -> "역사·문화 테마와 일치하는 장소입니다.";
-            case "THEME_NATURE" -> "바다·자연 테마와 일치하는 장소입니다.";
+            case "THEME_CULTURE", "THEME_HISTORY_CULTURE" -> "역사·문화 테마와 일치하는 장소입니다.";
             case "THEME_SEA" -> "바다 테마와 일치하는 장소입니다.";
-            case "THEME_SHOPPING" -> "쇼핑 테마와 일치하는 장소입니다.";
-            case "THEME_HEALING" -> "휴식 테마와 일치하는 장소입니다.";
             case "THEME_NIGHT_VIEW" -> "야경 테마와 일치하는 장소입니다.";
             case "THEME_EVENT" -> "축제·행사 테마와 일치하는 장소입니다.";
             case "THEME_LOCAL" -> "로컬 테마와 일치하는 장소입니다.";

@@ -1,5 +1,7 @@
 package com.server.schedule.evaluation;
 
+import com.server.place.support.TourApiTheme;
+import com.server.place.support.TourApiThemeMapper;
 import com.server.schedule.dto.ScheduleCreateRequest;
 import com.server.schedule.dto.ScheduleResponse;
 import java.time.Duration;
@@ -198,11 +200,16 @@ public class ScheduleScoreEvaluator {
     }
 
     private boolean themeMatches(String themeAnswerId, String placeName) {
+        if (TourApiTheme.fromAnswerId(themeAnswerId).isPresent()) {
+            return TourApiThemeMapper.matchesThemeText(themeAnswerId, placeName);
+        }
         return switch (themeAnswerId) {
             case "THEME_LOCAL" -> containsAny(placeName, "로컬", "시장", "거리", "마을", "골목");
             case "THEME_FOOD" -> containsAny(placeName, "식당", "맛집", "시장", "카페");
-            case "THEME_HISTORY_CULTURE" -> containsAny(placeName, "역사", "문화", "박물관", "기념관", "유적");
+            case "THEME_CULTURE", "THEME_HISTORY_CULTURE" ->
+                    containsAny(placeName, "역사", "문화", "박물관", "기념관", "유적");
             case "THEME_NATURE" -> containsAny(placeName, "해수욕장", "바다", "공원", "산책로", "섬", "숲");
+            case "THEME_ACTIVITY" -> containsAny(placeName, "체험", "레저", "요트", "케이블카", "테마파크");
             case "THEME_SEA" -> containsAny(placeName, "해수욕장", "바다", "해변", "광안", "송정");
             case "THEME_SHOPPING" -> containsAny(placeName, "쇼핑", "백화점", "아울렛", "몰", "시장");
             case "THEME_HEALING" -> containsAny(placeName, "공원", "숲", "산책", "수목원", "카페", "온천");

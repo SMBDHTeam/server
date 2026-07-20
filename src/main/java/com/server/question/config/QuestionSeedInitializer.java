@@ -1,6 +1,7 @@
 package com.server.question.config;
 
 import java.util.List;
+import com.server.place.support.TourApiTheme;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -82,15 +83,19 @@ public class QuestionSeedInitializer {
                     3,
                     5,
                     List.of(
-                            new AnswerSeed("THEME_FOOD", "맛집", 1),
-                            new AnswerSeed("THEME_NATURE", "자연", 2),
-                            new AnswerSeed("THEME_HISTORY_CULTURE", "문화·역사", 3),
-                            new AnswerSeed("THEME_SEA", "바다", 4),
-                            new AnswerSeed("THEME_SHOPPING", "쇼핑", 5),
-                            new AnswerSeed("THEME_HEALING", "휴식", 6)
+                            answerSeed(TourApiTheme.FOOD, 1),
+                            answerSeed(TourApiTheme.NATURE, 2),
+                            answerSeed(TourApiTheme.CULTURE, 3),
+                            answerSeed(TourApiTheme.ACTIVITY, 4),
+                            answerSeed(TourApiTheme.SHOPPING, 5),
+                            answerSeed(TourApiTheme.HEALING, 6)
                     )
             ));
         };
+    }
+
+    private AnswerSeed answerSeed(TourApiTheme theme, int displayOrder) {
+        return new AnswerSeed(theme.answerId(), theme.label(), displayOrder);
     }
 
     private void seedQuestion(JdbcTemplate jdbcTemplate, QuestionSeed question) {

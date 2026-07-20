@@ -1,6 +1,8 @@
 package com.server.schedule.planner;
 
 import com.server.place.domain.Place;
+import com.server.place.support.TourApiTheme;
+import com.server.place.support.TourApiThemeMapper;
 import com.server.schedule.dto.ScheduleCreateRequest;
 import java.math.BigDecimal;
 import java.util.List;
@@ -109,28 +111,34 @@ public class PlacePreferenceScorer {
     }
 
     private int themeScore(Place place, String answerId) {
+        Optional<TourApiTheme> theme = TourApiTheme.fromAnswerId(answerId);
+        if (theme.isPresent()) {
+            return switch (theme.get()) {
+                case FOOD -> themeContribution(place, answerId,
+                        PlaceExperienceClassifier.AvailableExperience.FOOD,
+                        PlaceExperienceClassifier.AvailableExperience.CAFE_REST);
+                case NATURE -> TourApiThemeMapper.matchesTheme(place, answerId)
+                        ? PREFERENCE_BONUS : PREFERENCE_MISMATCH_PENALTY;
+                case CULTURE -> themeContribution(place, answerId,
+                        PlaceExperienceClassifier.AvailableExperience.CULTURE_VIEW,
+                        PlaceExperienceClassifier.AvailableExperience.EXHIBITION_VIEW);
+                case ACTIVITY -> themeContribution(place, answerId,
+                        PlaceExperienceClassifier.AvailableExperience.ACTIVITY);
+                case SHOPPING -> themeContribution(place, answerId,
+                        PlaceExperienceClassifier.AvailableExperience.SHOPPING,
+                        PlaceExperienceClassifier.AvailableExperience.MARKET_BROWSING);
+                case HEALING -> healingScore(PlaceExperienceClassifier.classify(place));
+            };
+        }
         PlaceExperienceClassifier.ExperienceProfile profile = PlaceExperienceClassifier.classify(place);
         return switch (answerId) {
-            case "THEME_FOOD" -> contributionScore(
-                    Math.max(profile.contribution(PlaceExperienceClassifier.AvailableExperience.FOOD),
-                            profile.contribution(PlaceExperienceClassifier.AvailableExperience.CAFE_REST)),
-                    STRONG_PREFERENCE_BONUS, PREFERENCE_MISMATCH_PENALTY);
-            case "THEME_HISTORY_CULTURE" -> contributionScore(
+            case "THEME_CULTURE", "THEME_HISTORY_CULTURE" -> contributionScore(
                     Math.max(profile.contribution(PlaceExperienceClassifier.AvailableExperience.CULTURE_VIEW),
                             profile.contribution(PlaceExperienceClassifier.AvailableExperience.EXHIBITION_VIEW)),
                     STRONG_PREFERENCE_BONUS, PREFERENCE_MISMATCH_PENALTY);
-            case "THEME_NATURE" -> profile.environments()
-                    .contains(PlaceExperienceClassifier.EnvironmentType.GREEN)
-                    || profile.environments().contains(PlaceExperienceClassifier.EnvironmentType.COASTAL)
-                    ? PREFERENCE_BONUS : 0;
             case "THEME_SEA" -> contributionScore(
                     profile.contribution(PlaceExperienceClassifier.AvailableExperience.SEA_VIEW),
                     STRONG_PREFERENCE_BONUS, PREFERENCE_MISMATCH_PENALTY);
-            case "THEME_SHOPPING" -> contributionScore(
-                    Math.max(profile.contribution(PlaceExperienceClassifier.AvailableExperience.SHOPPING),
-                            profile.contribution(PlaceExperienceClassifier.AvailableExperience.MARKET_BROWSING)),
-                    STRONG_PREFERENCE_BONUS, PREFERENCE_MISMATCH_PENALTY);
-            case "THEME_HEALING" -> healingScore(profile);
             case "THEME_NIGHT_VIEW" -> contributionScore(
                     Math.max(profile.contribution(PlaceExperienceClassifier.AvailableExperience.NIGHT_VIEW),
                             profile.contribution(PlaceExperienceClassifier.AvailableExperience.SCENIC_VIEW)),
@@ -142,6 +150,23 @@ public class PlacePreferenceScorer {
                     ? PREFERENCE_BONUS : 0;
             default -> 0;
         };
+    }
+
+    private int themeContribution(
+            Place place,
+            String answerId,
+            PlaceExperienceClassifier.AvailableExperience primary,
+            PlaceExperienceClassifier.AvailableExperience... secondary
+    ) {
+        if (!TourApiThemeMapper.matchesTheme(place, answerId)) {
+            return PREFERENCE_MISMATCH_PENALTY;
+        }
+        PlaceExperienceClassifier.ExperienceProfile profile = PlaceExperienceClassifier.classify(place);
+        int best = profile.contribution(primary);
+        for (PlaceExperienceClassifier.AvailableExperience candidate : secondary) {
+            best = Math.max(best, profile.contribution(candidate));
+        }
+        return contributionScore(best > 0 ? best : 100, STRONG_PREFERENCE_BONUS, PREFERENCE_MISMATCH_PENALTY);
     }
 
     private int healingScore(PlaceExperienceClassifier.ExperienceProfile profile) {
