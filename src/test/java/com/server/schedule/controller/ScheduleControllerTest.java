@@ -265,7 +265,9 @@ class ScheduleControllerTest {
                                 ))
                         ),
                         new ScheduleEvaluationReport.Operations(
-                                1200, 6, 2, 4, 0,
+                                1200, "AI_GENERATED", 91, 3, 2,
+                                8, 2, 6, 0,
+                                6, 2, 4, 0,
                                 12, 0, 4, 4, 4,
                                 4, 0, 0, 100, 10, 0, List.of("ODSAY")
                         )

@@ -59,6 +59,9 @@ public class Place {
     @Column(name = "primary_image_url", columnDefinition = "text")
     private String primaryImageUrl;
 
+    @Column(name = "place_url", columnDefinition = "text")
+    private String placeUrl;
+
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
 
@@ -135,6 +138,10 @@ public class Place {
         return externalContentId;
     }
 
+    public String getSource() {
+        return source;
+    }
+
     public String getContentTypeId() {
         return contentTypeId;
     }
@@ -161,6 +168,29 @@ public class Place {
 
     public String getPrimaryImageUrl() {
         return primaryImageUrl;
+    }
+
+    public String getPlaceUrl() {
+        return placeUrl;
+    }
+
+    public void updateResolvedPlace(
+            String name,
+            String category,
+            String address,
+            BigDecimal longitude,
+            BigDecimal latitude,
+            String placeUrl
+    ) {
+        this.name = name;
+        this.category = category;
+        this.address = address;
+        this.longitude = longitude;
+        this.latitude = latitude;
+        this.placeUrl = placeUrl;
+        this.lastSeenAt = LocalDateTime.now();
+        this.lastSyncedAt = this.lastSeenAt;
+        this.updatedAt = this.lastSeenAt;
     }
 
     public PlaceDetail getDetail() {

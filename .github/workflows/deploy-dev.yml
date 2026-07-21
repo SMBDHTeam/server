@@ -90,6 +90,9 @@ jobs:
           ODSAY_API_KEY: ${{ secrets.ODSAY_API_KEY }}
           BUSAN_BIMS_API_KEY: ${{ secrets.BUSAN_BIMS_API_KEY }}
           SKT_API_KEY: ${{ secrets.SKT_API_KEY }}
+
+          # 브라우저 API 호출 허용 Origin. 미설정 시 애플리케이션 기본값을 사용한다.
+          CORS_ALLOWED_ORIGINS: ${{ vars.CORS_ALLOWED_ORIGINS }}
         run: |
           # SSH private key를 GitHub Actions runner 안에 임시 파일로 저장한다.
           mkdir -p ~/.ssh
@@ -117,8 +120,15 @@ jobs:
             printf 'ODSAY_API_KEY=%s\n' "$ODSAY_API_KEY"
             printf 'BUSAN_BIMS_ENABLED=true\n'
             printf 'BUSAN_BIMS_API_KEY=%s\n' "$BUSAN_BIMS_API_KEY"
-            printf 'TMAP_WALKING_ENABLED=true\n'
             printf 'SKT_API_KEY=%s\n' "$SKT_API_KEY"
+            if [ -n "$SKT_API_KEY" ]; then
+              printf 'TMAP_WALKING_ENABLED=true\n'
+            else
+              printf 'TMAP_WALKING_ENABLED=false\n'
+            fi
+            if [ -n "$CORS_ALLOWED_ORIGINS" ]; then
+              printf 'CORS_ALLOWED_ORIGINS=%s\n' "$CORS_ALLOWED_ORIGINS"
+            fi
           } > .env.dev
 
           chmod 600 .env.dev
@@ -166,6 +176,15 @@ jobs:
               -p 127.0.0.1:8080:8080 \
               --env-file /opt/hackathon-dev/.env.dev \
               ${ECR_REGISTRY}/${ECR_REPOSITORY_NAME}:latest-dev
+
+            echo "Check container status"
+            sleep 8
+            docker ps -a --filter "name=server-dev"
+            if [ "$(docker inspect -f '{{.State.Running}}' server-dev)" != "true" ]; then
+              echo "server-dev container is not running"
+              docker logs --tail 200 server-dev || true
+              exit 1
+            fi
 
             echo "Remove unused images"
             docker image prune -f

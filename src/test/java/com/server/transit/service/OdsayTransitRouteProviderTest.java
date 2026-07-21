@@ -89,6 +89,23 @@ class OdsayTransitRouteProviderTest {
     }
 
     @Test
+    @DisplayName("동일 좌표의 경량 경로는 요청 간 캐시에서 재사용한다")
+    void findRouteEstimateCachesPathAcrossRequests() {
+        TransitPoint origin = point("부산역", "129.0403", "35.1151");
+        TransitPoint destination = point("가덕도 등대", "128.8294", "35.0241");
+        when(odsayClient.searchPublicTransitPath(
+                origin.longitude(), origin.latitude(), destination.longitude(), destination.latitude()
+        )).thenReturn(response());
+
+        TransitRouteEstimate first = provider.findRouteEstimate(origin, destination);
+        TransitRouteEstimate second = provider.findRouteEstimate(origin, destination);
+
+        assertThat(second.route()).isEqualTo(first.route());
+        verify(odsayClient, Mockito.times(1)).searchPublicTransitPath(
+                origin.longitude(), origin.latitude(), destination.longitude(), destination.latitude());
+    }
+
+    @Test
     @DisplayName("경량 경로를 상세화할 때 ODsay 경로검색 결과를 재사용한다")
     void findRouteDetailReusesEstimatedPath() {
         TransitPoint origin = point("부산역", "129.0403", "35.1151");
@@ -116,6 +133,46 @@ class OdsayTransitRouteProviderTest {
                 destination.latitude()
         );
         verify(odsayClient).loadLane("0:0@2823889:1:66:103");
+    }
+
+    @Test
+    @DisplayName("동일 좌표의 상세 선형 결과는 짧은 TTL 캐시에서 재사용한다")
+    void findRouteDetailCachesGeometryAcrossRequests() {
+        TransitPoint origin = point("부산역", "129.0403", "35.1151");
+        TransitPoint destination = point("가덕도 등대", "128.8294", "35.0241");
+        when(odsayClient.searchPublicTransitPath(
+                origin.longitude(), origin.latitude(), destination.longitude(), destination.latitude()
+        )).thenReturn(response());
+        when(odsayClient.loadLane("0:0@2823889:1:66:103")).thenReturn(Optional.empty());
+        when(walkingRouteProvider.findRoute(Mockito.any(), Mockito.any())).thenReturn(Optional.empty());
+        when(transitRealtimeProvider.adjustment(Mockito.any()))
+                .thenReturn(TransitRealtimeAdjustment.none());
+
+        TransitRouteEstimate estimate = provider.findRouteEstimate(origin, destination);
+        TransitRouteResult first = provider.findRouteDetail(origin, destination, estimate);
+        TransitRouteResult second = provider.findRouteDetail(origin, destination, estimate);
+
+        assertThat(second).isEqualTo(first);
+        verify(odsayClient, Mockito.times(1)).loadLane("0:0@2823889:1:66:103");
+    }
+
+    @Test
+    @DisplayName("환승 mapObj에도 좌표 기준점 접두사를 추가한다")
+    void findRouteAddsBaseCoordinatesToMultiLaneMapObject() {
+        TransitPoint origin = point("부산역", "129.0403", "35.1151");
+        TransitPoint destination = point("가덕도 등대", "128.8294", "35.0241");
+        String mapObject = "70002:2:70210:70208@71147:1:23:25";
+        when(odsayClient.searchPublicTransitPath(
+                origin.longitude(), origin.latitude(), destination.longitude(), destination.latitude()
+        )).thenReturn(response(mapObject));
+        when(odsayClient.loadLane("0:0@" + mapObject)).thenReturn(Optional.empty());
+        when(walkingRouteProvider.findRoute(Mockito.any(), Mockito.any())).thenReturn(Optional.empty());
+        when(transitRealtimeProvider.adjustment(Mockito.any()))
+                .thenReturn(TransitRealtimeAdjustment.none());
+
+        provider.findRoute(origin, destination);
+
+        verify(odsayClient).loadLane("0:0@" + mapObject);
     }
 
     @Test
@@ -220,6 +277,28 @@ class OdsayTransitRouteProviderTest {
     }
 
     @Test
+    @DisplayName("500미터 이하 연결 도보는 외부 도보 API 없이 단순 선형을 사용한다")
+    void findRouteSkipsWalkingProviderForShortConnections() {
+        TransitPoint origin = point("부산역", "129.0403", "35.1151");
+        TransitPoint destination = point("가덕도 등대", "128.8294", "35.0241");
+        when(odsayClient.searchPublicTransitPath(
+                origin.longitude(), origin.latitude(), destination.longitude(), destination.latitude()
+        )).thenReturn(shortWalkResponse());
+        when(odsayClient.loadLane("0:0@2823889:1:66:103")).thenReturn(Optional.empty());
+        when(transitRealtimeProvider.adjustment(Mockito.any()))
+                .thenReturn(TransitRealtimeAdjustment.none());
+
+        TransitRouteResult result = provider.findRoute(origin, destination);
+
+        assertThat(result.routeLines()).filteredOn(line -> "WALK".equals(line.mode()))
+                .allSatisfy(line -> {
+                    assertThat(line.fallbackUsed()).isTrue();
+                    assertThat(line.distanceMeters()).isLessThanOrEqualTo(300);
+                });
+        verify(walkingRouteProvider, Mockito.never()).findRoute(Mockito.any(), Mockito.any());
+    }
+
+    @Test
     @DisplayName("경로 후보가 없으면 경로 없음 예외를 던진다")
     void findRouteThrowsWhenPathIsEmpty() {
         TransitPoint origin = point("부산역", "129.0403", "35.1151");
@@ -268,13 +347,17 @@ class OdsayTransitRouteProviderTest {
     }
 
     private Map<String, Object> response() {
+        return response("2823889:1:66:103");
+    }
+
+    private Map<String, Object> response(String mapObject) {
         return Map.of("result", Map.of("path", List.of(
                 Map.of(
                         "info", Map.of("totalTime", 90, "payment", 1800),
                         "subPath", List.of(Map.of("trafficType", 3, "sectionTime", 5))
                 ),
                 Map.of(
-                        "info", Map.of("totalTime", 42, "payment", 1550, "mapObj", "2823889:1:66:103"),
+                        "info", Map.of("totalTime", 42, "payment", 1550, "mapObj", mapObject),
                         "subPath", List.of(
                                 Map.of("trafficType", 3, "sectionTime", 6),
                                 Map.of(
@@ -324,6 +407,27 @@ class OdsayTransitRouteProviderTest {
                         ))
                 )
         )));
+    }
+
+    private Map<String, Object> shortWalkResponse() {
+        return Map.of("result", Map.of("path", List.of(Map.of(
+                "info", Map.of(
+                        "totalTime", 42,
+                        "payment", 1550,
+                        "mapObj", "2823889:1:66:103"),
+                "subPath", List.of(
+                        Map.of("trafficType", 3, "sectionTime", 2, "distance", 120),
+                        Map.of(
+                                "trafficType", 2,
+                                "sectionTime", 38,
+                                "lane", List.of(Map.of("busNo", "1009")),
+                                "startName", "부산역",
+                                "endName", "가덕도",
+                                "passStopList", Map.of("stations", List.of(
+                                        Map.of("x", "129.0403", "y", "35.1151"),
+                                        Map.of("x", "128.8300", "y", "35.0250")))),
+                        Map.of("trafficType", 3, "sectionTime", 2, "distance", 100)
+                )))));
     }
 
     private TransitPoint point(String name, String longitude, String latitude) {

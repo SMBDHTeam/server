@@ -1,6 +1,7 @@
 package com.server.question.config;
 
 import java.util.List;
+import com.server.place.support.TourApiTheme;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -18,94 +19,120 @@ public class QuestionSeedInitializer {
                     "SINGLE_CHOICE",
                     true,
                     1,
+                    1,
+                    1,
+                    1,
                     List.of(
                             new AnswerSeed("COMPANION_SOLO", "혼자", 1),
-                            new AnswerSeed("COMPANION_COUPLE", "연인과", 2),
-                            new AnswerSeed("COMPANION_FRIENDS", "친구와", 3),
-                            new AnswerSeed("COMPANION_PARENTS", "부모님과", 4),
-                            new AnswerSeed("COMPANION_FAMILY_WITH_CHILD", "아이와", 5)
+                            new AnswerSeed("COMPANION_FRIENDS", "친구와", 2),
+                            new AnswerSeed("COMPANION_COUPLE", "배우자·연인과", 3),
+                            new AnswerSeed("COMPANION_FAMILY_WITH_CHILD", "아이와", 4),
+                            new AnswerSeed("COMPANION_PARENTS", "부모님과", 5),
+                            new AnswerSeed("COMPANION_OTHER", "기타", 6)
+                    )
+            ));
+            seedQuestion(jdbcTemplate, new QuestionSeed(
+                    "MOBILITY",
+                    "이동할 때 고려할 점이 있나요?",
+                    "SINGLE_CHOICE",
+                    true,
+                    1,
+                    1,
+                    1,
+                    2,
+                    List.of(
+                            new AnswerSeed("MOBILITY_NORMAL", "특별히 없어요", 1),
+                            new AnswerSeed("MOBILITY_LOW_WALK", "걷는 구간을 줄여주세요", 2)
                     )
             ));
             seedQuestion(jdbcTemplate, new QuestionSeed(
                     "PACE",
-                    "어떤 속도의 여행을 원하나요?",
+                    "하루 일정을 어떻게 구성할까요?",
                     "SINGLE_CHOICE",
                     true,
+                    1,
+                    1,
                     2,
+                    3,
                     List.of(
-                            new AnswerSeed("PACE_RELAXED", "여유롭게", 1),
-                            new AnswerSeed("PACE_BALANCED", "적당히", 2),
-                            new AnswerSeed("PACE_ACTIVE", "많이 둘러보기", 3)
+                            new AnswerSeed("PACE_PACKED", "빼곡하고 알찬 일정", 1),
+                            new AnswerSeed("PACE_RELAXED", "널널하고 여유로운 일정", 2)
+                    )
+            ));
+            seedQuestion(jdbcTemplate, new QuestionSeed(
+                    "TRANSIT",
+                    "대중교통은 어떻게 이용할까요?",
+                    "SINGLE_CHOICE",
+                    true,
+                    1,
+                    1,
+                    2,
+                    4,
+                    List.of(
+                            new AnswerSeed("TRANSIT_SIMPLE", "환승은 적게", 1),
+                            new AnswerSeed("TRANSIT_FAST", "빠른 이동 우선", 2)
                     )
             ));
             seedQuestion(jdbcTemplate, new QuestionSeed(
                     "THEME",
                     "어떤 여행을 선호하나요?",
-                    "SINGLE_CHOICE",
+                    "MULTIPLE_CHOICE",
                     true,
+                    1,
                     3,
-                    List.of(
-                            new AnswerSeed("THEME_LOCAL", "로컬 동네", 1),
-                            new AnswerSeed("THEME_FOOD", "맛집", 2),
-                            new AnswerSeed("THEME_HISTORY_CULTURE", "역사·문화", 3),
-                            new AnswerSeed("THEME_NATURE", "바다·자연", 4),
-                            new AnswerSeed("THEME_NIGHT_VIEW", "야경", 5),
-                            new AnswerSeed("THEME_EVENT", "축제·행사", 6)
-                    )
-            ));
-            seedQuestion(jdbcTemplate, new QuestionSeed(
-                    "MOBILITY",
-                    "이동 부담은 어느 정도까지 괜찮나요?",
-                    "SINGLE_CHOICE",
-                    true,
-                    4,
-                    List.of(
-                            new AnswerSeed("MOBILITY_AVOID_HILLS_STAIRS", "언덕·계단 피하기", 1),
-                            new AnswerSeed("MOBILITY_LOW_WALK", "도보 적게", 2),
-                            new AnswerSeed("MOBILITY_NORMAL", "보통", 3),
-                            new AnswerSeed("MOBILITY_OK_HILLS", "언덕도 괜찮음", 4)
-                    )
-            ));
-            seedQuestion(jdbcTemplate, new QuestionSeed(
-                    "TRANSIT",
-                    "대중교통 이동은 어떤 방식을 선호하나요?",
-                    "SINGLE_CHOICE",
-                    true,
+                    3,
                     5,
                     List.of(
-                            new AnswerSeed("TRANSIT_SIMPLE", "환승 적게", 1),
-                            new AnswerSeed("TRANSIT_FAST", "빠른 이동", 2),
-                            new AnswerSeed("TRANSIT_TRANSFER_OK", "환승 괜찮음", 3)
+                            answerSeed(TourApiTheme.FOOD, 1),
+                            answerSeed(TourApiTheme.NATURE, 2),
+                            answerSeed(TourApiTheme.CULTURE, 3),
+                            answerSeed(TourApiTheme.ACTIVITY, 4),
+                            answerSeed(TourApiTheme.SHOPPING, 5),
+                            answerSeed(TourApiTheme.HEALING, 6)
                     )
             ));
         };
+    }
+
+    private AnswerSeed answerSeed(TourApiTheme theme, int displayOrder) {
+        return new AnswerSeed(theme.answerId(), theme.label(), displayOrder);
     }
 
     private void seedQuestion(JdbcTemplate jdbcTemplate, QuestionSeed question) {
         if (exists(jdbcTemplate, "questions", question.id())) {
             jdbcTemplate.update("""
                     update questions
-                    set text = ?, type = ?, required = ?, display_order = ?, active = true
+                    set text = ?, type = ?, required = ?, min_selections = ?, max_selections = ?, ui_step = ?,
+                        display_order = ?, active = true
                     where id = ?
                     """,
                     question.text(),
                     question.type(),
                     question.required(),
+                    question.minSelections(),
+                    question.maxSelections(),
+                    question.uiStep(),
                     question.displayOrder(),
                     question.id()
             );
         } else {
             jdbcTemplate.update("""
-                    insert into questions(id, text, type, required, display_order, active)
-                    values (?, ?, ?, ?, ?, true)
+                    insert into questions(
+                        id, text, type, required, min_selections, max_selections, ui_step, display_order, active
+                    ) values (?, ?, ?, ?, ?, ?, ?, ?, true)
                     """,
                     question.id(),
                     question.text(),
                     question.type(),
                     question.required(),
+                    question.minSelections(),
+                    question.maxSelections(),
+                    question.uiStep(),
                     question.displayOrder()
             );
         }
+
+        jdbcTemplate.update("update answers set active = false where question_id = ?", question.id());
 
         for (AnswerSeed answer : question.answers()) {
             if (exists(jdbcTemplate, "answers", answer.id())) {
@@ -147,6 +174,9 @@ public class QuestionSeedInitializer {
             String text,
             String type,
             boolean required,
+            int minSelections,
+            int maxSelections,
+            int uiStep,
             int displayOrder,
             List<AnswerSeed> answers
     ) {

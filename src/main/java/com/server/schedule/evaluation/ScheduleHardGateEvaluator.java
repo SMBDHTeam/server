@@ -4,6 +4,7 @@ import com.server.schedule.domain.Schedule;
 import com.server.schedule.domain.ScheduleDay;
 import com.server.schedule.domain.ScheduleStop;
 import com.server.schedule.domain.TransitRoute;
+import com.server.schedule.planner.MealTimePolicy;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -45,17 +46,23 @@ public class ScheduleHardGateEvaluator {
         long plannedMinutes = day.getStops().stream()
                 .mapToLong(stop -> stop.getStayMinutes()
                         + (stop.getInboundTransit() == null ? 0 : stop.getInboundTransit().getTotalMinutes()))
-                .sum();
+                .sum() + MealTimePolicy.waitingMinutes(day);
         List<TransitRoute> finalRoutes = day.getTransitRoutes().stream()
                 .filter(route -> "FINAL".equals(route.getRouteType()))
                 .toList();
-        if (finalRoutes.size() != 1) {
+        boolean requiresFinalRoute = day.getEndLongitude() != null
+                && !"LAST_STOP".equals(day.getEndLocationSource());
+        if ((requiresFinalRoute && finalRoutes.size() != 1)
+                || (!requiresFinalRoute && !finalRoutes.isEmpty())) {
             violations.add("FINAL_ROUTE_MISSING:" + day.getDayNo());
-        } else {
+        } else if (requiresFinalRoute) {
             plannedMinutes += finalRoutes.get(0).getTotalMinutes();
         }
         boolean inboundRouteMissing = day.getStops().stream()
-                .anyMatch(stop -> stop.getInboundTransit() == null);
+                .anyMatch(stop -> stop.getInboundTransit() == null
+                        && (stop.getStopOrder() > 1
+                                || (day.getStartLongitude() != null
+                                        && !"PLANNER_DECIDES".equals(day.getStartLocationSource()))));
         if (inboundRouteMissing) {
             violations.add("INBOUND_ROUTE_MISSING:" + day.getDayNo());
         }

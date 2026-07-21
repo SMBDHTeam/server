@@ -40,7 +40,7 @@ public class GlobalExceptionHandler {
 
         return ResponseEntity
                 .status(HttpStatus.BAD_REQUEST)
-                .body(ErrorResponse.of(ErrorCode.INVALID_SCHEDULE_CONDITION, fieldErrors, traceId(request)));
+                .body(ErrorResponse.of(validationErrorCode(request), fieldErrors, traceId(request)));
     }
 
     @ExceptionHandler(HandlerMethodValidationException.class)
@@ -58,7 +58,7 @@ public class GlobalExceptionHandler {
 
         return ResponseEntity
                 .status(HttpStatus.BAD_REQUEST)
-                .body(ErrorResponse.of(ErrorCode.INVALID_SCHEDULE_CONDITION, fieldErrors, traceId(request)));
+                .body(ErrorResponse.of(validationErrorCode(request), fieldErrors, traceId(request)));
     }
 
     @ExceptionHandler(ConstraintViolationException.class)
@@ -76,11 +76,28 @@ public class GlobalExceptionHandler {
 
         return ResponseEntity
                 .status(HttpStatus.BAD_REQUEST)
-                .body(ErrorResponse.of(ErrorCode.INVALID_SCHEDULE_CONDITION, fieldErrors, traceId(request)));
+                .body(ErrorResponse.of(validationErrorCode(request), fieldErrors, traceId(request)));
+    }
+
+    @ExceptionHandler(PreviewAlreadyConsumedException.class)
+    public ResponseEntity<ErrorResponse> handlePreviewAlreadyConsumed(
+            PreviewAlreadyConsumedException exception,
+            HttpServletRequest request
+    ) {
+        return ResponseEntity
+                .status(exception.getErrorCode().getStatus())
+                .body(ErrorResponse.consumed(
+                        exception.getErrorCode(), traceId(request), exception.getScheduleId()));
     }
 
     private ErrorResponse.FieldErrorResponse toFieldErrorResponse(FieldError fieldError) {
         return new ErrorResponse.FieldErrorResponse(fieldError.getField(), fieldError.getDefaultMessage());
+    }
+
+    private ErrorCode validationErrorCode(HttpServletRequest request) {
+        return request.getRequestURI().startsWith("/api/v1/schedule-previews")
+                ? ErrorCode.INVALID_SCHEDULE_PREVIEW_REQUEST
+                : ErrorCode.INVALID_SCHEDULE_CONDITION;
     }
 
     private String traceId(HttpServletRequest request) {

@@ -9,7 +9,8 @@ public record OdsayProperties(
         String baseUrl,
         String apiKey,
         Duration connectTimeout,
-        Duration readTimeout
+        Duration readTimeout,
+        Duration minRequestInterval
 ) {
 
     public OdsayProperties {
@@ -24,6 +25,9 @@ public record OdsayProperties(
         }
         if (readTimeout == null) {
             readTimeout = Duration.ofSeconds(10);
+        }
+        if (minRequestInterval == null || minRequestInterval.isNegative()) {
+            minRequestInterval = Duration.ofMillis(150);
         }
     }
 }

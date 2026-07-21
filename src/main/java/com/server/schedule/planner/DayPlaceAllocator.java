@@ -42,17 +42,15 @@ public class DayPlaceAllocator {
                 continue;
             }
             ScheduleDay day = days.get(dayIndex);
-            long endpointCost = distanceMeters(
-                    day.getStartLongitude(),
-                    day.getStartLatitude(),
-                    place.getLongitude(),
-                    place.getLatitude()
-            ) + distanceMeters(
-                    place.getLongitude(),
-                    place.getLatitude(),
-                    day.getEndLongitude(),
-                    day.getEndLatitude()
-            );
+            long endpointCost = 0;
+            if (day.getStartLongitude() != null) {
+                endpointCost += distanceMeters(day.getStartLongitude(), day.getStartLatitude(),
+                        place.getLongitude(), place.getLatitude());
+            }
+            if (day.getEndLongitude() != null) {
+                endpointCost += distanceMeters(place.getLongitude(), place.getLatitude(),
+                        day.getEndLongitude(), day.getEndLatitude());
+            }
             long balanceCost = (long) assigned * FILL_BALANCE_PENALTY_METERS / Math.max(1, target);
             long totalCost = endpointCost + balanceCost;
             if (totalCost < bestCost) {

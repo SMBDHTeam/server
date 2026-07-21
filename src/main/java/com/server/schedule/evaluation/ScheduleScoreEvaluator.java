@@ -1,12 +1,13 @@
 package com.server.schedule.evaluation;
 
+import com.server.place.support.TourApiTheme;
+import com.server.place.support.TourApiThemeMapper;
 import com.server.schedule.dto.ScheduleCreateRequest;
 import com.server.schedule.dto.ScheduleResponse;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
-import java.util.Optional;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -20,9 +21,16 @@ public class ScheduleScoreEvaluator {
                 preferenceFit(request, response),
                 endpointFit(response)
         );
-        int totalScore = metrics.stream()
+        int evaluatedMaxScore = metrics.stream()
+                .filter(metric -> "EVALUATED".equals(metric.status()))
+                .mapToInt(ScheduleScoreResult.Metric::maxScore)
+                .sum();
+        int rawScore = metrics.stream()
+                .filter(metric -> "EVALUATED".equals(metric.status()))
                 .mapToInt(ScheduleScoreResult.Metric::score)
                 .sum();
+        int totalScore = evaluatedMaxScore == 0
+                ? 0 : (int) Math.round(rawScore * 100.0 / evaluatedMaxScore);
         return new ScheduleScoreResult(totalScore, metrics);
     }
 
@@ -32,13 +40,24 @@ public class ScheduleScoreEvaluator {
                 .mapToInt(day -> Math.max(0, usedMinutes(day) - availableMinutes(request, day)))
                 .max()
                 .orElse(0);
-        int score = Math.max(0, 30 - maxOverrunMinutes / 5);
+        int maxUnusedMinutes = response.days()
+                .stream()
+                .mapToInt(day -> Math.max(0, availableMinutes(request, day) - usedMinutes(day)))
+                .max()
+                .orElse(0);
+        int unusedPenalty = Math.min(10, Math.max(0, maxUnusedMinutes - 90) / 30);
+        int score = Math.max(0, 30 - maxOverrunMinutes / 5 - unusedPenalty);
+        String reason = maxOverrunMinutes > 0
+                ? "최대 " + maxOverrunMinutes + "분 초과"
+                : maxUnusedMinutes > 90
+                        ? "가장 긴 미사용 시간 " + maxUnusedMinutes + "분"
+                        : "일별 가용 시간 안에 들어옴";
         return new ScheduleScoreResult.Metric(
                 "TIME_FIT",
                 "일정 시간 적합성",
                 30,
                 score,
-                maxOverrunMinutes == 0 ? "일별 가용 시간 안에 들어옴" : "최대 " + maxOverrunMinutes + "분 초과"
+                reason
         );
     }
 
@@ -66,7 +85,9 @@ public class ScheduleScoreEvaluator {
         int burdenPlaceCount = burdenPlaceCount(response);
         int score = lowBurden
                 ? Math.max(0, 25 - walkOnlyMinutes / 3 - burdenPlaceCount * 8)
-                : Math.max(0, 25 - walkOnlyMinutes / 8);
+                : hasAnswer(request, "PROMPT_LOW_WALKING")
+                        ? Math.max(0, 25 - walkOnlyMinutes / 5)
+                        : Math.max(0, 25 - walkOnlyMinutes / 8);
         return new ScheduleScoreResult.Metric(
                 "MOBILITY_FIT",
                 "도보·언덕 부담 적합성",
@@ -105,21 +126,28 @@ public class ScheduleScoreEvaluator {
     }
 
     private ScheduleScoreResult.Metric transitFit(ScheduleCreateRequest request, ScheduleResponse response) {
-        int transferBurden = response.days()
+        List<ScheduleResponse.Transit> transits = response.days()
                 .stream()
-                .mapToInt(day -> day.stops()
-                        .stream()
-                        .mapToInt(stop -> transferBurden(stop.inboundTransit()))
-                        .sum() + transferBurden(day.finalTransit()))
-                .sum();
-        int penaltyUnit = hasAnswer(request, "TRANSIT_SIMPLE") ? 4 : 7;
-        int score = Math.max(0, 20 - transferBurden * penaltyUnit);
+                .flatMap(day -> java.util.stream.Stream.concat(
+                        day.stops().stream().map(ScheduleResponse.Stop::inboundTransit),
+                        java.util.stream.Stream.of(day.finalTransit())))
+                .filter(Objects::nonNull)
+                .toList();
+        int transferBurden = transits.stream().mapToInt(this::transferBurden).sum();
+        int penaltyUnit = hasAnswer(request, "TRANSIT_SIMPLE") ? 8 : 5;
+        int normalizedPenalty = transits.isEmpty()
+                ? 0
+                : (transferBurden * penaltyUnit + transits.size() - 1) / transits.size();
+        int score = Math.max(0, 20 - normalizedPenalty);
+        double averageBurden = transits.isEmpty() ? 0.0 : transferBurden * 1.0 / transits.size();
         return new ScheduleScoreResult.Metric(
                 "TRANSIT_FIT",
                 "환승 단순성",
                 20,
                 score,
                 "복합 대중교통 구간 부담 " + transferBurden
+                        + ", 이동 구간 " + transits.size()
+                        + "개, 구간당 " + String.format(java.util.Locale.ROOT, "%.2f", averageBurden)
         );
     }
 
@@ -139,10 +167,14 @@ public class ScheduleScoreEvaluator {
         if (hasAnswer(request, "PACE_RELAXED") && maxStopsPerDay(response) > 3) {
             score -= 4;
         }
-        Optional<String> themeAnswer = answerId(request, "THEME");
-        if (themeAnswer.isPresent() && response.days().stream().flatMap(day -> day.stops().stream()).noneMatch(stop -> themeMatches(themeAnswer.get(), stop.place().name()))) {
+        List<String> themeAnswers = answerIds(request, "THEME");
+        if (!themeAnswers.isEmpty() && !matchesAnyTheme(response, themeAnswers)) {
             score -= 5;
         }
+        if (hasAnswer(request, "PROMPT_PREFER_SEA_VIEW")
+                && !matchesAnyTheme(response, List.of("THEME_NATURE"))) score -= 2;
+        if (hasAnswer(request, "PROMPT_PREFER_FOOD")
+                && !matchesAnyTheme(response, List.of("THEME_FOOD"))) score -= 2;
         return new ScheduleScoreResult.Metric(
                 "PREFERENCE_FIT",
                 "취향 반영",
@@ -160,12 +192,27 @@ public class ScheduleScoreEvaluator {
                 .orElse(0);
     }
 
+    private boolean matchesAnyTheme(ScheduleResponse response, List<String> themeAnswerIds) {
+        return response.days().stream()
+                .flatMap(day -> day.stops().stream())
+                .anyMatch(stop -> themeAnswerIds.stream()
+                        .anyMatch(answerId -> themeMatches(answerId, stop.place().name())));
+    }
+
     private boolean themeMatches(String themeAnswerId, String placeName) {
+        if (TourApiTheme.fromAnswerId(themeAnswerId).isPresent()) {
+            return TourApiThemeMapper.matchesThemeText(themeAnswerId, placeName);
+        }
         return switch (themeAnswerId) {
             case "THEME_LOCAL" -> containsAny(placeName, "로컬", "시장", "거리", "마을", "골목");
             case "THEME_FOOD" -> containsAny(placeName, "식당", "맛집", "시장", "카페");
-            case "THEME_HISTORY_CULTURE" -> containsAny(placeName, "역사", "문화", "박물관", "기념관", "유적");
+            case "THEME_CULTURE", "THEME_HISTORY_CULTURE" ->
+                    containsAny(placeName, "역사", "문화", "박물관", "기념관", "유적");
             case "THEME_NATURE" -> containsAny(placeName, "해수욕장", "바다", "공원", "산책로", "섬", "숲");
+            case "THEME_ACTIVITY" -> containsAny(placeName, "체험", "레저", "요트", "케이블카", "테마파크");
+            case "THEME_SEA" -> containsAny(placeName, "해수욕장", "바다", "해변", "광안", "송정");
+            case "THEME_SHOPPING" -> containsAny(placeName, "쇼핑", "백화점", "아울렛", "몰", "시장");
+            case "THEME_HEALING" -> containsAny(placeName, "공원", "숲", "산책", "수목원", "카페", "온천");
             case "THEME_NIGHT_VIEW" -> containsAny(placeName, "야경", "전망", "타워", "광안", "해변");
             case "THEME_EVENT" -> containsAny(placeName, "축제", "페스타", "행사", "BIFF", "불꽃");
             default -> true;
@@ -173,8 +220,15 @@ public class ScheduleScoreEvaluator {
     }
 
     private ScheduleScoreResult.Metric endpointFit(ScheduleResponse response) {
+        if (response.planningAssumptions() != null
+                && "ATTRACTION_ROUTES_ONLY".equals(response.planningAssumptions().routeCoverage())) {
+            return new ScheduleScoreResult.Metric(
+                    "ENDPOINT_FIT", "최종 도착 경로", 10, 0,
+                    "숙소 미정으로 일차 경계 경로를 평가하지 않음", "NOT_EVALUATED");
+        }
         boolean hasFinalTransit = !response.days().isEmpty()
-                && response.days().stream().allMatch(day -> day.finalTransit() != null);
+                && response.days().stream().allMatch(day -> day.finalTransit() != null
+                        || "LAST_STOP".equals(day.endLocationSource()));
         return new ScheduleScoreResult.Metric(
                 "ENDPOINT_FIT",
                 "최종 도착 경로",
@@ -194,13 +248,13 @@ public class ScheduleScoreEvaluator {
                 .anyMatch(answer -> answerId.equals(answer.answerId()));
     }
 
-    private Optional<String> answerId(ScheduleCreateRequest request, String questionId) {
+    private List<String> answerIds(ScheduleCreateRequest request, String questionId) {
         return request.selectedAnswers()
                 .stream()
                 .filter(answer -> questionId.equals(answer.questionId()))
                 .map(ScheduleCreateRequest.SelectedAnswer::answerId)
                 .filter(Objects::nonNull)
-                .findFirst();
+                .toList();
     }
 
     private boolean containsAny(String value, String... tokens) {

@@ -99,8 +99,8 @@ place_3="$(jq -r '.items[2].id' "$places_file")"
 
 common_answers='[
   {"questionId":"COMPANION","answerId":"COMPANION_PARENTS"},
-  {"questionId":"THEME","answerId":"THEME_LOCAL"},
-  {"questionId":"PACE","answerId":"PACE_BALANCED"},
+  {"questionId":"THEME","answerId":"THEME_HISTORY_CULTURE"},
+  {"questionId":"PACE","answerId":"PACE_RELAXED"},
   {"questionId":"MOBILITY","answerId":"MOBILITY_LOW_WALK"},
   {"questionId":"TRANSIT","answerId":"TRANSIT_SIMPLE"}
 ]'

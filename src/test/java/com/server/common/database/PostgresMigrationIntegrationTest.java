@@ -43,9 +43,28 @@ class PostgresMigrationIntegrationTest {
                         + "where table_schema = 'public' and table_name = 'tour_api_request_usage'",
                 Integer.class
         );
+        Integer previewTableCount = jdbcTemplate.queryForObject(
+                "select count(*) from information_schema.tables "
+                        + "where table_schema = 'public' and table_name = 'schedule_previews'",
+                Integer.class
+        );
+        Integer creationRequestTableCount = jdbcTemplate.queryForObject(
+                "select count(*) from information_schema.tables "
+                        + "where table_schema = 'public' and table_name = 'schedule_creation_requests'",
+                Integer.class
+        );
+        Integer questionUiStepColumnCount = jdbcTemplate.queryForObject(
+                "select count(*) from information_schema.columns "
+                        + "where table_schema = 'public' and table_name = 'questions' "
+                        + "and column_name = 'ui_step'",
+                Integer.class
+        );
 
-        assertThat(migrationCount).isEqualTo(3);
+        assertThat(migrationCount).isEqualTo(5);
         assertThat(retryColumnCount).isEqualTo(1);
         assertThat(quotaTableCount).isEqualTo(1);
+        assertThat(previewTableCount).isEqualTo(1);
+        assertThat(creationRequestTableCount).isEqualTo(1);
+        assertThat(questionUiStepColumnCount).isEqualTo(1);
     }
 }

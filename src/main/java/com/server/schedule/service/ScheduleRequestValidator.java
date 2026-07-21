@@ -6,6 +6,7 @@ import com.server.common.error.ErrorCode;
 import com.server.question.entity.Question;
 import com.server.question.repository.QuestionRepository;
 import com.server.schedule.dto.ScheduleCreateRequest;
+import com.server.schedule.planner.DailyScheduleTargetPolicy;
 import java.math.BigDecimal;
 import java.time.temporal.ChronoUnit;
 import java.util.HashMap;
@@ -13,6 +14,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
@@ -20,7 +22,6 @@ import org.springframework.stereotype.Component;
 public class ScheduleRequestValidator {
 
     private static final int MAX_TRIP_DAYS = 4;
-    private static final int MAX_STOPS_PER_DAY = 3;
     private static final BigDecimal MIN_LONGITUDE = new BigDecimal("-180");
     private static final BigDecimal MAX_LONGITUDE = new BigDecimal("180");
     private static final BigDecimal MIN_LATITUDE = new BigDecimal("-90");
@@ -86,12 +87,9 @@ public class ScheduleRequestValidator {
     }
 
     private void validateSelectedAnswers(List<ScheduleCreateRequest.SelectedAnswer> selectedAnswers) {
-        Set<String> selectedQuestionIds = new HashSet<>();
-        for (ScheduleCreateRequest.SelectedAnswer selectedAnswer : selectedAnswers) {
-            if (!selectedQuestionIds.add(selectedAnswer.questionId())) {
-                invalid();
-            }
-        }
+        Map<String, List<ScheduleCreateRequest.SelectedAnswer>> answersByQuestion = selectedAnswers.stream()
+                .collect(Collectors.groupingBy(ScheduleCreateRequest.SelectedAnswer::questionId));
+        Set<String> selectedQuestionIds = answersByQuestion.keySet();
         if (questionRepository == null) {
             return;
         }
@@ -99,9 +97,20 @@ public class ScheduleRequestValidator {
         List<Question> questions = questionRepository.findByActiveTrueOrderByDisplayOrderAsc();
         Map<String, Question> questionById = new HashMap<>();
         questions.forEach(question -> questionById.put(question.getId(), question));
-        for (ScheduleCreateRequest.SelectedAnswer selectedAnswer : selectedAnswers) {
-            Question question = questionById.get(selectedAnswer.questionId());
-            if (question == null || !containsActiveAnswer(question, selectedAnswer.answerId())) {
+        for (Map.Entry<String, List<ScheduleCreateRequest.SelectedAnswer>> entry : answersByQuestion.entrySet()) {
+            Question question = questionById.get(entry.getKey());
+            if (question == null) {
+                invalid();
+            }
+            Set<String> distinctAnswerIds = new HashSet<>();
+            for (ScheduleCreateRequest.SelectedAnswer selectedAnswer : entry.getValue()) {
+                if (!distinctAnswerIds.add(selectedAnswer.answerId())
+                        || !containsActiveAnswer(question, selectedAnswer.answerId())) {
+                    invalid();
+                }
+            }
+            int selectedCount = distinctAnswerIds.size();
+            if (selectedCount < question.getMinSelections() || selectedCount > question.getMaxSelections()) {
                 invalid();
             }
         }
@@ -121,7 +130,7 @@ public class ScheduleRequestValidator {
     }
 
     private void validateMustVisitPlaceIds(List<Long> placeIds, int tripDays) {
-        if (placeIds.size() > tripDays * MAX_STOPS_PER_DAY
+        if (placeIds.size() > tripDays * DailyScheduleTargetPolicy.MAX_STOPS_PER_DAY
                 || placeIds.stream().anyMatch(placeId -> placeId == null || placeId <= 0)
                 || new HashSet<>(placeIds).size() != placeIds.size()) {
             invalid();

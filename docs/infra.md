@@ -31,6 +31,27 @@ docker compose -f docker-compose.local.yml up -d postgres
 
 환경변수 예시는 `.env.example`을 기준으로 만들고, 실제 `.env`는 Git에 올리지 않는다.
 
+## 로컬 Swagger
+
+Swagger UI와 OpenAPI JSON은 `local` profile에서만 활성화한다. 로컬 DB가 비어 있으면
+기본값으로 일정 생성용 장소 fixture 8개를 적재하고, 질문과 답변 seed도 함께 준비한다.
+
+```bash
+docker compose -f docker-compose.local.yml up -d postgres
+./gradlew bootRun --args='--spring.profiles.active=local'
+```
+
+- Swagger UI: `http://localhost:8080/swagger-ui.html`
+- OpenAPI JSON: `http://localhost:8080/v3/api-docs`
+
+Swagger의 `POST /api/v1/schedules`에는 자동 추천 1일 일정과 현재 로컬 장소 ID를
+동적으로 연결한 3박 4일 일정 예제가 있다. `mustVisitPlaceIds`에 장소를 직접 지정하려면 먼저
+`GET /api/v1/places`를 실행해 현재 로컬 DB의 장소 ID를 사용한다. 기존 장소 데이터가
+있으면 fixture를 추가 적재하지 않는다. 더미 장소를 끄려면
+`DUMMY_PLACE_SEED_ENABLED=false`를 설정한다.
+
+백엔드를 `18080` 포트로 실행하면 Swagger URL의 포트도 `18080`으로 변경한다.
+
 TourAPI 장소 적재는 기본 비활성화 상태다. 로컬 PostgreSQL에 적재하려면 `.env`에 `TOUR_API_KEY`를 설정하고 필요한 페이지 수를 조정한 뒤 실행한다.
 
 ```bash
@@ -95,8 +116,15 @@ src/main/resources/application-prod.yml
 
 # Nginx reverse proxy
 
-user/front --> nginx(80) --> springboot_container(8080)
-cors-->nginx에서 처리할 예정
+```text
+user/front --HTTP 80--> nginx --301--> HTTPS 443 --> nginx --> springboot_container(127.0.0.1:8080)
+```
+
+- 개발 API 도메인은 `api.busantour.site`이며 Nginx 설정은 `ops/nginx/api.busantour.site.conf`를 기준으로 한다.
+- TLS 인증서는 Let's Encrypt/Certbot으로 발급하고 `certbot.timer`가 자동 갱신한다.
+- CORS는 Nginx가 아닌 Spring Security에서 처리한다. GitHub Actions repository variable
+  `CORS_ALLOWED_ORIGINS`에 쉼표로 구분한 Origin 목록을 설정하면 `.env.dev`로 전달한다.
+  변수가 없으면 애플리케이션 기본 Origin 목록을 사용한다.
 
 ---
 
@@ -165,3 +193,37 @@ HTTPS 인증서 적용
 배포 설정 파일에는 실제 비밀번호나 키를 직접 작성하지 않음
 
 민감 정보는 GitHub Secrets 또는 서버 환경변수로 관리
+
+## 선택적 AI Planner 설정
+
+자유 요청 의미 해석은 기본적으로 규칙 기반이며 다음 환경변수를 설정했을 때만 OpenAI Responses API를 사용한다.
+
+```text
+AI_PLANNER_ENABLED=true
+OPENAI_BASE_URL=https://api.openai.com
+OPENAI_API_KEY=<secret>
+AI_PLANNER_MODEL=gpt-5.6-luna
+```
+
+API Key는 애플리케이션 로그와 저장 데이터에 기록하지 않는다. 키 누락, 시간 초과, Provider 오류 또는 구조화 출력 검증 실패 시 일정 생성은 실패하지 않고 규칙 기반 해석으로 전환된다.
+
+## ODsay 호출 보호 설정
+
+장소 조합과 전체 순열 생성은 ODsay를 호출하지 않는다. 좌표 추정 상위 방문 순서만 ODsay 경량 경로로 재평가하고, 선택된 구간은 같은 검색 결과를 재사용해 상세화한다. ODsay는 일일·초당 호출 제한이 있으므로 모든 경로검색·선형 요청을 직렬화하고 응답 완료 후 기본 150ms 간격을 둔다.
+
+```text
+ODSAY_ENABLED=true
+ODSAY_API_KEY=<secret>
+ODSAY_MIN_REQUEST_INTERVAL=150ms
+ODSAY_ROUTE_CACHE_TTL=30m
+ODSAY_ROUTE_DETAIL_CACHE_TTL=5m
+ODSAY_ROUTE_CACHE_MAX_ENTRIES=2048
+SCHEDULE_ACTUAL_ROUTE_RERANK_ENABLED=true
+SCHEDULE_ACTUAL_ROUTE_RERANK_CANDIDATES=3
+SCHEDULE_MULTI_DAY_ACTUAL_RERANK_CANDIDATES=3
+SCHEDULE_MAX_ROUTE_ESTIMATE_PROVIDER_CALLS=30
+```
+
+`SCHEDULE_MULTI_DAY_ACTUAL_RERANK_CANDIDATES`는 실제 경로로 비교할 장소·날짜 배치안 상한이며 `1~6` 범위다. 경량 경로 호출 상한은 다일 배치안과 일차별 순서 재평가를 합친 요청 전체에 적용한다. 남은 예산은 일차별 순서 후보에 균등 배분한다. 운영 계정 정책에 맞춰 상한과 간격을 조정할 수 있다. `0ms`는 제한기를 끄므로 실제 Provider 환경에서는 사용하지 않는다.
+
+ODsay 경로 캐시는 좌표쌍 기준 프로세스 메모리 캐시다. 경량 최적 경로는 기본 30분, 상세 선형과 실시간 보정 결과는 기본 5분 동안 유지하며 실패 응답은 저장하지 않는다. 서버 재시작 시 비워지고 여러 인스턴스 사이에는 공유되지 않는다. 실시간성이 더 중요한 환경은 상세 TTL을 줄이고, 반복 일정 생성 성능이 중요한 환경은 운영 모니터링 후 늘릴 수 있다.

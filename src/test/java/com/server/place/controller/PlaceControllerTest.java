@@ -57,6 +57,7 @@ class PlaceControllerTest {
                 .andExpect(jsonPath("$.items[0].externalContentId").value("126508"))
                 .andExpect(jsonPath("$.items[0].name").value("이송도전망대"))
                 .andExpect(jsonPath("$.items[0].category").value("관광지"))
+                .andExpect(jsonPath("$.items[0].categoryLabel").value("관광지"))
                 .andExpect(jsonPath("$.items[0].address").value("부산 서구 암남동"))
                 .andExpect(jsonPath("$.items[0].longitude").value(129.047956))
                 .andExpect(jsonPath("$.items[0].latitude").value(35.075519))

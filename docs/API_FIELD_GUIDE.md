@@ -2,6 +2,8 @@
 
 `docs/API_SPEC.md`의 JSON 필드 의미를 설명한다.
 
+일정 생성 V2 필드는 현재 구현 계약이다. 기존 번호 섹션의 V1 일정 생성 필드는 `Idempotency-Key`가 없는 호환 요청에만 사용한다.
+
 | 표기 | 의미 |
 | --- | --- |
 | O | 반드시 전달하거나 반환하는 값 |
@@ -22,8 +24,11 @@
 | `items` | array | O | 질문 목록 |
 | `items[].id` | string | O | 질문 고정 ID |
 | `items[].text` | string | O | 화면에 표시할 질문 |
-| `items[].type` | string | O | 선택 방식. 1차는 `SINGLE_CHOICE` |
+| `items[].type` | string | O | `SINGLE_CHOICE`, `MULTIPLE_CHOICE` |
 | `items[].required` | boolean | O | 필수 질문 여부 |
+| `items[].minSelections` | integer | O | 최소 선택 수 |
+| `items[].maxSelections` | integer | O | 최대 선택 수 |
+| `items[].uiStep` | integer | O | 기본 생성 화면에서 질문을 표시할 단계. `1~3` |
 | `items[].displayOrder` | integer | O | 질문 표시 순서 |
 | `items[].answers` | array | O | 선택 가능한 답변 목록 |
 | `items[].answers[].id` | string | O | 답변 고정 ID |
@@ -49,7 +54,200 @@
 | `items[].externalId` | string | O | 카카오 장소 ID |
 | `items[].source` | string | O | `KAKAO_LOCAL` |
 
-## 3. AI 다일 일정 생성
+## 일정 생성 V2 필드
+
+### V2-1. 질문 조회 추가 필드
+
+| 응답 필드 | 자료형 | 필수 | 의미 |
+| --- | --- | :---: | --- |
+| `items[].type` | string | O | `SINGLE_CHOICE`, `MULTIPLE_CHOICE` |
+| `items[].minSelections` | integer | O | 최소 선택 수 |
+| `items[].maxSelections` | integer | O | 최대 선택 수 |
+| `items[].uiStep` | integer | O | Step1~3 질문 그룹 |
+
+`SINGLE_CHOICE`는 `maxSelections=1`이며 필수 질문은 `minSelections=1`, 선택 질문은 `minSelections=0`이다.
+질문·답변 ID는 요청 저장과 화면별 디자인 분기에 사용하는 안정적인 계약이며, 화면 그룹은 배열 순서가 아니라 `uiStep`으로 결정한다.
+
+### V2-2. 통합 장소 검색
+
+| 요청 필드 | 위치 | 자료형 | 필수 | 의미 |
+| --- | --- | --- | :---: | --- |
+| `keyword` | Query | string | O | 장소명 검색어 |
+| `scope` | Query | string | X | `INTERNAL`, `ALL`. 기본 `INTERNAL` |
+| `size` | Query | integer | X | 기본 `20`, 최소 `1`, 최대 `50` |
+
+| 응답 필드 | 자료형 | 필수 | 의미 |
+| --- | --- | :---: | --- |
+| `items` | array | O | 내부·외부 장소 후보 |
+| `items[].placeId` | integer/null | 조건부 | 내부 장소 ID. 외부 미확정 후보는 `null` |
+| `items[].source` | string | O | `TOUR_API`, `KAKAO_LOCAL` |
+| `items[].externalId` | string | O | 데이터 출처의 장소 ID |
+| `items[].name` | string | O | 장소명 |
+| `items[].category` | string/null | X | 표시용 분류 |
+| `items[].categoryLabel` | string | O | 카테고리 코드의 사용자 표시 문구 |
+| `items[].address` | string/null | X | 주소 |
+| `items[].longitude` | number | O | 경도 |
+| `items[].latitude` | number | O | 위도 |
+| `items[].primaryImageUrl` | string/null | X | 대표 이미지 |
+| `items[].resolved` | boolean | O | 내부 `placeId` 확정 여부 |
+
+### V2-3. 외부 장소 Resolve
+
+`POST /api/v1/places/resolve`
+
+| 요청 필드 | 자료형 | 필수 | 의미 |
+| --- | --- | :---: | --- |
+| `source` | string | O | V2에서는 `KAKAO_LOCAL`만 허용 |
+| `externalId` | string | O | Kakao 장소 ID |
+| `name` | string | O | 검색 응답 장소명 |
+| `category` | string | X | 검색 응답 분류 |
+| `address` | string | X | 검색 응답 주소 |
+| `longitude` | number | O | 경도 |
+| `latitude` | number | O | 위도 |
+| `placeUrl` | string | X | 외부 장소 페이지 URL |
+
+| 응답 필드 | 자료형 | 필수 | 의미 |
+| --- | --- | :---: | --- |
+| `placeId` | integer | O | upsert 후 내부 장소 ID |
+| `source` | string | O | `KAKAO_LOCAL` |
+| `externalId` | string | O | Kakao 장소 ID |
+| `name` | string | O | 저장된 장소명 |
+| `category` | string/null | X | 저장된 카테고리 코드 또는 원문 |
+| `categoryLabel` | string | O | 사용자 표시용 카테고리 |
+| `address` | string/null | X | 저장된 주소 |
+| `longitude` | number | O | 저장된 경도 |
+| `latitude` | number | O | 저장된 위도 |
+| `primaryImageUrl` | string/null | X | 대표 이미지 URL |
+| `placeUrl` | string/null | X | 외부 장소 페이지 URL |
+| `resolved` | boolean | O | 항상 `true` |
+| `operatingInfoAvailable` | boolean | O | 운영정보 보유 여부 |
+
+### V2-4. Preview 생성 요청
+
+`POST /api/v1/schedule-previews`
+
+| 요청 필드 | 자료형 | 필수 | 의미 |
+| --- | --- | :---: | --- |
+| `startDate` | string(date) | O | 여행 시작일 |
+| `endDate` | string(date) | O | 여행 종료일. 최대 4일 |
+| `startLocation` | object | O | 첫날 여행 시작 위치 |
+| `startLocation.name` | string | O | 시작 위치명 |
+| `startLocation.longitude` | number | O | 시작 위치 경도 |
+| `startLocation.latitude` | number | O | 시작 위치 위도 |
+| `startTime` | string(time) | X | 첫날 여행 시작 가능시각 |
+| `lodgingPlan` | object | O | 숙소 계획. 숙소 미정이면 `{"mode":"UNDECIDED"}` |
+| `lodgingPlan.mode` | string | O | `UNDECIDED`, `FIXED_BASE`, `PER_NIGHT` |
+| `lodgingPlan.baseLocation` | object | 조건부 | `FIXED_BASE`일 때 필수 |
+| `lodgingPlan.nightStays` | array | 조건부 | `PER_NIGHT`일 때 필수 |
+| `lodgingPlan.nightStays[].date` | string(date) | O | 숙박하는 밤의 날짜 |
+| `lodgingPlan.nightStays[].location` | object | O | 해당 날짜 숙소 위치 |
+| `endConstraint` | object | X | 마지막 도착·교통편 제약 |
+| `endConstraint.type` | string | O | `ARRIVE_BY`, `TRAIN_DEPARTURE`, `FLIGHT_DEPARTURE` |
+| `endConstraint.location` | object | O | 도착해야 하는 위치 |
+| `endConstraint.targetAt` | string(date-time) | O | 오프셋을 포함한 목표시각 |
+| `endConstraint.bufferMinutes` | integer | X | 목표시각 전 확보할 시간. 0 이상 |
+| `selectedAnswers` | array | O | 활성 필수 질문별 선택 답변 |
+| `selectedAnswers[].questionId` | string | O | `questions.id` |
+| `selectedAnswers[].answerIds` | array | O | 질문별 선택한 `answers.id` 목록 |
+| `selectedAnswers[].answerIds[]` | string | O | 중복 없는 답변 ID |
+| `mustVisitPlaceIds` | array | X | Resolve가 끝난 내부 장소 ID 목록. 여행 일수당 최대 5개 |
+| `mustVisitPlaceIds[]` | integer | O | 내부 `places.id` |
+| `fixedEvents` | array | X | 반드시 배치할 고정 행사 |
+| `fixedEvents[].clientEventId` | string | O | Draft 안에서 행사를 식별하는 클라이언트 ID |
+| `fixedEvents[].name` | string | O | 행사·공연명 |
+| `fixedEvents[].placeId` | integer | O | Resolve가 끝난 내부 장소 ID |
+| `fixedEvents[].startsAt` | string(date-time) | O | 오프셋 포함 행사 시작시각 |
+| `fixedEvents[].endsAt` | string(date-time) | O | 오프셋 포함 행사 종료시각 |
+| `dayOverrides` | array | X | 특정 날짜 기본 조건 변경 |
+| `dayOverrides[].date` | string(date) | O | 여행 범위 안의 실제 날짜 |
+| `dayOverrides[].availableFrom` | string(time) | X | 해당 날짜 여행 시작 가능시각 |
+| `dayOverrides[].availableUntil` | string(time) | X | 해당 날짜 일정을 마쳐야 하는 시각 |
+| `dayOverrides[].startLocation` | object | X | 해당 날짜 출발 위치 강제값 |
+| `dayOverrides[].endLocation` | object | X | 해당 날짜 도착 위치 강제값 |
+| `customPrompt` | string | X | 최대 500자의 소프트 선호 요청 |
+
+현재 `interpretedPrompt.preferences`는 `LOW_WALKING`, `PREFER_SEA_VIEW`, `PREFER_FOOD`를 반환할 수 있다. 인식하지 못한 요청은 `unrecognizedTexts`로 돌려주며 Hard Constraint로 적용하지 않는다.
+마지막 날에 `endConstraint`가 있으면 같은 날짜의 `dayOverrides[].endLocation`은 함께 전달할 수 없다.
+
+위치 객체는 공통으로 `name`, `longitude`, `latitude`가 필수이며 `address`는 선택이다. 날짜시간은 `Asia/Seoul` 오프셋을 포함한 ISO-8601 형식을 사용한다.
+
+### V2-5. Preview 응답
+
+| 응답 필드 | 자료형 | 필수 | 의미 |
+| --- | --- | :---: | --- |
+| `previewId` | string(UUID) | O | Preview ID |
+| `status` | string | O | `READY`, `REQUIRES_ACTION`, `EXPIRED`, `CONSUMED` |
+| `canGenerate` | boolean | O | 현재 Preview로 생성 가능한지 여부 |
+| `expiresAt` | string(date-time) | O | Preview 만료시각 |
+| `timeZone` | string | O | V2 부산 서비스는 `Asia/Seoul` |
+| `lodgingMode` | string | O | 적용된 숙소 모드 |
+| `routeCoverage` | string | O | `FULL`, `ATTRACTION_ROUTES_ONLY` |
+| `resolvedDays` | array | O | 서버가 확정한 일차별 실행 조건 |
+| `resolvedDays[].date` | string(date) | O | 실제 날짜 |
+| `resolvedDays[].availableFrom` | string(time) | O | 여행 시작 가능시각 |
+| `resolvedDays[].availableUntil` | string(time) | O | 일정을 마쳐야 하는 시각 |
+| `resolvedDays[].startLocation` | object/null | X | 확정된 시작 위치 |
+| `resolvedDays[].endLocation` | object/null | X | 확정된 종료 위치 |
+| `resolvedDays[].startLocationSource` | string | O | `USER`, `LODGING`, `DAY_OVERRIDE`, `PLANNER_DECIDES` |
+| `resolvedDays[].endLocationSource` | string | O | `LODGING`, `END_CONSTRAINT`, `DAY_OVERRIDE`, `PLANNER_DECIDES` |
+| `resolvedEndConstraint` | object/null | X | 계산된 종료 제약 |
+| `resolvedEndConstraint.appliedBufferMinutes` | integer | O | 실제 적용 여유시간 |
+| `resolvedEndConstraint.availableUntil` | string(time) | O | 마지막 날 계산 종료시각 |
+| `appliedDefaults` | array | O | 서버 적용 기본값 목록 |
+| `appliedDefaults[].fieldPath` | string | O | 적용된 응답 필드 경로 |
+| `appliedDefaults[].resolvedValue` | string/object | O | 적용값 |
+| `appliedDefaults[].reasonCode` | string | O | 기본값 적용 이유 코드 |
+| `interpretedPrompt.preferences` | array | O | 정규화된 소프트 선호 코드 |
+| `interpretedPrompt.unrecognizedTexts` | array | O | 해석하지 못한 입력 조각 |
+| `interpretedPrompt.source` | string | O | `RULE_BASED`, `HYBRID_AI`, `FALLBACK` |
+| `interpretedPrompt.confidence` | integer | O | 해석 신뢰도 `0~100` |
+| `warnings` | array | O | 확인 후 생성 가능한 경고 |
+| `warnings[].code` | string | O | 고정 경고 코드 |
+| `warnings[].date` | string(date)/null | X | 경고 대상 날짜 |
+| `warnings[].message` | string | O | 사용자 표시 문구 |
+| `conflicts` | array | O | 생성 전에 해결해야 하는 충돌 |
+| `conflicts[].code` | string | O | 고정 충돌 코드 |
+| `conflicts[].message` | string | O | 사용자 표시 문구 |
+| `conflicts[].fieldPath` | string/null | X | 수정할 Draft 필드 경로 |
+| `conflicts[].conflictDate` | string(date)/null | X | 충돌 날짜 |
+| `conflicts[].requiredMinutes` | integer/null | X | 필요한 최소시간 |
+| `conflicts[].availableMinutes` | integer/null | X | 현재 가용시간 |
+| `conflicts[].adjustableFields` | array | O | 변경 가능한 Draft 필드 경로 |
+| `scheduleId` | string(UUID) | 조건부 | `CONSUMED` Preview의 생성 일정 ID |
+
+`canGenerate=false`이면 `status=REQUIRES_ACTION`이고 `conflicts`가 한 건 이상이어야 한다.
+
+### V2-6. Preview 기반 일정 생성
+
+`POST /api/v1/schedules`
+
+| 요청 필드 | 위치 | 자료형 | 필수 | 의미 |
+| --- | --- | --- | :---: | --- |
+| `Idempotency-Key` | Header | string | O | 요청 중복 방지 키. UUID 권장, 최대 128자 |
+| `previewId` | Body | string(UUID) | O | `READY` 상태의 Preview ID |
+
+| 응답 추가 필드 | 자료형 | 필수 | 의미 |
+| --- | --- | :---: | --- |
+| `previewId` | string(UUID) | O | 실행에 사용한 Preview ID |
+| `planningAssumptions` | object | O | Planner가 사용한 가정과 계산 범위 |
+| `planningAssumptions.timeZone` | string | O | 일정 시간대 |
+| `planningAssumptions.lodgingMode` | string | O | 숙소 모드 |
+| `planningAssumptions.routeCoverage` | string | O | 경로 평가 범위 |
+| `planningAssumptions.warnings` | array | O | 가정·실제 경로 보정에 따른 경고 코드. 시간 적합성을 위해 선택 방문지를 줄이면 `OPTIONAL_STOPS_REDUCED_FOR_FEASIBILITY` 포함 |
+| `evaluation.qualityScore.evaluationCoveragePercent` | integer | O | 실제 평가한 품질 항목 비율(0~100) |
+| `evaluation.qualityScore.metrics[].status` | string | O | `EVALUATED`, `NOT_EVALUATED` |
+
+V2 응답은 top-level `dailyStartTime`, `dailyEndTime`을 사용하지 않는다. 일차별 실제 시간은 `days[].startTime`, `days[].endTime`이 기준이다. 숙소 미정이면 `days[].startLocation`, `days[].endLocation`, 지도 `startMarker`, `endMarker`가 `null`일 수 있다.
+
+숙소 미정으로 평가하지 않은 항목은 점수 `0`으로 처리하지 않는다. `totalScore`는 `EVALUATED` 항목만 100점 기준으로 정규화하며, 서로 다른 `evaluationCoveragePercent`의 일정 점수를 직접 비교하지 않는다.
+
+### V2-7. 일정 단건 조회와 목록
+
+`GET /api/v1/schedules/{scheduleId}`는 저장된 `ScheduleResponse`를 반환한다. 생성 순간에만 계산하고 저장하지 않은 `evaluation` 운영 지표는 생략하며 `planningAssumptions`는 반환한다.
+
+`GET /api/v1/schedules`의 `items`는 `startDate ASC`, 같은 시작일은 `createdAt DESC` 순서다. V2에서도 인증 도입 전까지 전체 일정을 반환한다.
+
+## 3. 규칙 기반 다일 일정 생성 (V1 현재 구현)
 
 `POST /api/v1/schedules`
 
@@ -70,7 +268,7 @@
 | `selectedAnswers` | array | O | 선택한 질문과 답변 목록 |
 | `selectedAnswers[].questionId` | string | O | `questions.id` |
 | `selectedAnswers[].answerId` | string | O | `answers.id` |
-| `mustVisitPlaceIds` | array | X | 중복 없는 필수 방문 장소 ID 목록. 여행 일수당 최대 3개 |
+| `mustVisitPlaceIds` | array | X | 중복 없는 필수 방문 장소 ID 목록. 여행 일수당 최대 5개 |
 | `mustVisitPlaceIds[]` | integer | O | 내부 `places.id` 한 개 |
 | `days` | array | X | 일차별 출발·도착·시간 조건. 전달 시 전체 일차 필수 |
 | `days[].dayNo` | integer | O | 1부터 시작하는 여행 일차. 중복 불가 |
@@ -84,6 +282,8 @@
 | `days[].endLocation.name` | string | O | 일차 도착지명 |
 | `days[].endLocation.longitude` | number | O | 일차 도착지 경도 |
 | `days[].endLocation.latitude` | number | O | 일차 도착지 위도 |
+| `days[].startLocationSource` | string/null | X | `USER`, `LODGING`, `DAY_OVERRIDE`, `PLANNER_DECIDES`, `LEGACY` |
+| `days[].endLocationSource` | string/null | X | `LODGING`, `END_CONSTRAINT`, `DAY_OVERRIDE`, `LAST_STOP`, `LEGACY` |
 
 `selectedAnswers`는 활성 상태인 모든 필수 질문을 포함해야 하며 질문당 답변 하나만 허용한다. `answerId`는 같은 항목의 `questionId`에 속한 활성 답변이어야 한다.
 
@@ -120,6 +320,9 @@
 | `days[].stops[].place.id` | integer | O | 내부 장소 ID |
 | `days[].stops[].place.name` | string | O | 장소명 |
 | `days[].stops[].place.category` | string | X | 표시용 분류 |
+| `days[].stops[].place.categoryLabel` | string | O | 사용자 표시용 분류 |
+| `days[].stops[].mealTimeSlot` | string/null | X | 자동 식사 추천 창. `LUNCH`, `DINNER` |
+| `days[].stops[].waitingMinutesBefore` | integer | O | 식사·고정 시간창 정렬로 장소 도착 전에 대기하는 시간(분) |
 | `days[].stops[].place.address` | string | X | 주소 |
 | `days[].stops[].place.longitude` | number | O | 장소 경도 |
 | `days[].stops[].place.latitude` | number | O | 장소 위도 |
@@ -168,6 +371,15 @@
 | `evaluation.hardGate.violations` | array | O | Hard Gate 위반 ID. 성공 응답은 빈 배열 |
 | `evaluation.qualityScore.totalScore` | integer | O | 품질 점수 합계 |
 | `evaluation.qualityScore.maxScore` | integer | O | 품질 점수 만점. 현재 `100` |
+| `evaluation.qualityScore.evaluationCoveragePercent` | integer | O | 실제 평가한 지표 배점 비율 |
+| `evaluation.qualityScore.unusedMinutes` | integer | O | 전체 일차에서 사용하지 않은 가용시간 합계(분) |
+| `evaluation.qualityScore.longTransitWarnings` | array | O | 60분을 초과한 이동 구간 목록 |
+| `evaluation.qualityScore.longTransitWarnings[].dayNo` | integer | O | 이동 구간 일차 |
+| `evaluation.qualityScore.longTransitWarnings[].routeOrder` | integer | O | 일차 내 경로 순서 |
+| `evaluation.qualityScore.longTransitWarnings[].originName` | string | O | 출발 지점명 |
+| `evaluation.qualityScore.longTransitWarnings[].destinationName` | string | O | 도착 지점명 |
+| `evaluation.qualityScore.longTransitWarnings[].totalMinutes` | integer | O | 이동시간(분) |
+| `evaluation.qualityScore.routeConfidence` | string | O | `HIGH`, `MEDIUM`, `LOW`, `UNKNOWN` |
 | `evaluation.qualityScore.metrics` | array | O | 품질 지표별 평가 결과 |
 | `evaluation.qualityScore.metrics[].id` | string | O | `TIME_FIT`, `MOBILITY_FIT`, `TRANSIT_FIT`, `PREFERENCE_FIT`, `ENDPOINT_FIT` |
 | `evaluation.qualityScore.metrics[].label` | string | O | 지표 표시명 |
@@ -175,9 +387,17 @@
 | `evaluation.qualityScore.metrics[].maxScore` | integer | O | 지표 배점 |
 | `evaluation.qualityScore.metrics[].reason` | string | O | 점수 산정 근거 |
 | `evaluation.operations.generationMillis` | integer | O | 검증부터 저장·평가까지 생성 소요시간(ms) |
-| `evaluation.operations.routeResolutionCount` | integer | O | 후보 순열 평가와 최종 상세화의 경로 해석 요청 횟수 합계 |
-| `evaluation.operations.routeCacheHitCount` | integer | O | 요청 단위 경량·상세 경로 캐시 적중 횟수 합계 |
-| `evaluation.operations.providerCallCount` | integer | O | 후보 탐색용·최종 상세화용 `TransitRouteProvider` 호출 횟수 합계 |
+| `evaluation.operations.planningMode` | string | O | `AI_GENERATED`, `AI_ASSISTED`, `AI_FALLBACK`, `RULE_BASED` |
+| `evaluation.operations.aiPlanConfidence` | integer/null | X | 검증을 통과한 AI 장소·날짜 제안 신뢰도 `0~100` |
+| `evaluation.operations.multiDayPlanCandidateCount` | integer | O | AI 제안을 포함해 보존한 다일 장소·날짜 배치안 수 |
+| `evaluation.operations.multiDayPlanRerankedCount` | integer | O | 실제 경량 대중교통 경로로 평가를 완료한 다일 배치안 수 |
+| `evaluation.operations.routeEstimateResolutionCount` | integer | O | 실제 경로 재평가 후보의 경량 경로 해석 요청 횟수 |
+| `evaluation.operations.routeEstimateCacheHitCount` | integer | O | 경량 경로 요청 단위 캐시 적중 횟수 |
+| `evaluation.operations.providerEstimateCallCount` | integer | O | 실제 경로 재평가를 위한 Provider 경량 조회 횟수 |
+| `evaluation.operations.providerEstimateFailureCount` | integer | O | Provider 경량 조회 실패 횟수 |
+| `evaluation.operations.routeResolutionCount` | integer | O | 최종 선택 구간의 실제 경로 해석 요청 횟수 |
+| `evaluation.operations.routeCacheHitCount` | integer | O | 최종 선택 구간의 요청 단위 실제 경로 캐시 적중 횟수 |
+| `evaluation.operations.providerCallCount` | integer | O | 최종 선택 구간을 확정하기 위한 `TransitRouteProvider` 호출 횟수 |
 | `evaluation.operations.providerFailureCount` | integer | O | 외부 Provider 호출 실패 횟수 |
 | `evaluation.operations.externalHttpCallCount` | integer | O | ODsay 경로검색·loadLane·TMAP 도보 HTTP 시도 합계 |
 | `evaluation.operations.externalHttpFailureCount` | integer | O | 외부 HTTP 오류·유효하지 않은 응답 횟수 |
@@ -337,10 +557,12 @@
 | `routeLines[].startName` | string | O | 선 조각 출발 지점명. 대중교통은 승차 정류장·역, 도보는 출발지·승하차 지점 |
 | `routeLines[].endName` | string | O | 선 조각 도착 지점명. 대중교통은 하차 정류장·역, 도보는 승하차 지점·목적지 |
 | `routeLines[].durationMinutes` | integer | X | 선 조각 소요시간 |
-| `routeLines[].distanceMeters` | integer/null | X | 선 조각 거리(m) |
+| `routeLines[].distanceMeters` | integer | O | 선 조각 거리(m). Provider 누락 시 polyline 좌표로 계산 |
 | `routeLines[].instruction` | string | X | 지도에서 보여줄 선 조각 안내문 |
 | `routeLines[].fallbackUsed` | boolean | O | fallback 좌표 사용 여부 |
-| `routeLines[].coordinates` | array | O | `[경도, 위도]` 좌표 목록. `WALK`는 TMAP 보행자 경로 좌표를 우선 사용하고 실패 시 fallback 좌표를 사용 |
+| `routeLines[].coordinates` | array | O | `[경도, 위도]` 좌표 목록. 500m 초과 `WALK`는 TMAP을 우선 사용하고, 500m 이하 연결 도보 또는 Provider 실패 시 fallback 좌표를 사용 |
+
+결과 화면의 일차별 `약 Nkm`는 해당 일차 `routeLines[].distanceMeters`의 null이 아닌 값을 합산해 계산한다. 경로선이 없을 때만 장소 좌표 간 직선거리를 임시 fallback으로 사용할 수 있다.
 
 ## 10. 공유 링크 생성
 

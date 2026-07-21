@@ -30,4 +30,13 @@ spring:
 app:
   seed:
     dummy-place:
-      enabled: ${DUMMY_PLACE_SEED_ENABLED:false}
+      enabled: ${DUMMY_PLACE_SEED_ENABLED:true}
+
+springdoc:
+  api-docs:
+    enabled: true
+  swagger-ui:
+    enabled: true
+    path: /swagger-ui.html
+    display-request-duration: true
+    try-it-out-enabled: true
