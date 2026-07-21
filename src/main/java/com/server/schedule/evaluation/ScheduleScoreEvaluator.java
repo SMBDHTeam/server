@@ -13,7 +13,7 @@ import org.springframework.stereotype.Component;
 @Component
 public class ScheduleScoreEvaluator {
 
-    public ScheduleScoreResult evaluate(ScheduleCreateRequest request, ScheduleResponse response) {
+public ScheduleScoreResult evaluate(ScheduleCreateRequest request, ScheduleResponse response) {
         List<ScheduleScoreResult.Metric> metrics = List.of(
                 timeFit(request, response),
                 mobilityFit(request, response),
