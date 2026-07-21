@@ -94,7 +94,7 @@ jobs:
           KAKAO_REST_API_KEY: ${{ secrets.KAKAO_REST_API_KEY }}
           ODSAY_API_KEY: ${{ secrets.ODSAY_API_KEY }}
           BUSAN_BIMS_API_KEY: ${{ secrets.BUSAN_BIMS_API_KEY }}
-          SKT_API_KEY: ${{ secrets.SKT_API_KEY }}
+
 
           # GitHub Repository Variables에 등록한 CORS 허용 주소
           CORS_ALLOWED_ORIGINS: ${{ vars.CORS_ALLOWED_ORIGINS }}
@@ -122,7 +122,6 @@ jobs:
             KAKAO_REST_API_KEY
             ODSAY_API_KEY
             BUSAN_BIMS_API_KEY
-            SKT_API_KEY
           )
 
           for variable_name in "${required_variables[@]}"; do
@@ -198,10 +197,6 @@ jobs:
             # 부산 버스정보 API
             printf 'BUSAN_BIMS_ENABLED=true\n'
             printf 'BUSAN_BIMS_API_KEY=%s\n' "$BUSAN_BIMS_API_KEY"
-
-            # 팀 프로젝트에서 TMAP 도보 경로 기능을 사용하므로 항상 활성화한다.
-            printf 'TMAP_WALKING_ENABLED=true\n'
-            printf 'SKT_API_KEY=%s\n' "$SKT_API_KEY"
 
             # Repository Variable이 설정돼 있을 때 CORS 값을 기록한다.
             if [ -n "${CORS_ALLOWED_ORIGINS:-}" ]; then
@@ -339,3 +334,205 @@ jobs:
           rm -f .env.dev ~/.ssh/dev_key
 
           echo "Deployment completed successfully"
+          
+          
+          
+          
+          
+          
+          # # 개발 서버 자동 배포 Workflow
+          # # 목적:
+          # # - main 브랜치에 merge된 코드를 기준으로 Docker 이미지를 빌드한다.
+          # # - Docker 이미지를 AWS ECR에 push한다.
+          # # - 개발 EC2에 SSH로 접속해서 ECR 이미지를 pull하고 컨테이너를 교체한다.
+          #
+          # name: Deploy Dev Server
+          #
+          # # main 브랜치에 push가 발생할 때만 dev 서버에 자동 배포한다.
+          # on:
+          #   push:
+          #     branches:
+          #       - main
+          #
+          # # 같은 개발 서버 배포가 동시에 여러 개 실행되면 꼬일 수 있으므로 최신 배포만 유지한다.
+          # concurrency:
+          #   group: deploy-dev
+          #   cancel-in-progress: true
+          #
+          # # OIDC로 AWS Role을 Assume하기 위해 id-token: write가 필요하다.
+          # permissions:
+          #   contents: read
+          #   id-token: write
+          #
+          # jobs:
+          #   deploy:
+          #     name: Build and Deploy to Dev EC2
+          #     runs-on: ubuntu-latest
+          #
+          #     steps:
+          #       # 현재 server 레포 코드를 GitHub Actions runner로 내려받는다.
+          #       - name: Checkout repository
+          #         uses: actions/checkout@v6
+          #
+          #       # Docker Buildx는 Docker 이미지 빌드용 확장 빌더다.
+          #       - name: Set up Docker Buildx
+          #         uses: docker/setup-buildx-action@v4
+          #
+          #       # GitHub Actions가 AWS IAM Role을 임시로 빌려서 AWS에 로그인한다.
+          #       # Access Key를 GitHub Secrets에 저장하지 않기 위해 OIDC 방식을 사용한다.
+          #       - name: Configure AWS credentials
+          #         uses: aws-actions/configure-aws-credentials@v5
+          #         with:
+          #           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          #           aws-region: ${{ secrets.AWS_REGION }}
+          #
+          #       # GitHub Actions runner에서 AWS ECR에 Docker login한다.
+          #       - name: Login to Amazon ECR
+          #         id: login-ecr
+          #         uses: aws-actions/amazon-ecr-login@v2
+          #
+          #       # Docker 이미지를 빌드한 뒤 ECR에 push한다.
+          #       # latest-dev: 개발 서버가 항상 최신 이미지를 pull할 때 사용한다.
+          #       # github.sha: 특정 커밋 이미지로 추적/롤백할 때 사용한다.
+          #       - name: Build and push Docker image to ECR
+          #         uses: docker/build-push-action@v7
+          #         with:
+          #           context: .
+          #           file: ./Dockerfile
+          #           push: true
+          #           tags: |
+          #             ${{ steps.login-ecr.outputs.registry }}/${{ secrets.ECR_REPOSITORY_NAME }}:latest-dev
+          #             ${{ steps.login-ecr.outputs.registry }}/${{ secrets.ECR_REPOSITORY_NAME }}:${{ github.sha }}
+          #           cache-from: type=gha
+          #           cache-to: type=gha,mode=max
+          #
+          #       # 개발 EC2에 SSH로 접속해서 ECR 이미지를 pull하고 컨테이너를 교체한다.
+          #       - name: Deploy to Dev EC2
+          #         env:
+          #           # 새 EC2 접속 정보
+          #           DEV_HOST: ${{ secrets.DEV_HOST }}
+          #           DEV_SSH_USER: ${{ secrets.DEV_SSH_USER }}
+          #           DEV_SSH_KEY: ${{ secrets.DEV_SSH_KEY }}
+          #
+          #           # AWS/ECR 정보
+          #           AWS_REGION: ${{ secrets.AWS_REGION }}
+          #           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          #           ECR_REPOSITORY_NAME: ${{ secrets.ECR_REPOSITORY_NAME }}
+          #
+          #           # Spring Boot dev DB 환경변수
+          #           SPRING_DATASOURCE_URL: ${{ secrets.SPRING_DATASOURCE_URL }}
+          #           SPRING_DATASOURCE_USERNAME: ${{ secrets.SPRING_DATASOURCE_USERNAME }}
+          #           SPRING_DATASOURCE_PASSWORD: ${{ secrets.SPRING_DATASOURCE_PASSWORD }}
+          #
+          #           # TourAPI 적재 스케줄러
+          #           TOUR_API_KEY: ${{ secrets.TOUR_API_KEY }}
+          #
+          #           # 장소 검색 및 대중교통 경로 Provider
+          #           KAKAO_REST_API_KEY: ${{ secrets.KAKAO_REST_API_KEY }}
+          #           ODSAY_API_KEY: ${{ secrets.ODSAY_API_KEY }}
+          #           BUSAN_BIMS_API_KEY: ${{ secrets.BUSAN_BIMS_API_KEY }}
+          #           SKT_API_KEY: ${{ secrets.SKT_API_KEY }}
+          #
+          #           # 브라우저 API 호출 허용 Origin
+          #           CORS_ALLOWED_ORIGINS: ${{ vars.CORS_ALLOWED_ORIGINS }}
+          #
+          #         run: |
+          #           # SSH private key를 GitHub Actions runner 안에 임시 파일로 저장한다.
+          #           mkdir -p ~/.ssh
+          #           echo "$DEV_SSH_KEY" > ~/.ssh/dev_key
+          #           chmod 600 ~/.ssh/dev_key
+          #
+          #           # 최초 SSH 접속 시 host 확인 질문이 뜨지 않게 known_hosts에 등록한다.
+          #           ssh-keyscan -H "$DEV_HOST" >> ~/.ssh/known_hosts
+          #
+          #           # GitHub Secrets 값을 기반으로 runner 안에서 .env.dev 파일을 생성한다.
+          #           {
+          #             printf 'SPRING_PROFILES_ACTIVE=dev\n'
+          #             printf 'TZ=Asia/Seoul\n'
+          #             printf 'SPRING_DATASOURCE_URL=%s\n' "$SPRING_DATASOURCE_URL"
+          #             printf 'SPRING_DATASOURCE_USERNAME=%s\n' "$SPRING_DATASOURCE_USERNAME"
+          #             printf 'SPRING_DATASOURCE_PASSWORD=%s\n' "$SPRING_DATASOURCE_PASSWORD"
+          #             printf 'DUMMY_PLACE_SEED_ENABLED=false\n'
+          #             printf 'TOUR_API_PLACE_INGESTION_ENABLED=false\n'
+          #             printf 'TOUR_API_KEY=%s\n' "$TOUR_API_KEY"
+          #             printf 'TOUR_API_INGESTION_SCHEDULER_ENABLED=true\n'
+          #             printf 'TOUR_API_MAX_REQUESTS_PER_DAY=900\n'
+          #             printf 'KAKAO_REST_API_KEY=%s\n' "$KAKAO_REST_API_KEY"
+          #             printf 'ODSAY_ENABLED=true\n'
+          #             printf 'ODSAY_API_KEY=%s\n' "$ODSAY_API_KEY"
+          #             printf 'BUSAN_BIMS_ENABLED=true\n'
+          #             printf 'BUSAN_BIMS_API_KEY=%s\n' "$BUSAN_BIMS_API_KEY"
+          #             printf 'SKT_API_KEY=%s\n' "$SKT_API_KEY"
+          #
+          #             if [ -n "$SKT_API_KEY" ]; then
+          #               printf 'TMAP_WALKING_ENABLED=true\n'
+          #             else
+          #               printf 'TMAP_WALKING_ENABLED=false\n'
+          #             fi
+          #
+          #             if [ -n "$CORS_ALLOWED_ORIGINS" ]; then
+          #               printf 'CORS_ALLOWED_ORIGINS=%s\n' "$CORS_ALLOWED_ORIGINS"
+          #             fi
+          #           } > .env.dev
+          #
+          #           chmod 600 .env.dev
+          #
+          #           # EC2 배포 디렉터리를 준비한다.
+          #           ssh -i ~/.ssh/dev_key "$DEV_SSH_USER@$DEV_HOST" << EOF
+          #             set -e
+          #
+          #             sudo mkdir -p /opt/hackathon-dev
+          #             sudo chown -R $DEV_SSH_USER:$DEV_SSH_USER /opt/hackathon-dev
+          #           EOF
+          #
+          #           # 생성한 .env.dev 파일을 EC2로 복사한다.
+          #           scp -i ~/.ssh/dev_key \
+          #             .env.dev \
+          #             "$DEV_SSH_USER@$DEV_HOST:/opt/hackathon-dev/.env.dev"
+          #
+          #           # EC2에서 실제 컨테이너 배포를 수행한다.
+          #           ssh -i ~/.ssh/dev_key "$DEV_SSH_USER@$DEV_HOST" << EOF
+          #             set -e
+          #
+          #             echo "Set env file permission"
+          #             chmod 600 /opt/hackathon-dev/.env.dev
+          #
+          #             echo "Login to Amazon ECR from EC2"
+          #             aws ecr get-login-password --region ${AWS_REGION} \
+          #               | docker login \
+          #                   --username AWS \
+          #                   --password-stdin ${ECR_REGISTRY}
+          #
+          #             echo "Pull latest dev image from ECR"
+          #             docker pull ${ECR_REGISTRY}/${ECR_REPOSITORY_NAME}:latest-dev
+          #
+          #             echo "Stop old container"
+          #             docker stop server-dev || true
+          #
+          #             echo "Remove old container"
+          #             docker rm server-dev || true
+          #
+          #             echo "Run new container"
+          #             docker run -d \
+          #               --name server-dev \
+          #               --restart unless-stopped \
+          #               -p 127.0.0.1:8080:8080 \
+          #               --env-file /opt/hackathon-dev/.env.dev \
+          #               ${ECR_REGISTRY}/${ECR_REPOSITORY_NAME}:latest-dev
+          #
+          #             echo "Check container status"
+          #             sleep 8
+          #             docker ps -a --filter "name=server-dev"
+          #
+          #             if [ "$(docker inspect -f '{{.State.Running}}' server-dev)" != "true" ]; then
+          #               echo "server-dev container is not running"
+          #               docker logs --tail 200 server-dev || true
+          #               exit 1
+          #             fi
+          #
+          #             echo "Remove unused images"
+          #             docker image prune -f
+          #
+          #             echo "Current containers"
+          #             docker ps
+          #           EOF
