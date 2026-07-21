@@ -1,23 +1,27 @@
 # 개발 서버 자동 배포 Workflow
+#
 # 목적:
-# - main 브랜치에 merge된 코드를 기준으로 Docker 이미지를 빌드한다.
-# - Docker 이미지를 AWS ECR에 push한다.
-# - 개발 EC2에 SSH로 접속해서 ECR 이미지를 pull하고 컨테이너를 교체한다.
+# 1. main 브랜치 코드를 Docker 이미지로 빌드한다.
+# 2. 빌드한 이미지를 AWS ECR에 push한다.
+# 3. 개발 EC2에 SSH로 접속한다.
+# 4. 최신 이미지를 pull한 뒤 기존 컨테이너를 교체한다.
+# 5. 실제 API가 정상 응답하는지 확인한다.
 
 name: Deploy Dev Server
 
-# main 브랜치에 push가 발생할 때만 dev 서버에 자동 배포한다.
+# main 브랜치에 push가 발생할 때 개발 서버에 자동 배포한다.
 on:
   push:
     branches:
       - main
 
-# 같은 개발 서버 배포가 동시에 여러 개 실행되면 꼬일 수 있으므로 최신 배포만 유지한다.
+# 여러 배포가 동시에 실행되면 컨테이너 교체가 꼬일 수 있다.
+# 이전 배포를 취소하고 가장 최근 배포만 실행한다.
 concurrency:
   group: deploy-dev
   cancel-in-progress: true
 
-# OIDC로 AWS Role을 Assume하기 위해 id-token: write가 필요하다.
+# OIDC 방식으로 AWS IAM Role을 사용하기 위한 권한이다.
 permissions:
   contents: read
   id-token: write
@@ -28,30 +32,33 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 현재 server 레포 코드를 GitHub Actions runner로 내려받는다.
+      # GitHub 저장소 코드를 Actions Runner로 내려받는다.
       - name: Checkout repository
         uses: actions/checkout@v6
 
-      # Docker Buildx는 Docker 이미지 빌드용 확장 빌더다.
+      # Docker 이미지를 효율적으로 빌드하기 위한 Buildx를 설정한다.
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
 
-      # GitHub Actions가 AWS IAM Role을 임시로 빌려서 AWS에 로그인한다.
-      # Access Key를 GitHub Secrets에 저장하지 않기 위해 OIDC 방식을 사용한다.
+      # OIDC를 통해 AWS IAM Role의 임시 권한을 발급받는다.
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v5
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ secrets.AWS_REGION }}
 
-      # GitHub Actions runner에서 AWS ECR에 Docker login한다.
+      # Actions Runner에서 ECR에 로그인한다.
       - name: Login to Amazon ECR
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
-      # Docker 이미지를 빌드한 뒤 ECR에 push한다.
-      # latest-dev: 개발 서버가 항상 최신 이미지를 pull할 때 사용한다.
-      # github.sha: 특정 커밋 이미지로 추적/롤백할 때 사용한다.
+      # Docker 이미지를 빌드하고 ECR에 push한다.
+      #
+      # latest-dev:
+      # - 개발 서버가 최신 이미지를 받을 때 사용한다.
+      #
+      # github.sha:
+      # - 특정 커밋으로 롤백하거나 배포 버전을 추적할 때 사용한다.
       - name: Build and push Docker image to ECR
         uses: docker/build-push-action@v7
         with:
@@ -64,131 +71,271 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      # 개발 EC2에 SSH로 접속해서 ECR 이미지를 pull하고 컨테이너를 교체한다.
+      # EC2에 접속해 환경변수 파일과 Docker 컨테이너를 교체한다.
       - name: Deploy to Dev EC2
         env:
-          # 새 EC2 접속 정보
+          # EC2 SSH 접속 정보
           DEV_HOST: ${{ secrets.DEV_HOST }}
           DEV_SSH_USER: ${{ secrets.DEV_SSH_USER }}
           DEV_SSH_KEY: ${{ secrets.DEV_SSH_KEY }}
 
-          # AWS/ECR 정보
+          # AWS 및 ECR 정보
           AWS_REGION: ${{ secrets.AWS_REGION }}
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           ECR_REPOSITORY_NAME: ${{ secrets.ECR_REPOSITORY_NAME }}
 
-          # Spring Boot dev DB 환경변수
+          # Spring Boot DB 설정
           SPRING_DATASOURCE_URL: ${{ secrets.SPRING_DATASOURCE_URL }}
           SPRING_DATASOURCE_USERNAME: ${{ secrets.SPRING_DATASOURCE_USERNAME }}
           SPRING_DATASOURCE_PASSWORD: ${{ secrets.SPRING_DATASOURCE_PASSWORD }}
 
-          # TourAPI 적재 스케줄러
+          # 외부 API 설정
           TOUR_API_KEY: ${{ secrets.TOUR_API_KEY }}
-
-          # 장소 검색 및 대중교통 경로 Provider
           KAKAO_REST_API_KEY: ${{ secrets.KAKAO_REST_API_KEY }}
           ODSAY_API_KEY: ${{ secrets.ODSAY_API_KEY }}
           BUSAN_BIMS_API_KEY: ${{ secrets.BUSAN_BIMS_API_KEY }}
           SKT_API_KEY: ${{ secrets.SKT_API_KEY }}
 
-          # 브라우저 API 호출 허용 Origin. 미설정 시 애플리케이션 기본값을 사용한다.
+          # GitHub Repository Variables에 등록한 CORS 허용 주소
           CORS_ALLOWED_ORIGINS: ${{ vars.CORS_ALLOWED_ORIGINS }}
+
         run: |
-          # SSH private key를 GitHub Actions runner 안에 임시 파일로 저장한다.
+          # -e: 명령 실패 시 즉시 종료
+          # -u: 정의되지 않은 변수 사용 시 종료
+          # pipefail: 파이프 중간 명령이 실패해도 종료
+          set -euo pipefail
+
+          echo "[1/8] Validate required variables"
+
+          # 필수값의 실제 내용은 출력하지 않고 비어 있는지만 검사한다.
+          required_variables=(
+            DEV_HOST
+            DEV_SSH_USER
+            DEV_SSH_KEY
+            AWS_REGION
+            ECR_REGISTRY
+            ECR_REPOSITORY_NAME
+            SPRING_DATASOURCE_URL
+            SPRING_DATASOURCE_USERNAME
+            SPRING_DATASOURCE_PASSWORD
+            TOUR_API_KEY
+            KAKAO_REST_API_KEY
+            ODSAY_API_KEY
+            BUSAN_BIMS_API_KEY
+            SKT_API_KEY
+          )
+
+          for variable_name in "${required_variables[@]}"; do
+            if [ -z "${!variable_name:-}" ]; then
+              echo "ERROR: ${variable_name} is empty"
+              exit 1
+            fi
+          done
+
+          echo "[2/8] Prepare SSH private key"
+
           mkdir -p ~/.ssh
-          echo "$DEV_SSH_KEY" > ~/.ssh/dev_key
+          chmod 700 ~/.ssh
+
+          # PEM 파일의 줄바꿈을 유지하면서 임시 키 파일을 생성한다.
+          printf '%s\n' "$DEV_SSH_KEY" > ~/.ssh/dev_key
           chmod 600 ~/.ssh/dev_key
 
-          # 최초 SSH 접속 시 host 확인 질문이 뜨지 않게 known_hosts에 등록한다.
-          ssh-keyscan -H "$DEV_HOST" >> ~/.ssh/known_hosts
+          echo "[3/8] Register EC2 SSH host key"
 
-          # GitHub Secrets 값을 기반으로 runner 안에서 .env.dev 파일을 생성한다.
-          # 실제 secret 값은 로그에 출력하지 않는다.
+          # 최초 접속 확인 질문이 뜨지 않도록 EC2 host key를 등록한다.
+          # 실패하면 DEV_HOST 또는 EC2 보안 그룹의 22번 포트를 확인해야 한다.
+          if ! ssh-keyscan \
+            -T 10 \
+            -H "$DEV_HOST" \
+            >> ~/.ssh/known_hosts 2>/dev/null; then
+
+            echo "ERROR: ssh-keyscan failed"
+            echo "Check DEV_HOST and EC2 security group port 22"
+            exit 1
+          fi
+
+          chmod 600 ~/.ssh/known_hosts
+
+          echo "[4/8] Test SSH connection"
+
+          # 실제 사용자와 개인키로 SSH 접속 가능한지 먼저 검사한다.
+          ssh \
+            -o BatchMode=yes \
+            -o ConnectTimeout=10 \
+            -i ~/.ssh/dev_key \
+            "$DEV_SSH_USER@$DEV_HOST" \
+            "echo 'SSH connection successful'"
+
+          echo "[5/8] Create .env.dev"
+
+          # GitHub Secrets를 기반으로 임시 환경변수 파일을 만든다.
           {
             printf 'SPRING_PROFILES_ACTIVE=dev\n'
             printf 'TZ=Asia/Seoul\n'
+
+            # DB 설정
             printf 'SPRING_DATASOURCE_URL=%s\n' "$SPRING_DATASOURCE_URL"
             printf 'SPRING_DATASOURCE_USERNAME=%s\n' "$SPRING_DATASOURCE_USERNAME"
             printf 'SPRING_DATASOURCE_PASSWORD=%s\n' "$SPRING_DATASOURCE_PASSWORD"
+
+            # 더미 데이터 생성 비활성화
             printf 'DUMMY_PLACE_SEED_ENABLED=false\n'
+
+            # TourAPI 설정
             printf 'TOUR_API_PLACE_INGESTION_ENABLED=false\n'
             printf 'TOUR_API_KEY=%s\n' "$TOUR_API_KEY"
             printf 'TOUR_API_INGESTION_SCHEDULER_ENABLED=true\n'
             printf 'TOUR_API_MAX_REQUESTS_PER_DAY=900\n'
+
+            # Kakao 장소 검색 API
             printf 'KAKAO_REST_API_KEY=%s\n' "$KAKAO_REST_API_KEY"
+
+            # ODsay 대중교통 API
             printf 'ODSAY_ENABLED=true\n'
             printf 'ODSAY_API_KEY=%s\n' "$ODSAY_API_KEY"
+
+            # 부산 버스정보 API
             printf 'BUSAN_BIMS_ENABLED=true\n'
             printf 'BUSAN_BIMS_API_KEY=%s\n' "$BUSAN_BIMS_API_KEY"
+
+            # 팀 프로젝트에서 TMAP 도보 경로 기능을 사용하므로 항상 활성화한다.
+            printf 'TMAP_WALKING_ENABLED=true\n'
             printf 'SKT_API_KEY=%s\n' "$SKT_API_KEY"
-            if [ -n "$SKT_API_KEY" ]; then
-              printf 'TMAP_WALKING_ENABLED=true\n'
-            else
-              printf 'TMAP_WALKING_ENABLED=false\n'
-            fi
-            if [ -n "$CORS_ALLOWED_ORIGINS" ]; then
+
+            # Repository Variable이 설정돼 있을 때 CORS 값을 기록한다.
+            if [ -n "${CORS_ALLOWED_ORIGINS:-}" ]; then
               printf 'CORS_ALLOWED_ORIGINS=%s\n' "$CORS_ALLOWED_ORIGINS"
             fi
           } > .env.dev
 
           chmod 600 .env.dev
 
-          # EC2 배포 디렉터리를 준비한다.
-          ssh -i ~/.ssh/dev_key "$DEV_SSH_USER@$DEV_HOST" << EOF
-            set -e
+          echo "[6/8] Prepare EC2 deploy directory"
 
-            # 앱 배포용 디렉터리 생성
-            sudo mkdir -p /opt/hackathon-dev
+          # EC2에 앱 배포 디렉터리를 만들고 SSH 사용자에게 소유권을 준다.
+          ssh \
+            -o BatchMode=yes \
+            -o ConnectTimeout=10 \
+            -i ~/.ssh/dev_key \
+            "$DEV_SSH_USER@$DEV_HOST" << EOF
+              set -e
 
-            # ubuntu 사용자가 .env.dev 파일을 복사할 수 있게 소유권 부여
-            sudo chown -R $DEV_SSH_USER:$DEV_SSH_USER /opt/hackathon-dev
+              sudo mkdir -p /opt/hackathon-dev
+              sudo chown -R "$DEV_SSH_USER:$DEV_SSH_USER" /opt/hackathon-dev
           EOF
 
-          # 생성한 .env.dev 파일을 EC2로 복사한다.
-          scp -i ~/.ssh/dev_key .env.dev "$DEV_SSH_USER@$DEV_HOST:/opt/hackathon-dev/.env.dev"
+          echo "[7/8] Upload .env.dev to EC2"
 
-          # EC2에서 실제 컨테이너 배포를 수행한다.
-          ssh -i ~/.ssh/dev_key "$DEV_SSH_USER@$DEV_HOST" << EOF
-            set -e
+          # Runner에서 만든 환경변수 파일을 EC2로 복사한다.
+          scp \
+            -o BatchMode=yes \
+            -o ConnectTimeout=10 \
+            -i ~/.ssh/dev_key \
+            .env.dev \
+            "$DEV_SSH_USER@$DEV_HOST:/opt/hackathon-dev/.env.dev"
 
-            echo "Set env file permission"
-            chmod 600 /opt/hackathon-dev/.env.dev
+          echo "[8/8] Deploy new container"
 
-            echo "Login to Amazon ECR from EC2"
-            aws ecr get-login-password --region ${AWS_REGION} \
-              | docker login \
-                  --username AWS \
-                  --password-stdin ${ECR_REGISTRY}
+          # EC2 내부에서 최신 이미지를 pull하고 컨테이너를 교체한다.
+          ssh \
+            -o BatchMode=yes \
+            -o ConnectTimeout=10 \
+            -i ~/.ssh/dev_key \
+            "$DEV_SSH_USER@$DEV_HOST" << EOF
+              set -euo pipefail
 
-            echo "Pull latest dev image from ECR"
-            docker pull ${ECR_REGISTRY}/${ECR_REPOSITORY_NAME}:latest-dev
+              echo "Set env file permission"
+              chmod 600 /opt/hackathon-dev/.env.dev
 
-            echo "Stop old container"
-            docker stop server-dev || true
+              echo "Login to Amazon ECR from EC2"
 
-            echo "Remove old container"
-            docker rm server-dev || true
+              # EC2 IAM Role을 통해 ECR 로그인 토큰을 발급받는다.
+              aws ecr get-login-password \
+                --region "${AWS_REGION}" \
+                | docker login \
+                    --username AWS \
+                    --password-stdin "${ECR_REGISTRY}"
 
-            echo "Run new container"
-            docker run -d \
-              --name server-dev \
-              --restart unless-stopped \
-              -p 127.0.0.1:8080:8080 \
-              --env-file /opt/hackathon-dev/.env.dev \
-              ${ECR_REGISTRY}/${ECR_REPOSITORY_NAME}:latest-dev
+              echo "Pull latest dev image from ECR"
 
-            echo "Check container status"
-            sleep 8
-            docker ps -a --filter "name=server-dev"
-            if [ "$(docker inspect -f '{{.State.Running}}' server-dev)" != "true" ]; then
-              echo "server-dev container is not running"
-              docker logs --tail 200 server-dev || true
-              exit 1
-            fi
+              docker pull \
+                "${ECR_REGISTRY}/${ECR_REPOSITORY_NAME}:latest-dev"
 
-            echo "Remove unused images"
-            docker image prune -f
+              echo "Stop old container"
 
-            echo "Current containers"
-            docker ps
+              # 기존 컨테이너가 없어도 배포를 계속한다.
+              docker stop server-dev || true
+
+              echo "Remove old container"
+
+              docker rm server-dev || true
+
+              echo "Run new container"
+
+              # Spring Boot 8080 포트는 외부에 직접 공개하지 않는다.
+              # Nginx만 EC2 로컬 127.0.0.1:8080으로 접근한다.
+              docker run -d \
+                --name server-dev \
+                --restart unless-stopped \
+                -p 127.0.0.1:8080:8080 \
+                --env-file /opt/hackathon-dev/.env.dev \
+                "${ECR_REGISTRY}/${ECR_REPOSITORY_NAME}:latest-dev"
+
+              echo "Wait for container startup"
+              sleep 8
+
+              echo "Check container status"
+              docker ps -a --filter "name=server-dev"
+
+              # 컨테이너 프로세스가 실행 중인지 확인한다.
+              if [ "\$(docker inspect -f '{{.State.Running}}' server-dev)" != "true" ]; then
+                echo "ERROR: server-dev container is not running"
+                docker logs --tail 200 server-dev || true
+                exit 1
+              fi
+
+              echo "Check Spring Boot API health"
+
+              # Spring Boot가 실제 요청을 받을 수 있을 때까지 최대 60초 대기한다.
+              HEALTH_CHECK_PASSED=false
+
+              for attempt in \$(seq 1 12); do
+                if curl \
+                  -fsS \
+                  --max-time 5 \
+                  --get \
+                  --data-urlencode "keyword=부산" \
+                  "http://127.0.0.1:8080/api/v1/places" \
+                  > /dev/null; then
+
+                  echo "Application health check passed"
+                  HEALTH_CHECK_PASSED=true
+                  break
+                fi
+
+                echo "Waiting for application... (\${attempt}/12)"
+                sleep 5
+              done
+
+              # 최대 대기시간 내에 API 응답이 없으면 실패 처리한다.
+              if [ "\$HEALTH_CHECK_PASSED" != "true" ]; then
+                echo "ERROR: Application health check failed"
+                docker logs --tail 200 server-dev || true
+                exit 1
+              fi
+
+              echo "Remove unused images"
+
+              # 현재 사용하지 않는 이전 Docker 이미지를 정리한다.
+              docker image prune -f
+
+              echo "Current containers"
+
+              docker ps --filter "name=server-dev"
           EOF
+
+          # Actions Runner에 생성한 민감 파일을 삭제한다.
+          rm -f .env.dev ~/.ssh/dev_key
+
+          echo "Deployment completed successfully"
