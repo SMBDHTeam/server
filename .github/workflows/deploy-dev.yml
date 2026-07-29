@@ -172,6 +172,7 @@ jobs:
           {
             printf 'SPRING_PROFILES_ACTIVE=dev\n'
             printf 'TZ=Asia/Seoul\n'
+            printf 'JAVA_OPTS=-Xms512m -Xmx2048m\n'
 
             # DB 설정
             printf 'SPRING_DATASOURCE_URL=%s\n' "$SPRING_DATASOURCE_URL"
