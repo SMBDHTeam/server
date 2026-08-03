@@ -5,6 +5,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.server.common.error.BusinessException;
 import com.server.common.error.ErrorCode;
+import com.server.common.error.FieldViolation;
 import com.server.common.error.PreviewAlreadyConsumedException;
 import com.server.place.repository.PlaceRepository;
 import com.server.question.entity.Question;
@@ -207,7 +208,7 @@ public class SchedulePreviewService {
         if (request.startDate().isAfter(request.endDate())) invalid();
         int tripDays = (int) ChronoUnit.DAYS.between(request.startDate(), request.endDate()) + 1;
         if (tripDays < 1 || tripDays > MAX_TRIP_DAYS) invalid();
-        validateLocation(request.startLocation());
+        validateLocation(request.startLocation(), "startLocation");
 
         String timeZone = request.timeZone() == null || request.timeZone().isBlank()
                 ? DEFAULT_TIME_ZONE : request.timeZone();
@@ -235,7 +236,7 @@ public class SchedulePreviewService {
                 if (request.lodgingPlan().baseLocation() == null) {
                     throw new BusinessException(ErrorCode.FIXED_BASE_LOCATION_REQUIRED);
                 }
-                validateLocation(request.lodgingPlan().baseLocation());
+                validateLocation(request.lodgingPlan().baseLocation(), "lodgingPlan.baseLocation");
             }
             case "PER_NIGHT" -> {
                 Map<LocalDate, SchedulePreviewCreateRequest.NightStay> stays = request.lodgingPlan()
@@ -245,7 +246,7 @@ public class SchedulePreviewService {
                 for (int index = 0; index < tripDays - 1; index++) {
                     SchedulePreviewCreateRequest.NightStay stay = stays.get(request.startDate().plusDays(index));
                     if (stay == null) throw new BusinessException(ErrorCode.PER_NIGHT_LOCATION_MISSING);
-                    validateLocation(stay.location());
+                    validateLocation(stay.location(), "lodgingPlan.nightStays[" + index + "].location");
                 }
                 if (stays.size() != Math.max(0, tripDays - 1)) {
                     throw new BusinessException(ErrorCode.PER_NIGHT_LOCATION_MISSING);
@@ -259,7 +260,7 @@ public class SchedulePreviewService {
         if (request.endConstraint() == null) return;
         if (!Set.of("ARRIVE_BY", "TRAIN_DEPARTURE", "FLIGHT_DEPARTURE")
                 .contains(request.endConstraint().type())) invalid();
-        validateLocation(request.endConstraint().location());
+        validateLocation(request.endConstraint().location(), "endConstraint.location");
         LocalDate targetDate = offsetDateTime(request.endConstraint().targetAt())
                 .atZoneSameInstant(ZoneId.of(DEFAULT_TIME_ZONE)).toLocalDate();
         if (!targetDate.equals(request.endDate())) invalid();
@@ -273,23 +274,49 @@ public class SchedulePreviewService {
                     Function.identity()
             ));
         } catch (IllegalStateException exception) {
-            throw invalidException();
+            throw invalidException("selectedAnswers", "같은 questionId가 여러 번 들어왔습니다.");
         }
         List<Question> activeQuestions = questionRepository.findByActiveTrueOrderByDisplayOrderAsc();
         Set<String> activeIds = activeQuestions.stream().map(Question::getId).collect(Collectors.toSet());
-        if (!activeIds.containsAll(selections.keySet())) invalid();
+        List<String> unknownQuestionIds = selections.keySet().stream()
+                .filter(questionId -> !activeIds.contains(questionId))
+                .sorted()
+                .toList();
+        if (!unknownQuestionIds.isEmpty()) {
+            invalid("selectedAnswers", "존재하지 않는 질문입니다: " + String.join(", ", unknownQuestionIds));
+        }
+        List<String> missingRequiredQuestionIds = new ArrayList<>();
         for (Question question : activeQuestions) {
             SchedulePreviewCreateRequest.SelectedAnswer selected = selections.get(question.getId());
+            String path = "selectedAnswers[questionId=" + question.getId() + "]";
             int count = selected == null ? 0 : new HashSet<>(selected.answerIds()).size();
-            if (selected != null && count != selected.answerIds().size()) invalid();
-            if (count < question.getMinSelections() || count > question.getMaxSelections()) invalid();
+            if (selected != null && count != selected.answerIds().size()) {
+                invalid(path, "중복된 답변이 있습니다: " + selected.answerIds());
+            }
+            if (selected == null && question.getMinSelections() > 0) {
+                missingRequiredQuestionIds.add(question.getId());
+                continue;
+            }
+            if (count < question.getMinSelections() || count > question.getMaxSelections()) {
+                invalid(path, "선택 개수는 " + question.getMinSelections() + "~" + question.getMaxSelections()
+                        + "개여야 합니다. 현재 " + count + "개");
+            }
             if (selected != null) {
                 Set<String> answerIds = question.getAnswers().stream()
                         .filter(answer -> answer.isActive())
                         .map(answer -> answer.getId())
                         .collect(Collectors.toSet());
-                if (!answerIds.containsAll(selected.answerIds())) invalid();
+                List<String> unknownAnswerIds = selected.answerIds().stream()
+                        .filter(answerId -> !answerIds.contains(answerId))
+                        .toList();
+                if (!unknownAnswerIds.isEmpty()) {
+                    invalid(path, "이 질문의 답변이 아닙니다: " + String.join(", ", unknownAnswerIds));
+                }
             }
+        }
+        if (!missingRequiredQuestionIds.isEmpty()) {
+            invalid("selectedAnswers",
+                    "필수 질문에 대한 답변이 없습니다: " + String.join(", ", missingRequiredQuestionIds));
         }
     }
 
@@ -311,8 +338,12 @@ public class SchedulePreviewService {
                     || override.date().isAfter(request.endDate())) invalid();
             if (override.availableFrom() != null && override.availableUntil() != null
                     && !override.availableFrom().isBefore(override.availableUntil())) invalid();
-            if (override.startLocation() != null) validateLocation(override.startLocation());
-            if (override.endLocation() != null) validateLocation(override.endLocation());
+            if (override.startLocation() != null) {
+                validateLocation(override.startLocation(), "dayOverrides[" + override.date() + "].startLocation");
+            }
+            if (override.endLocation() != null) {
+                validateLocation(override.endLocation(), "dayOverrides[" + override.date() + "].endLocation");
+            }
             if (request.endConstraint() != null && override.date().equals(request.endDate())
                     && override.endLocation() != null) invalid();
         }
@@ -541,11 +572,21 @@ public class SchedulePreviewService {
         return truncated.plusMinutes(remainder == 0 ? 30 : 30 - remainder).withSecond(0).withNano(0);
     }
 
-    private void validateLocation(SchedulePreviewCreateRequest.Location location) {
+    /**
+     * Coordinates must be WGS84 degrees. Provider specific grids such as Naver's TM128
+     * fall far outside this range, so the message names the value to make that obvious.
+     */
+    private void validateLocation(SchedulePreviewCreateRequest.Location location, String field) {
         if (location.longitude().compareTo(new BigDecimal("-180")) < 0
-                || location.longitude().compareTo(new BigDecimal("180")) > 0
-                || location.latitude().compareTo(new BigDecimal("-90")) < 0
-                || location.latitude().compareTo(new BigDecimal("90")) > 0) invalid();
+                || location.longitude().compareTo(new BigDecimal("180")) > 0) {
+            invalid(field + ".longitude",
+                    "경도는 WGS84 기준 -180~180 이어야 합니다. 요청 값: " + location.longitude().toPlainString());
+        }
+        if (location.latitude().compareTo(new BigDecimal("-90")) < 0
+                || location.latitude().compareTo(new BigDecimal("90")) > 0) {
+            invalid(field + ".latitude",
+                    "위도는 WGS84 기준 -90~90 이어야 합니다. 요청 값: " + location.latitude().toPlainString());
+        }
     }
 
     private OffsetDateTime offsetDateTime(String value) {
@@ -599,8 +640,17 @@ public class SchedulePreviewService {
         throw invalidException();
     }
 
+    private void invalid(String field, String message) {
+        throw invalidException(field, message);
+    }
+
     private BusinessException invalidException() {
         return new BusinessException(ErrorCode.INVALID_SCHEDULE_PREVIEW_REQUEST);
+    }
+
+    private BusinessException invalidException(String field, String message) {
+        return new BusinessException(ErrorCode.INVALID_SCHEDULE_PREVIEW_REQUEST,
+                List.of(FieldViolation.of(field, message)));
     }
 
     private record ValidationContext(int tripDays, String timeZone, String routeCoverage) { }
