@@ -4,6 +4,7 @@ import com.server.common.error.BusinessException;
 import com.server.common.error.ErrorCode;
 import com.server.place.domain.Place;
 import com.server.place.domain.PlaceIngestionStatus;
+import com.server.place.support.PlaceSource;
 import com.server.place.repository.PlaceRepository;
 import com.server.schedule.domain.ScheduleDay;
 import com.server.schedule.dto.ScheduleCreateRequest;
@@ -275,10 +276,16 @@ public class PlaceCandidateProvider {
         ) < MIN_DISTANCE_BETWEEN_PLACES_METERS);
     }
 
+    /**
+     * Gates the automatic recommendation pool only. Explicitly requested places go through
+     * {@link #requiredPlaces} and are never filtered here, so a traveller still gets the place
+     * they registered themselves — it just does not become a suggestion for everyone else.
+     */
     private boolean usable(Place place) {
         return place.getId() != null && place.getLongitude() != null && place.getLatitude() != null
                 && place.getName() != null && !place.getName().contains("테스트")
-                && place.getIngestionStatus() == PlaceIngestionStatus.SYNCED;
+                && place.getIngestionStatus() == PlaceIngestionStatus.SYNCED
+                && !PlaceSource.isUserRegistered(place.getSource());
     }
 
     private ScheduleCreateRequest.Location overallStart(ScheduleCreateRequest request) {

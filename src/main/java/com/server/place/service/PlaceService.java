@@ -11,6 +11,8 @@ import com.server.place.dto.PlaceDetailResponse;
 import com.server.place.dto.PlaceResolveRequest;
 import com.server.place.dto.PlaceResolveResponse;
 import com.server.place.dto.PlaceSearchResponse;
+import com.server.place.support.NaverCategoryMapper;
+import com.server.place.support.PlaceSource;
 import com.server.place.support.PlaceCategoryLabelResolver;
 import com.server.place.repository.PlaceRepository;
 import java.math.BigDecimal;
@@ -18,6 +20,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -29,7 +32,11 @@ public class PlaceService {
     private static final int DEFAULT_RADIUS_METERS = 1000;
     private static final int DEFAULT_SEARCH_SIZE = 20;
     private static final int MAX_SEARCH_SIZE = 50;
+    /** Kakao Local rejects a keyword search with size above this. */
+    private static final int KAKAO_MAX_SEARCH_SIZE = 15;
     private static final double EARTH_RADIUS_METERS = 6_371_000.0;
+    /** How close two rows must be before we treat them as the same real world place. */
+    private static final int SAME_PLACE_RADIUS_METERS = 100;
 
     private final PlaceRepository placeRepository;
     private final KakaoLocalClient kakaoLocalClient;
@@ -89,18 +96,63 @@ public class PlaceService {
 
     @Transactional
     public PlaceResolveResponse resolve(PlaceResolveRequest request) {
-        if (!"KAKAO_LOCAL".equals(request.source())) {
+        if (!PlaceSource.userRegistered().contains(request.source())) {
             throw new BusinessException(ErrorCode.INVALID_EXTERNAL_PLACE);
         }
         validateCoordinates(request.longitude(), request.latitude());
-        Place place = placeRepository.findBySourceAndExternalContentId(request.source(), request.externalId())
-                .orElseGet(() -> new Place(
-                        request.source(), request.externalId(), null, request.name(), request.category(),
-                        request.address(), request.longitude(), request.latitude(), null));
+        Place alreadyRegistered = placeRepository
+                .findBySourceAndExternalContentId(request.source(), request.externalId())
+                .orElse(null);
+        if (alreadyRegistered == null) {
+            // The same real world place can already exist from our own ingestion, and that row
+            // carries operating hours, images and a content type the external result lacks.
+            // Reuse it as is rather than creating a second row or overwriting curated data.
+            Place existing = findSamePlace(request).orElse(null);
+            if (existing != null) {
+                return toResolveResponse(existing);
+            }
+        }
+        Place place = alreadyRegistered != null ? alreadyRegistered : new Place(
+                request.source(), request.externalId(),
+                NaverCategoryMapper.contentTypeId(request.category()),
+                request.name(), request.category(),
+                request.address(), request.longitude(), request.latitude(), null);
         place.updateResolvedPlace(
                 request.name(), request.category(), request.address(), request.longitude(), request.latitude(),
                 request.placeUrl());
-        Place saved = placeRepository.save(place);
+        return toResolveResponse(placeRepository.save(place));
+    }
+
+    /**
+     * Matches on proximity plus a normalized name so "해운대 해수욕장" from an external provider
+     * links to our ingested "해운대해수욕장" instead of duplicating it.
+     */
+    private Optional<Place> findSamePlace(PlaceResolveRequest request) {
+        String incomingName = normalizedName(request.name());
+        if (incomingName.isEmpty()) {
+            return Optional.empty();
+        }
+        return placeRepository.findAll().stream()
+                .filter(place -> place.getLongitude() != null && place.getLatitude() != null)
+                .filter(place -> distanceMeters(request.longitude(), request.latitude(), place)
+                        <= SAME_PLACE_RADIUS_METERS)
+                .filter(place -> {
+                    String existingName = normalizedName(place.getName());
+                    return !existingName.isEmpty()
+                            && (existingName.equals(incomingName)
+                            || existingName.contains(incomingName)
+                            || incomingName.contains(existingName));
+                })
+                .min(Comparator.comparingInt(
+                        place -> distanceMeters(request.longitude(), request.latitude(), place)));
+    }
+
+    private String normalizedName(String name) {
+        if (name == null) return "";
+        return name.replaceAll("[\\s·・()\\[\\]{},-]", "").toLowerCase();
+    }
+
+    private PlaceResolveResponse toResolveResponse(Place saved) {
         return new PlaceResolveResponse(
                 saved.getId(), saved.getSource(), saved.getExternalContentId(), saved.getName(),
                 saved.getCategory(), PlaceCategoryLabelResolver.resolve(
@@ -129,7 +181,10 @@ public class PlaceService {
         placeRepository.findAll().stream()
                 .filter(place -> "KAKAO_LOCAL".equals(place.getSource()))
                 .forEach(place -> resolvedKakaoIds.add(place.getExternalContentId()));
-        KakaoLocalSearchResponse response = kakaoLocalClient.searchKeyword(keyword, size);
+        // Kakao rejects size above 15, and our own API allows up to 50. Passing the caller's
+        // size straight through made every large request fail the whole merged search.
+        int kakaoSize = Math.min(size, KAKAO_MAX_SEARCH_SIZE);
+        KakaoLocalSearchResponse response = kakaoLocalClient.searchKeyword(keyword, kakaoSize);
         for (KakaoLocalSearchResponse.Document document : response.documentsOrEmpty()) {
             if (items.size() >= size) break;
             if (resolvedKakaoIds.contains(document.id())) continue;
