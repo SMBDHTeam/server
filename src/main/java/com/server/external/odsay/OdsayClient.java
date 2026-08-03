@@ -35,7 +35,9 @@ public class OdsayClient {
     private final OdsayProperties properties;
     private final ExternalCallMetricsCollector metricsCollector;
     private final Object requestPermitMonitor = new Object();
-    private long nextRequestAtNanos;
+    // System.nanoTime() has an arbitrary origin and may be negative, so anchor the first
+    // slot to construction time instead of leaving it at zero.
+    private long nextRequestAtNanos = System.nanoTime();
 
     public OdsayClient(RestClient odsayRestClient, OdsayProperties properties) {
         this(odsayRestClient, properties, new ExternalCallMetricsCollector());
@@ -151,26 +153,35 @@ public class OdsayClient {
     }
 
     private <T> T withRequestPermit(Supplier<T> request) {
+        awaitRequestSlot();
+        return request.get();
+    }
+
+    /**
+     * Reserves the next dispatch slot and waits for it. Only the reservation is guarded:
+     * holding the monitor across the HTTP call would serialize every ODsay request in the
+     * process, so one slow response would stall unrelated schedule generations.
+     */
+    private void awaitRequestSlot() {
         Duration interval = properties.minRequestInterval();
         if (interval == null || interval.isZero() || interval.isNegative()) {
-            return request.get();
+            return;
         }
+        long waitNanos;
         synchronized (requestPermitMonitor) {
             long now = System.nanoTime();
-            long waitNanos = nextRequestAtNanos - now;
-            if (waitNanos > 0) {
-                try {
-                    TimeUnit.NANOSECONDS.sleep(waitNanos);
-                } catch (InterruptedException exception) {
-                    Thread.currentThread().interrupt();
-                    throw new BusinessException(ErrorCode.EXTERNAL_PROVIDER_UNAVAILABLE, exception);
-                }
-            }
-            try {
-                return request.get();
-            } finally {
-                nextRequestAtNanos = System.nanoTime() + interval.toNanos();
-            }
+            long remainingNanos = nextRequestAtNanos - now;
+            waitNanos = Math.max(0, remainingNanos);
+            nextRequestAtNanos = now + waitNanos + interval.toNanos();
+        }
+        if (waitNanos <= 0) {
+            return;
+        }
+        try {
+            TimeUnit.NANOSECONDS.sleep(waitNanos);
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            throw new BusinessException(ErrorCode.EXTERNAL_PROVIDER_UNAVAILABLE, exception);
         }
     }
 
