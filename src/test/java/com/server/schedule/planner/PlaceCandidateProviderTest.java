@@ -7,6 +7,7 @@ import static org.mockito.Mockito.when;
 import com.server.external.aitheme.PlaceThemePredictionClient;
 import com.server.external.aitheme.PlaceThemePredictionClient.PlaceThemeInsight;
 import com.server.place.domain.Place;
+import com.server.place.support.PlaceSource;
 import com.server.place.support.TourApiTheme;
 import com.server.place.repository.PlaceRepository;
 import com.server.schedule.domain.Schedule;
@@ -73,6 +74,60 @@ class PlaceCandidateProviderTest {
         assertThat(result.places())
                 .extracting(Place::getName)
                 .contains("광안리해수욕장", "태종대공원");
+    }
+
+    @Test
+    void neverSuggestsAPlaceSomeoneElseRegisteredFromAnExternalSearch() {
+        when(placeRepository.findAll()).thenReturn(List.of(
+                place(1L, "부산박물관", "14", "129.0840", "35.1296"),
+                place(2L, "태종대공원", "12", "129.0899", "35.0527"),
+                externalPlace(3L, "남이 등록한 동네카페", "129.0850", "35.1300")
+        ));
+
+        PlaceCandidateProvider.ResolvedPlaces result = provider.resolve(
+                request(), List.of(3), List.of(day()));
+
+        assertThat(result.places())
+                .extracting(Place::getName)
+                .doesNotContain("남이 등록한 동네카페");
+    }
+
+    @Test
+    void stillHonoursAnExternallyRegisteredPlaceTheTravellerAskedFor() {
+        Place registered = externalPlace(3L, "내가 고른 동네카페", "129.0850", "35.1300");
+        when(placeRepository.findAll()).thenReturn(List.of(
+                place(1L, "부산박물관", "14", "129.0840", "35.1296"),
+                place(2L, "태종대공원", "12", "129.0899", "35.0527"),
+                registered));
+        when(placeRepository.findAllById(List.of(3L))).thenReturn(List.of(registered));
+
+        PlaceCandidateProvider.ResolvedPlaces result = provider.resolve(
+                requestWithMustVisit(3L), List.of(3), List.of(day()));
+
+        assertThat(result.places())
+                .extracting(Place::getName)
+                .contains("내가 고른 동네카페");
+        assertThat(result.mustVisitPlaceIds()).containsExactly(3L);
+    }
+
+    private ScheduleCreateRequest requestWithMustVisit(Long placeId) {
+        return new ScheduleCreateRequest(
+                LocalDate.parse("2026-07-20"), LocalDate.parse("2026-07-20"),
+                LocalTime.parse("09:00"), LocalTime.parse("10:30"),
+                location("부산역", "129.0403", "35.1151"),
+                location("해운대", "129.1604", "35.1587"),
+                List.of(new ScheduleCreateRequest.SelectedAnswer("THEME", "THEME_CULTURE")),
+                List.of(placeId)
+        );
+    }
+
+    private Place externalPlace(Long id, String name, String longitude, String latitude) {
+        Place place = new Place(
+                PlaceSource.NAVER_LOCAL, name, "39", name, "음식점>카페", "부산",
+                decimal(longitude), decimal(latitude), null
+        );
+        ReflectionTestUtils.setField(place, "id", id);
+        return place;
     }
 
     private ScheduleCreateRequest request() {

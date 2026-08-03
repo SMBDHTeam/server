@@ -61,6 +61,10 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
 import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.TransactionStatus;
+import org.springframework.transaction.support.SimpleTransactionStatus;
 
 @DisplayName("일정 생성 서비스")
 class ScheduleServiceTest {
@@ -1044,8 +1048,27 @@ class ScheduleServiceTest {
                         new StayDurationRepair(),
                         new NearbyReplacementRepair(),
                         new CrossDayMoveRepair(),
-                        new LowUtilityRemovalRepair())
+                        new LowUtilityRemovalRepair()),
+                noOpTransactionManager()
         );
+    }
+
+    /** These tests drive the service directly, so transaction boundaries are a no-op here. */
+    private PlatformTransactionManager noOpTransactionManager() {
+        return new PlatformTransactionManager() {
+            @Override
+            public TransactionStatus getTransaction(TransactionDefinition definition) {
+                return new SimpleTransactionStatus();
+            }
+
+            @Override
+            public void commit(TransactionStatus status) {
+            }
+
+            @Override
+            public void rollback(TransactionStatus status) {
+            }
+        };
     }
 
     private AiSchedulePlanGenerator disabledAiGenerator() {

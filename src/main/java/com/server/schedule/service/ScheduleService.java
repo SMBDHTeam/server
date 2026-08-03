@@ -36,6 +36,7 @@ import com.server.schedule.planner.PlacePreferenceScorer;
 import com.server.schedule.planner.PlaceCandidateProvider;
 import com.server.schedule.planner.MultiDayPlanOptimizer;
 import com.server.schedule.planner.MealTimePolicy;
+import com.server.schedule.planner.MobilityPreferencePolicy;
 import com.server.schedule.planner.PlannerRouteEstimator;
 import com.server.schedule.planner.PlanObjective;
 import com.server.schedule.planner.PlanObjectiveEvaluator;
@@ -78,7 +79,9 @@ import java.util.stream.IntStream;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 @Service
 public class ScheduleService {
@@ -108,6 +111,8 @@ public class ScheduleService {
     private final SchedulePlannerProperties plannerProperties;
     private final AiSchedulePlanGenerator aiSchedulePlanGenerator;
     private final ScheduleRepairEngine scheduleRepairEngine;
+    private final TransactionTemplate transactionTemplate;
+    private final TransactionTemplate readOnlyTransactionTemplate;
 
     public ScheduleService(
             ScheduleRepository scheduleRepository,
@@ -127,8 +132,13 @@ public class ScheduleService {
             PlannerRouteEstimator plannerRouteEstimator,
             SchedulePlannerProperties plannerProperties,
             AiSchedulePlanGenerator aiSchedulePlanGenerator,
-            ScheduleRepairEngine scheduleRepairEngine
+            ScheduleRepairEngine scheduleRepairEngine,
+            PlatformTransactionManager transactionManager
     ) {
+        this.transactionTemplate = new TransactionTemplate(transactionManager);
+        TransactionTemplate readOnlyTemplate = new TransactionTemplate(transactionManager);
+        readOnlyTemplate.setReadOnly(true);
+        this.readOnlyTransactionTemplate = readOnlyTemplate;
         this.scheduleRepository = scheduleRepository;
         this.placeRepository = placeRepository;
         this.transitRouteProvider = transitRouteProvider;
@@ -294,8 +304,163 @@ public class ScheduleService {
         return toResponse(findSchedule(scheduleId));
     }
 
-    @Transactional
+    /**
+     * Deliberately not transactional. Resolving real transit routes takes seconds of
+     * provider time, so it runs between two short transactions instead of inside one:
+     * plan against the stored schedule, call the provider, then apply everything at once.
+     */
     public ScheduleResponse update(UUID scheduleId, ScheduleUpdateRequest request) {
+        RouteRevisionPlan plan = readOnlyTransactionTemplate.execute(
+                status -> planRouteRevision(scheduleId, request));
+        List<TransitRouteResult> resolvedRoutes = resolveRevisionRoutes(plan);
+        return transactionTemplate.execute(
+                status -> applyRouteRevision(scheduleId, request, plan, resolvedRoutes));
+    }
+
+    /**
+     * Reads the stored schedule and works out which legs the revised itinerary needs,
+     * without writing anything. Endpoint decisions are predicted through the same domain
+     * rules that {@link ScheduleDay#resolvePlannerEndpoints} applies later.
+     */
+    private RouteRevisionPlan planRouteRevision(UUID scheduleId, ScheduleUpdateRequest request) {
+        Schedule schedule = findSchedule(scheduleId);
+        Map<Integer, ScheduleDay> dayByNumber = schedule.getDays().stream()
+                .collect(Collectors.toMap(ScheduleDay::getDayNo, Function.identity()));
+        Map<UUID, ScheduleStop> existingStopById = schedule.getDays().stream()
+                .flatMap(day -> day.getStops().stream())
+                .collect(Collectors.toMap(ScheduleStop::getId, Function.identity()));
+        validateUpdateRequest(request, dayByNumber, existingStopById);
+
+        Map<Long, Place> placeById = placesForUpdate(request);
+        List<RouteRevisionDay> days = new ArrayList<>();
+        for (ScheduleDay day : schedule.getDays()) {
+            List<Place> orderedPlaces = request.stops().stream()
+                    .filter(stop -> stop.dayNo() == day.getDayNo())
+                    .sorted(Comparator.comparingInt(ScheduleUpdateRequest.Stop::order))
+                    .map(stop -> stop.stopId() != null
+                            ? existingStopById.get(stop.stopId()).getPlace()
+                            : placeById.get(stop.placeId()))
+                    .toList();
+            days.add(new RouteRevisionDay(day.getDayNo(), List.copyOf(orderedPlaces),
+                    revisionLegs(day, orderedPlaces)));
+        }
+        return new RouteRevisionPlan(List.copyOf(days));
+    }
+
+    /**
+     * Mirrors the leg walk in {@link #recalculateRoutes} so the resolved routes line up
+     * one-to-one with what gets persisted.
+     */
+    private List<RouteRevisionLeg> revisionLegs(ScheduleDay day, List<Place> orderedPlaces) {
+        TransitPoint start = plannedStartPoint(day, orderedPlaces);
+        TransitPoint end = plannedEndPoint(day, orderedPlaces);
+        List<RouteRevisionLeg> legs = new ArrayList<>();
+        TransitPoint previous = start;
+        for (int index = 0; index < orderedPlaces.size(); index++) {
+            Place place = orderedPlaces.get(index);
+            TransitPoint destination = new TransitPoint(
+                    place.getName(), place.getLongitude(), place.getLatitude());
+            if (previous != null && !samePoint(previous, destination)) {
+                legs.add(new RouteRevisionLeg(previous, destination, index));
+            }
+            previous = destination;
+        }
+        if (end != null && previous != null && !samePoint(previous, end)) {
+            legs.add(new RouteRevisionLeg(previous, end, -1));
+        }
+        return List.copyOf(legs);
+    }
+
+    private TransitPoint plannedStartPoint(ScheduleDay day, List<Place> orderedPlaces) {
+        Place firstPlace = orderedPlaces.isEmpty() ? null : orderedPlaces.get(0);
+        if (day.adoptsStartFrom(firstPlace)) {
+            return new TransitPoint(
+                    firstPlace.getName(), firstPlace.getLongitude(), firstPlace.getLatitude());
+        }
+        if (day.getStartLongitude() == null) return null;
+        return new TransitPoint(
+                day.getStartPlaceName(), day.getStartLongitude(), day.getStartLatitude());
+    }
+
+    private TransitPoint plannedEndPoint(ScheduleDay day, List<Place> orderedPlaces) {
+        Place lastPlace = orderedPlaces.isEmpty() ? null : orderedPlaces.get(orderedPlaces.size() - 1);
+        if (day.adoptsEndFrom(lastPlace)) {
+            return new TransitPoint(
+                    lastPlace.getName(), lastPlace.getLongitude(), lastPlace.getLatitude());
+        }
+        if (day.getEndLongitude() == null) return null;
+        return new TransitPoint(
+                day.getEndPlaceName(), day.getEndLongitude(), day.getEndLatitude());
+    }
+
+    /** The only step that talks to a transit provider, and it holds no transaction. */
+    private List<TransitRouteResult> resolveRevisionRoutes(RouteRevisionPlan plan) {
+        RouteSearchContext routeSearch = new RouteSearchContext();
+        PlannerExecutionMetrics executionMetrics = new PlannerExecutionMetrics();
+        return plan.days().stream()
+                .flatMap(day -> day.legs().stream())
+                .map(leg -> resolveRoute(
+                        routeSearch, executionMetrics, leg.origin(), leg.destination()))
+                .toList();
+    }
+
+    private ScheduleResponse applyRouteRevision(
+            UUID scheduleId,
+            ScheduleUpdateRequest request,
+            RouteRevisionPlan plan,
+            List<TransitRouteResult> resolvedRoutes
+    ) {
+        Schedule schedule = applyStopRevision(scheduleId, request);
+        Map<Integer, ScheduleDay> dayByNumber = schedule.getDays().stream()
+                .collect(Collectors.toMap(ScheduleDay::getDayNo, Function.identity()));
+        int routeIndex = 0;
+        for (RouteRevisionDay plannedDay : plan.days()) {
+            ScheduleDay day = dayByNumber.get(plannedDay.dayNo());
+            resolvePlannerEndpoints(day, plannedDay.orderedPlaces());
+            List<ScheduleStop> stops = day.getStops();
+            for (RouteRevisionLeg leg : plannedDay.legs()) {
+                TransitRouteResult result = resolvedRoutes.get(routeIndex++);
+                boolean finalLeg = leg.stopIndex() < 0;
+                createRoute(
+                        day,
+                        finalLeg ? null : stops.get(leg.stopIndex()),
+                        finalLeg ? "FINAL" : "INBOUND",
+                        finalLeg ? stops.size() + 1 : stops.get(leg.stopIndex()).getStopOrder(),
+                        result);
+            }
+            List<Integer> requestedStayMinutes = stops.stream()
+                    .map(ScheduleStop::getStayMinutes)
+                    .toList();
+            if (!feasibilityChecker.fitWithinAvailableTime(day)) {
+                throw new BusinessException(ErrorCode.INVALID_SCHEDULE_CONDITION);
+            }
+            warnAboutShortenedStays(day, requestedStayMinutes);
+        }
+        schedule.touch();
+        return toResponse(schedule);
+    }
+
+    /**
+     * Fitting a day into its available window silently shortens stays, so the traveller has to
+     * be told which stop lost time and how much. Without this the response looks like the edit
+     * was applied exactly as asked.
+     */
+    private void warnAboutShortenedStays(ScheduleDay day, List<Integer> requestedStayMinutes) {
+        List<ScheduleStop> stops = day.getStops();
+        for (int index = 0; index < stops.size(); index++) {
+            ScheduleStop stop = stops.get(index);
+            int requested = requestedStayMinutes.get(index);
+            if (stop.getStayMinutes() >= requested) {
+                continue;
+            }
+            List<String> warnings = new ArrayList<>(jsonArrayValues(stop.getWarningsJson()));
+            warnings.add("하루 가용 시간에 맞춰 체류시간을 " + requested + "분에서 "
+                    + stop.getStayMinutes() + "분으로 줄였습니다.");
+            stop.updateDeliveryInfo(stop.getSelectionReasonsJson(), jsonArray(warnings));
+        }
+    }
+
+    private Schedule applyStopRevision(UUID scheduleId, ScheduleUpdateRequest request) {
         Schedule schedule = findSchedule(scheduleId);
         Map<Integer, ScheduleDay> dayByNumber = schedule.getDays().stream()
                 .collect(Collectors.toMap(ScheduleDay::getDayNo, Function.identity()));
@@ -351,9 +516,7 @@ public class ScheduleService {
             }
         }
         schedule.getDays().forEach(ScheduleDay::sortStops);
-        recalculateRoutes(schedule);
-        schedule.touch();
-        return toResponse(schedule);
+        return schedule;
     }
 
     @Transactional(readOnly = true)
@@ -443,42 +606,6 @@ public class ScheduleService {
             throw new BusinessException(ErrorCode.PLACE_NOT_FOUND);
         }
         return placeById;
-    }
-
-    private void recalculateRoutes(Schedule schedule) {
-        RouteSearchContext routeSearch = new RouteSearchContext();
-        PlannerExecutionMetrics executionMetrics = new PlannerExecutionMetrics();
-        for (ScheduleDay day : schedule.getDays()) {
-            resolvePlannerEndpoints(day, day.getStops().stream()
-                    .map(ScheduleStop::getPlace)
-                    .toList());
-            TransitPoint previous = day.getStartLongitude() == null ? null : new TransitPoint(
-                    day.getStartPlaceName(), day.getStartLongitude(), day.getStartLatitude());
-            for (ScheduleStop stop : day.getStops()) {
-                TransitPoint destination = new TransitPoint(
-                        stop.getPlace().getName(),
-                        stop.getPlace().getLongitude(),
-                        stop.getPlace().getLatitude()
-                );
-                if (previous != null && !samePoint(previous, destination)) {
-                    TransitRouteResult route = resolveRoute(
-                            routeSearch, executionMetrics, previous, destination);
-                    createRoute(day, stop, "INBOUND", stop.getStopOrder(), route);
-                }
-                previous = destination;
-            }
-            if (day.getEndLongitude() != null && previous != null
-                    && !samePoint(previous, new TransitPoint(
-                            day.getEndPlaceName(), day.getEndLongitude(), day.getEndLatitude()))) {
-                TransitRouteResult finalRoute = resolveRoute(
-                        routeSearch, executionMetrics, previous,
-                        new TransitPoint(day.getEndPlaceName(), day.getEndLongitude(), day.getEndLatitude()));
-                createRoute(day, null, "FINAL", day.getStops().size() + 1, finalRoute);
-            }
-            if (!feasibilityChecker.fitWithinAvailableTime(day)) {
-                throw new BusinessException(ErrorCode.INVALID_SCHEDULE_CONDITION);
-            }
-        }
     }
 
     private int tripDays(ScheduleCreateRequest request) {
@@ -1232,12 +1359,8 @@ public class ScheduleService {
     }
 
     private DayRouteOptimizer.OptimizationPreference optimizationPreference(ScheduleCreateRequest request) {
-        boolean lowWalkPreference = hasAnswer(request, "COMPANION_PARENTS")
-                || hasAnswer(request, "COMPANION_FAMILY_WITH_CHILD")
-                || hasAnswer(request, "MOBILITY_LOW_WALK")
-                || hasAnswer(request, "MOBILITY_AVOID_HILLS_STAIRS");
-        int walkPenaltyMultiplier = lowWalkPreference ? 2 : 0;
-        int transferPenaltyMinutes = hasAnswer(request, "TRANSIT_SIMPLE") ? 20 : 0;
+        int walkPenaltyMultiplier = MobilityPreferencePolicy.lowWalkLevel(request).walkPenaltyMultiplier();
+        int transferPenaltyMinutes = MobilityPreferencePolicy.prefersSimpleTransit(request) ? 20 : 0;
         return new DayRouteOptimizer.OptimizationPreference(walkPenaltyMultiplier, transferPenaltyMinutes);
     }
 
@@ -2096,7 +2219,11 @@ public class ScheduleService {
 
     private List<String> stopWarnings(Place place, ScheduleCreateRequest request) {
         List<String> warnings = new ArrayList<>();
-        if (place.getOperatingInfo() != null && place.getOperatingInfo().isRequiresManualCheck()) {
+        if (place.getOperatingInfo() == null) {
+            // Places registered from an external search carry no operating hours, and the planner
+            // deliberately does not gate on them, so the traveller has to be told.
+            warnings.add("운영시간 정보가 없어 방문 전 확인이 필요합니다.");
+        } else if (place.getOperatingInfo().isRequiresManualCheck()) {
             warnings.add("운영시간 원문 확인이 필요한 장소입니다.");
         }
         if (placePreferenceScorer.mobilityPenalty(place, request) > 0) {
@@ -2308,6 +2435,21 @@ public class ScheduleService {
     }
 
     private record RouteKey(TransitPoint origin, TransitPoint destination) {
+    }
+
+    /** A revised itinerary and every transit leg it needs, resolved before anything is written. */
+    private record RouteRevisionPlan(List<RouteRevisionDay> days) {
+    }
+
+    private record RouteRevisionDay(
+            int dayNo,
+            List<Place> orderedPlaces,
+            List<RouteRevisionLeg> legs
+    ) {
+    }
+
+    /** {@code stopIndex} is the arrival stop's position, or -1 for the leg back to the day's end. */
+    private record RouteRevisionLeg(TransitPoint origin, TransitPoint destination, int stopIndex) {
     }
 
     private record StopTime(LocalTime arriveAt, LocalTime departAt) {

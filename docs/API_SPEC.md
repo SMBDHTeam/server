@@ -213,7 +213,17 @@ V2에서는 질문 응답에 선택 수를 추가한다.
 }
 ```
 
+허용 `source`는 `KAKAO_LOCAL`, `NAVER_LOCAL`이다. 그 외 값은 `400 INVALID_EXTERNAL_PLACE`다.
+
+네이버 지역검색은 안정적인 장소 ID를 제공하지 않으므로, `NAVER_LOCAL`의 `externalId`는 원본 응답의 `mapx`와 `mapy`를 `-`로 이어 붙인 값을 사용한다(예: `1291598546-351585232`). `longitude`, `latitude`에는 `mapx`, `mapy`를 `10000000`으로 나눈 WGS84 좌표를 전달한다.
+
 서버는 source, 좌표 범위, 필수 필드를 검증하고 `(source, external_content_id)` 기준으로 upsert한다. 신규·기존 여부와 관계없이 `200 OK`로 내부 장소를 반환한다.
+
+같은 실물 장소가 중복 적재되지 않도록, 아직 등록되지 않은 외부 장소는 먼저 기존 장소와 대조한다. 좌표가 100m 이내이고 공백·기호를 제거한 이름이 일치하거나 서로 포함하면 **그 장소의 `placeId`를 그대로 반환한다.** 이 경우 응답의 `source`는 요청한 값이 아니라 기존 장소의 출처(예: `TOUR_API`)이며, 서버가 적재해 둔 이름·주소·운영정보·이미지는 요청 값으로 덮어쓰지 않는다.
+
+`NAVER_LOCAL`로 새 장소를 만들 때는 카테고리 문자열에서 TourAPI 콘텐츠 유형을 추정해 저장한다(음식·카페 → 음식점, 축제·공연 → 축제공연행사, 박물관·미술관 → 문화시설, 쇼핑·시장 → 쇼핑, 숙박 → 숙박, 레포츠·체험 → 레포츠, 그 외 → 관광지). 체류시간과 테마 반영이 내부 적재 장소와 동일하게 동작하도록 하기 위함이다.
+
+외부 검색으로 등록한 장소는 운영시간 정보가 없다. 일정 생성 시 해당 방문지의 `warnings`에 `"운영시간 정보가 없어 방문 전 확인이 필요합니다."`가 포함되며, 운영시간을 이유로 일정 생성을 거부하지는 않는다.
 
 ```json
 {
@@ -902,6 +912,14 @@ Preview의 `endLocationSource=PLANNER_DECIDES`인 일차는 Planner가 방문 �
 - `stayMinutes`는 최소 `30`분이다.
 - 편집 토큰과 `version`을 사용하지 않는다.
 
+요청한 체류시간의 합이 하루 가용 시간을 넘으면 요청을 거부하지 않고, 마지막 방문지부터 순서대로 최소
+`30`분까지 줄여서 하루에 맞춘다. 줄어든 방문지에는 `stops[].warnings`에 다음 형태의 문구가 추가되므로
+화면에서 사용자에게 알려야 한다. 최소 체류시간까지 줄여도 맞지 않으면 `400 INVALID_SCHEDULE_CONDITION`이다.
+
+```text
+하루 가용 시간에 맞춰 체류시간을 400분에서 76분으로 줄였습니다.
+```
+
 ```json
 {
   "id": "schedule-uuid",
@@ -1211,10 +1229,29 @@ Provider 응답의 `distanceMeters`가 누락되거나 0 이하이면 서버는 
 {
   "code": "INVALID_SCHEDULE_CONDITION",
   "message": "일정 조건이 올바르지 않습니다.",
-  "fieldErrors": [],
+  "fieldErrors": [
+    {
+      "field": "selectedAnswers",
+      "message": "필수 질문에 대한 답변이 없습니다: COMPANION, MOBILITY"
+    }
+  ],
   "traceId": "01J..."
 }
 ```
+
+`fieldErrors[].field`는 요청 본문의 JSON 경로다. `startLocation.longitude`,
+`selectedAnswers[questionId=THEME]`, `days[0].dayNo` 처럼 문제가 된 위치를 가리킨다.
+빈 배열이면 특정 필드로 원인을 좁힐 수 없는 실패다.
+
+요청 검증에서 자주 나오는 사유는 다음과 같다.
+
+| field | 사유 |
+| --- | --- |
+| `selectedAnswers` | 필수 질문 답변 누락. `GET /trip-questions`의 `required=true` 질문은 모두 보내야 한다 |
+| `selectedAnswers[questionId=...]` | 해당 질문의 답변이 아니거나 선택 개수가 `minSelections`~`maxSelections`를 벗어남 |
+| `startLocation.longitude` / `.latitude` | 좌표가 WGS84 범위를 벗어남. 다른 좌표계(예: Naver TM128) 값을 그대로 보낸 경우 |
+| `endDate` | 종료일이 시작일보다 빠르거나 여행 기간이 최대 4일을 초과 |
+| `mustVisitPlaceIds` | 개수 초과, 중복, 또는 1 미만 ID |
 
 | HTTP | 오류 코드 | 상황 |
 | --- | --- | --- |

@@ -42,4 +42,28 @@ class PlaceServiceV2Test {
         });
         verify(placeRepository, never()).save(org.mockito.ArgumentMatchers.any(Place.class));
     }
+
+    @Test
+    @DisplayName("Kakao 상한(15)을 넘는 size로 요청해도 통합 검색이 실패하지 않는다")
+    void clampsTheExternalSearchSizeToWhatKakaoAccepts() {
+        PlaceRepository placeRepository = mock(PlaceRepository.class);
+        KakaoLocalClient kakaoLocalClient = mock(KakaoLocalClient.class);
+        when(placeRepository.findByNameContainingIgnoreCaseOrderByNameAsc("해운대"))
+                .thenReturn(List.of());
+        when(placeRepository.findAll()).thenReturn(List.of());
+        when(kakaoLocalClient.searchKeyword("해운대", 15)).thenReturn(new KakaoLocalSearchResponse(List.of(
+                new KakaoLocalSearchResponse.Document(
+                        "kakao-1", "해운대해수욕장", "부산광역시", "관광", "129.16", "35.15", "", "https://place")
+        )));
+
+        PlaceSearchResponse response = placeService(placeRepository, kakaoLocalClient)
+                .search("해운대", null, null, null, "ALL", 20);
+
+        assertThat(response.items()).hasSize(1);
+        verify(kakaoLocalClient).searchKeyword("해운대", 15);
+    }
+
+    private PlaceService placeService(PlaceRepository placeRepository, KakaoLocalClient kakaoLocalClient) {
+        return new PlaceService(placeRepository, kakaoLocalClient);
+    }
 }

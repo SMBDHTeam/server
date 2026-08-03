@@ -22,9 +22,14 @@ public class GlobalExceptionHandler {
             HttpServletRequest request
     ) {
         ErrorCode errorCode = exception.getErrorCode();
+        List<ErrorResponse.FieldErrorResponse> fieldErrors = exception.getFieldViolations()
+                .stream()
+                .map(violation -> new ErrorResponse.FieldErrorResponse(
+                        violation.field(), violation.message()))
+                .toList();
         return ResponseEntity
                 .status(errorCode.getStatus())
-                .body(ErrorResponse.of(errorCode, traceId(request)));
+                .body(ErrorResponse.of(errorCode, fieldErrors, traceId(request)));
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)

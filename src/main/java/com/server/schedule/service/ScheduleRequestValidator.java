@@ -3,6 +3,7 @@ package com.server.schedule.service;
 import com.server.answer.entity.Answer;
 import com.server.common.error.BusinessException;
 import com.server.common.error.ErrorCode;
+import com.server.common.error.FieldViolation;
 import com.server.question.entity.Question;
 import com.server.question.repository.QuestionRepository;
 import com.server.schedule.dto.ScheduleCreateRequest;
@@ -40,49 +41,66 @@ public class ScheduleRequestValidator {
 
     public void validate(ScheduleCreateRequest request) {
         int tripDays = validateDateAndDayConditions(request);
-        validateLocation(request.startLocation());
-        validateLocation(request.endLocation());
-        request.daysOrEmpty().forEach(day -> {
-            validateLocation(day.startLocation());
-            validateLocation(day.endLocation());
-        });
+        validateLocation(request.startLocation(), "startLocation");
+        validateLocation(request.endLocation(), "endLocation");
+        for (int index = 0; index < request.daysOrEmpty().size(); index++) {
+            ScheduleCreateRequest.DayCondition day = request.daysOrEmpty().get(index);
+            validateLocation(day.startLocation(), "days[" + index + "].startLocation");
+            validateLocation(day.endLocation(), "days[" + index + "].endLocation");
+        }
         validateSelectedAnswers(request.selectedAnswers());
         validateMustVisitPlaceIds(request.mustVisitPlaceIdsOrEmpty(), tripDays);
     }
 
     private int validateDateAndDayConditions(ScheduleCreateRequest request) {
-        if (request.endDate().isBefore(request.startDate())
-                || !request.dailyEndTime().isAfter(request.dailyStartTime())) {
-            invalid();
+        if (request.endDate().isBefore(request.startDate())) {
+            invalid("endDate", "종료일은 시작일보다 빠를 수 없습니다.");
+        }
+        if (!request.dailyEndTime().isAfter(request.dailyStartTime())) {
+            invalid("dailyEndTime", "하루 종료 시간은 시작 시간보다 늦어야 합니다.");
         }
         long tripDayCount = ChronoUnit.DAYS.between(request.startDate(), request.endDate()) + 1;
         if (tripDayCount > MAX_TRIP_DAYS) {
-            invalid();
+            invalid("endDate", "여행 기간은 최대 " + MAX_TRIP_DAYS + "일입니다. 요청 " + tripDayCount + "일");
         }
         int tripDays = (int) tripDayCount;
         if (request.daysOrEmpty().isEmpty()) {
             return tripDays;
         }
         Set<Integer> dayNumbers = new HashSet<>();
-        for (ScheduleCreateRequest.DayCondition day : request.daysOrEmpty()) {
-            if (!day.endTime().isAfter(day.startTime())
-                    || day.dayNo() > tripDays
-                    || !dayNumbers.add(day.dayNo())) {
-                invalid();
+        for (int index = 0; index < request.daysOrEmpty().size(); index++) {
+            ScheduleCreateRequest.DayCondition day = request.daysOrEmpty().get(index);
+            String path = "days[" + index + "]";
+            if (!day.endTime().isAfter(day.startTime())) {
+                invalid(path + ".endTime", "종료 시간은 시작 시간보다 늦어야 합니다.");
+            }
+            if (day.dayNo() > tripDays) {
+                invalid(path + ".dayNo", "여행 기간(" + tripDays + "일)을 벗어난 일차입니다.");
+            }
+            if (!dayNumbers.add(day.dayNo())) {
+                invalid(path + ".dayNo", "중복된 일차입니다: " + day.dayNo());
             }
         }
         if (dayNumbers.size() != tripDays) {
-            invalid();
+            invalid("days", "모든 일차(" + tripDays + "일)의 조건을 보내야 합니다. 현재 " + dayNumbers.size() + "일");
         }
         return tripDays;
     }
 
-    private void validateLocation(ScheduleCreateRequest.Location location) {
+    /**
+     * Coordinates must be WGS84 degrees. Provider specific grids such as Naver's TM128
+     * fall far outside this range, so the message names the value to make that obvious.
+     */
+    private void validateLocation(ScheduleCreateRequest.Location location, String field) {
         if (location.longitude().compareTo(MIN_LONGITUDE) < 0
-                || location.longitude().compareTo(MAX_LONGITUDE) > 0
-                || location.latitude().compareTo(MIN_LATITUDE) < 0
+                || location.longitude().compareTo(MAX_LONGITUDE) > 0) {
+            invalid(field + ".longitude",
+                    "경도는 WGS84 기준 -180~180 이어야 합니다. 요청 값: " + location.longitude().toPlainString());
+        }
+        if (location.latitude().compareTo(MIN_LATITUDE) < 0
                 || location.latitude().compareTo(MAX_LATITUDE) > 0) {
-            invalid();
+            invalid(field + ".latitude",
+                    "위도는 WGS84 기준 -90~90 이어야 합니다. 요청 값: " + location.latitude().toPlainString());
         }
     }
 
@@ -99,26 +117,33 @@ public class ScheduleRequestValidator {
         questions.forEach(question -> questionById.put(question.getId(), question));
         for (Map.Entry<String, List<ScheduleCreateRequest.SelectedAnswer>> entry : answersByQuestion.entrySet()) {
             Question question = questionById.get(entry.getKey());
+            String path = "selectedAnswers[questionId=" + entry.getKey() + "]";
             if (question == null) {
-                invalid();
+                invalid(path, "존재하지 않는 질문입니다: " + entry.getKey());
             }
             Set<String> distinctAnswerIds = new HashSet<>();
             for (ScheduleCreateRequest.SelectedAnswer selectedAnswer : entry.getValue()) {
-                if (!distinctAnswerIds.add(selectedAnswer.answerId())
-                        || !containsActiveAnswer(question, selectedAnswer.answerId())) {
-                    invalid();
+                if (!distinctAnswerIds.add(selectedAnswer.answerId())) {
+                    invalid(path, "중복된 답변입니다: " + selectedAnswer.answerId());
+                }
+                if (!containsActiveAnswer(question, selectedAnswer.answerId())) {
+                    invalid(path, "이 질문의 답변이 아닙니다: " + selectedAnswer.answerId());
                 }
             }
             int selectedCount = distinctAnswerIds.size();
             if (selectedCount < question.getMinSelections() || selectedCount > question.getMaxSelections()) {
-                invalid();
+                invalid(path, "선택 개수는 " + question.getMinSelections() + "~" + question.getMaxSelections()
+                        + "개여야 합니다. 현재 " + selectedCount + "개");
             }
         }
-        boolean missingRequiredQuestion = questions.stream()
+        List<String> missingRequiredQuestionIds = questions.stream()
                 .filter(Question::isRequired)
-                .anyMatch(question -> !selectedQuestionIds.contains(question.getId()));
-        if (missingRequiredQuestion) {
-            invalid();
+                .map(Question::getId)
+                .filter(questionId -> !selectedQuestionIds.contains(questionId))
+                .toList();
+        if (!missingRequiredQuestionIds.isEmpty()) {
+            invalid("selectedAnswers",
+                    "필수 질문에 대한 답변이 없습니다: " + String.join(", ", missingRequiredQuestionIds));
         }
     }
 
@@ -130,14 +155,21 @@ public class ScheduleRequestValidator {
     }
 
     private void validateMustVisitPlaceIds(List<Long> placeIds, int tripDays) {
-        if (placeIds.size() > tripDays * DailyScheduleTargetPolicy.MAX_STOPS_PER_DAY
-                || placeIds.stream().anyMatch(placeId -> placeId == null || placeId <= 0)
-                || new HashSet<>(placeIds).size() != placeIds.size()) {
-            invalid();
+        int maximum = tripDays * DailyScheduleTargetPolicy.MAX_STOPS_PER_DAY;
+        if (placeIds.size() > maximum) {
+            invalid("mustVisitPlaceIds",
+                    "필수 방문지는 최대 " + maximum + "개입니다. 요청 " + placeIds.size() + "개");
+        }
+        if (placeIds.stream().anyMatch(placeId -> placeId == null || placeId <= 0)) {
+            invalid("mustVisitPlaceIds", "장소 ID는 1 이상이어야 합니다.");
+        }
+        if (new HashSet<>(placeIds).size() != placeIds.size()) {
+            invalid("mustVisitPlaceIds", "중복된 장소 ID가 있습니다.");
         }
     }
 
-    private void invalid() {
-        throw new BusinessException(ErrorCode.INVALID_SCHEDULE_CONDITION);
+    private void invalid(String field, String message) {
+        throw new BusinessException(
+                ErrorCode.INVALID_SCHEDULE_CONDITION, List.of(FieldViolation.of(field, message)));
     }
 }

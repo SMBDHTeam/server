@@ -80,7 +80,7 @@
 | --- | --- | :---: | --- |
 | `items` | array | O | 내부·외부 장소 후보 |
 | `items[].placeId` | integer/null | 조건부 | 내부 장소 ID. 외부 미확정 후보는 `null` |
-| `items[].source` | string | O | `TOUR_API`, `KAKAO_LOCAL` |
+| `items[].source` | string | O | `TOUR_API`, `KAKAO_LOCAL`, `NAVER_LOCAL` |
 | `items[].externalId` | string | O | 데이터 출처의 장소 ID |
 | `items[].name` | string | O | 장소명 |
 | `items[].category` | string/null | X | 표시용 분류 |
@@ -97,8 +97,8 @@
 
 | 요청 필드 | 자료형 | 필수 | 의미 |
 | --- | --- | :---: | --- |
-| `source` | string | O | V2에서는 `KAKAO_LOCAL`만 허용 |
-| `externalId` | string | O | Kakao 장소 ID |
+| `source` | string | O | `KAKAO_LOCAL` 또는 `NAVER_LOCAL` |
+| `externalId` | string | O | Kakao는 장소 ID, 네이버는 안정 ID가 없어 `mapx-mapy` 합성 키 |
 | `name` | string | O | 검색 응답 장소명 |
 | `category` | string | X | 검색 응답 분류 |
 | `address` | string | X | 검색 응답 주소 |
@@ -109,8 +109,8 @@
 | 응답 필드 | 자료형 | 필수 | 의미 |
 | --- | --- | :---: | --- |
 | `placeId` | integer | O | upsert 후 내부 장소 ID |
-| `source` | string | O | `KAKAO_LOCAL` |
-| `externalId` | string | O | Kakao 장소 ID |
+| `source` | string | O | 요청 값 또는 연결된 기존 장소의 출처(`TOUR_API` 등) |
+| `externalId` | string | O | 연결된 장소의 출처 ID |
 | `name` | string | O | 저장된 장소명 |
 | `category` | string/null | X | 저장된 카테고리 코드 또는 원문 |
 | `categoryLabel` | string | O | 사용자 표시용 카테고리 |

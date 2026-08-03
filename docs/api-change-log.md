@@ -2,6 +2,39 @@
 
 API 계약이 변경될 때마다 최신 항목을 위에 추가한다.
 
+## 2026-08-03 (일정 수정 시 체류시간 축소를 경고로 알림)
+
+- API: `PATCH /api/v1/schedules/{scheduleId}`
+- 구분: 응답 보완
+- 이전: 요청한 체류시간의 합이 하루 가용 시간을 넘으면 서버가 조용히 체류시간을 줄이고 `200 OK`를 반환했다. 응답만으로는 요청대로 반영됐는지 알 수 없었다.
+- 이후: 줄어든 방문지의 `stops[].warnings`에 `"하루 가용 시간에 맞춰 체류시간을 400분에서 76분으로 줄였습니다."` 형태의 문구가 추가된다. 요청한 값이 그대로 반영된 방문지에는 붙지 않는다.
+- 이유: 사용자가 입력한 체류시간이 크게 바뀌었는데도 클라이언트가 이를 알릴 수 없었기 때문
+- 호환성 파괴: 아니오. 기존 `warnings` 배열에 항목이 추가될 뿐이다.
+- DB/ERD: 변경 없음
+- 관련 PR 또는 이슈: 없음
+
+## 2026-08-02 (외부 장소 Resolve가 네이버 출처를 지원)
+
+- API: `POST /api/v1/places/resolve`, `GET /api/v1/schedules/{scheduleId}`
+- 구분: 변경
+- 이전: `source`는 `KAKAO_LOCAL`만 허용했고, 등록 시 항상 새 장소를 만들거나 `(source, externalId)`가 같은 장소를 갱신했다.
+- 이후: `NAVER_LOCAL`을 함께 허용한다. 네이버는 안정적인 장소 ID가 없으므로 `externalId`는 `mapx-mapy` 합성 키를 사용한다. 아직 등록되지 않은 외부 장소는 좌표 100m 이내이면서 이름이 일치하는 기존 장소가 있으면 그 `placeId`를 반환하며, 이때 응답 `source`는 기존 장소의 출처이고 적재해 둔 이름·주소·운영정보는 덮어쓰지 않는다. 새 네이버 장소는 카테고리 문자열에서 TourAPI 콘텐츠 유형을 추정해 저장해 체류시간·테마 반영이 내부 장소와 동일하게 동작한다. 운영정보가 없는 방문지는 일정 응답 `warnings`에 `"운영시간 정보가 없어 방문 전 확인이 필요합니다."`가 추가된다.
+- 이유: 가고싶은 장소 검색을 네이버로 교체하면서, 사용자가 고른 장소가 일정 생성에서 우리가 적재한 장소와 동등하게 다뤄지도록 하기 위함
+- 호환성 파괴: 아니오. 기존 `KAKAO_LOCAL` 요청은 그대로 동작한다. 다만 좌표·이름이 겹치는 장소는 새 행 대신 기존 `placeId`가 반환될 수 있다.
+- DB/ERD: 변경 없음
+- 관련 PR 또는 이슈: 없음
+
+## 2026-08-02 (요청 검증 실패 사유를 fieldErrors로 반환)
+
+- API: `POST /api/v1/schedules`, `POST /api/v1/schedule-previews`
+- 구분: 오류 응답 보완
+- 이전: `INVALID_SCHEDULE_CONDITION`과 `INVALID_SCHEDULE_PREVIEW_REQUEST`는 `fieldErrors`가 항상 빈 배열이었다. 필수 질문 답변 누락, 좌표 범위 위반, 답변 선택 개수 위반이 모두 같은 응답으로 보여 클라이언트가 원인을 알 수 없었다.
+- 이후: 두 오류 모두 `fieldErrors[]`에 `field`(요청 JSON 경로)와 `message`(사유)를 담는다. 예: `selectedAnswers -> 필수 질문에 대한 답변이 없습니다: COMPANION, MOBILITY`, `startLocation.longitude -> 경도는 WGS84 기준 -180~180 이어야 합니다. 요청 값: 1290403000`.
+- 이유: 좌표계가 다른 Provider(Naver TM128 등) 값이나 필수 답변 누락을 클라이언트가 즉시 식별할 수 있게 하기 위함
+- 호환성 파괴: 아니오. 응답 스키마는 그대로이며 기존에 비어 있던 `fieldErrors`가 채워질 뿐이다.
+- DB/ERD: 변경 없음
+- 관련 PR 또는 이슈: 없음
+
 ## 2026-07-20 (Preview 숙소 계획 입력 검증)
 
 - API: `POST /api/v1/schedule-previews`, `GET /api/v1/schedule-previews/{previewId}`
