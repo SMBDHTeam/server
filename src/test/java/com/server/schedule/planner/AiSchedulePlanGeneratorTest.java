@@ -160,6 +160,33 @@ class AiSchedulePlanGeneratorTest {
                 .containsExactly(101L, 102L);
     }
 
+    @Test
+    void keepsPlanningWhenTheThemeInsightClientThrows() {
+        AiSchedulePlanGenerator generator = new AiSchedulePlanGenerator(
+                request -> {
+                    throw new AssertionError("must not call OpenAI while disabled");
+                },
+                new OpenAiPlanningProperties(
+                        false, "http://localhost", "", "test-model", null, null),
+                place -> {
+                    throw new IllegalStateException("theme service exploded");
+                }
+        );
+
+        var result = generator.generate(
+                List.of(place(101L, "광안리", "12", "관광지")),
+                Set.of(),
+                List.of(day("11:00", "16:00")),
+                List.of(1),
+                natureFoodRequest(),
+                Map.of(),
+                null
+        );
+
+        assertThat(result.hasProposal()).isFalse();
+        assertThat(result.source()).isEqualTo("RULE_BASED");
+    }
+
     private AiSchedulePlanGenerator generator(AiScheduleProposalClient client, boolean enabled) {
         return new AiSchedulePlanGenerator(client, new OpenAiPlanningProperties(
                 enabled, "http://localhost", "test-key", "test-model", null, null));

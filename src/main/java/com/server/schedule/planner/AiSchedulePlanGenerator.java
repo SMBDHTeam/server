@@ -64,26 +64,47 @@ public class AiSchedulePlanGenerator {
             Map<LocalDate, Set<Long>> fixedPlaceIdsByDate,
             String customPrompt
     ) {
-        if (!properties.enabled()) {
-            return insightProposal(
-                    candidates, mustVisitPlaceIds, days, dailyStopTargets, request, fixedPlaceIdsByDate
-            ).orElseGet(Result::ruleBased);
-        }
-        if (properties.apiKey().isBlank()) {
-            return insightProposal(
-                    candidates, mustVisitPlaceIds, days, dailyStopTargets, request, fixedPlaceIdsByDate
-            ).orElseGet(Result::fallback);
-        }
+        // Runs on a separate thread, so anything escaping here surfaces as a wrapped
+        // CompletionException and fails the whole generation. The deterministic planner
+        // can always continue on its own, so no AI failure is worth propagating.
         try {
-            AiScheduleProposalClient.Request proposalRequest = toRequest(
-                    candidates, mustVisitPlaceIds, days, dailyStopTargets,
+            return propose(candidates, mustVisitPlaceIds, days, dailyStopTargets,
                     request, fixedPlaceIdsByDate, customPrompt);
-            AiScheduleProposalClient.Proposal proposal = client.propose(proposalRequest);
-            return validate(proposal, candidates, mustVisitPlaceIds, days,
-                    dailyStopTargets, fixedPlaceIdsByDate);
         } catch (RuntimeException exception) {
-            return Result.fallback();
+            log.warn("AI schedule proposal failed, continuing without it: enabled={}",
+                    properties.enabled(), exception);
+            return unavailableResult();
         }
+    }
+
+    private Result propose(
+            List<Place> candidates,
+            Set<Long> mustVisitPlaceIds,
+            List<ScheduleDay> days,
+            List<Integer> dailyStopTargets,
+            ScheduleCreateRequest request,
+            Map<LocalDate, Set<Long>> fixedPlaceIdsByDate,
+            String customPrompt
+    ) {
+        if (!properties.enabled() || properties.apiKey().isBlank()) {
+            return insightProposal(
+                    candidates, mustVisitPlaceIds, days, dailyStopTargets, request, fixedPlaceIdsByDate
+            ).orElseGet(this::unavailableResult);
+        }
+        AiScheduleProposalClient.Request proposalRequest = toRequest(
+                candidates, mustVisitPlaceIds, days, dailyStopTargets,
+                request, fixedPlaceIdsByDate, customPrompt);
+        AiScheduleProposalClient.Proposal proposal = client.propose(proposalRequest);
+        return validate(proposal, candidates, mustVisitPlaceIds, days,
+                dailyStopTargets, fixedPlaceIdsByDate);
+    }
+
+    /**
+     * Distinguishes "AI was never asked" from "AI was asked and could not answer" so the
+     * planning mode reported back to the client stays truthful.
+     */
+    private Result unavailableResult() {
+        return properties.enabled() ? Result.fallback() : Result.ruleBased();
     }
 
     private Optional<Result> insightProposal(
