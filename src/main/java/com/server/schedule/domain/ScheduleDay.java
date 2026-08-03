@@ -178,21 +178,34 @@ public class ScheduleDay {
     }
 
     public void resolvePlannerEndpoints(Place firstPlace, Place lastPlace) {
-        if (firstPlace != null
-                && (startLongitude == null || "PLANNER_DECIDES".equals(startLocationSource))) {
+        if (adoptsStartFrom(firstPlace)) {
             startPlaceName = firstPlace.getName();
             startLongitude = firstPlace.getLongitude();
             startLatitude = firstPlace.getLatitude();
             startLocationSource = "PLANNER_DECIDES";
         }
-        if (lastPlace != null
-                && (endLongitude == null || "LAST_STOP".equals(endLocationSource)
-                        || "PLANNER_DECIDES".equals(endLocationSource))) {
+        if (adoptsEndFrom(lastPlace)) {
             endPlaceName = lastPlace.getName();
             endLongitude = lastPlace.getLongitude();
             endLatitude = lastPlace.getLatitude();
             endLocationSource = "LAST_STOP";
         }
+    }
+
+    /**
+     * Whether {@link #resolvePlannerEndpoints} would take the day's start from this place.
+     * Exposed so route planning can predict the endpoints before anything is written.
+     */
+    public boolean adoptsStartFrom(Place firstPlace) {
+        return firstPlace != null
+                && (startLongitude == null || "PLANNER_DECIDES".equals(startLocationSource));
+    }
+
+    /** Counterpart of {@link #adoptsStartFrom} for the day's end. */
+    public boolean adoptsEndFrom(Place lastPlace) {
+        return lastPlace != null
+                && (endLongitude == null || "LAST_STOP".equals(endLocationSource)
+                        || "PLANNER_DECIDES".equals(endLocationSource));
     }
 
     public UUID getId() {

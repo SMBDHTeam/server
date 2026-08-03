@@ -83,6 +83,84 @@ class ScheduleLifecycleIntegrationTest {
     }
 
     @Test
+    @DisplayName("방문 순서를 뒤집어도 각 INBOUND 경로가 도착 stop에 붙는다")
+    void updateBindsInboundRoutesToTheirArrivalStop() {
+        Fixture fixture = fixture();
+
+        scheduleService.update(
+                fixture.schedule().getId(),
+                new ScheduleUpdateRequest(List.of(
+                        new ScheduleUpdateRequest.Stop(fixture.moving().getId(), null, 1, 1, 60),
+                        new ScheduleUpdateRequest.Stop(fixture.first().getId(), null, 1, 2, 60),
+                        new ScheduleUpdateRequest.Stop(fixture.removed().getId(), null, 2, 1, 60)
+                ))
+        );
+        scheduleRepository.flush();
+        entityManager.clear();
+
+        Schedule reloaded = scheduleRepository.findById(fixture.schedule().getId()).orElseThrow();
+        ScheduleDay firstDay = reloaded.getDays().get(0);
+        assertThat(firstDay.getStops())
+                .extracting(stop -> stop.getPlace().getName())
+                .containsExactly("이동 장소", "첫 장소");
+        assertThat(firstDay.getTransitRoutes())
+                .filteredOn(route -> "INBOUND".equals(route.getRouteType()))
+                .extracting(route -> route.getScheduleStop().getPlace().getName())
+                .containsExactly("이동 장소", "첫 장소");
+        assertThat(firstDay.getTransitRoutes())
+                .filteredOn(route -> "FINAL".equals(route.getRouteType()))
+                .allSatisfy(route -> assertThat(route.getScheduleStop()).isNull());
+    }
+
+    @Test
+    @DisplayName("가용 시간에 맞춰 체류시간을 줄였으면 해당 방문지 경고로 알려준다")
+    void warnsWhenAStayIsShortenedToFitTheDay() {
+        Fixture fixture = fixture();
+
+        ScheduleResponse response = scheduleService.update(
+                fixture.schedule().getId(),
+                new ScheduleUpdateRequest(List.of(
+                        new ScheduleUpdateRequest.Stop(fixture.first().getId(), null, 1, 1, 400),
+                        new ScheduleUpdateRequest.Stop(fixture.moving().getId(), null, 1, 2, 400),
+                        new ScheduleUpdateRequest.Stop(fixture.removed().getId(), null, 2, 1, 60)
+                ))
+        );
+
+        // The day is trimmed from the last stop backwards, so only some stops lose time.
+        ScheduleResponse.Day firstDay = response.days().get(0);
+        assertThat(firstDay.stops())
+                .anySatisfy(stop -> assertThat(stop.stayMinutes()).isLessThan(400));
+        assertThat(firstDay.stops())
+                .filteredOn(stop -> stop.stayMinutes() < 400)
+                .allSatisfy(stop -> assertThat(stop.warnings())
+                        .anyMatch(warning -> warning.contains("체류시간을")
+                                && warning.contains("400분에서")));
+        assertThat(firstDay.stops())
+                .filteredOn(stop -> stop.stayMinutes() == 400)
+                .allSatisfy(stop -> assertThat(stop.warnings())
+                        .noneMatch(warning -> warning.contains("체류시간을")));
+    }
+
+    @Test
+    @DisplayName("요청한 체류시간이 그대로 반영되면 체류시간 경고를 붙이지 않는다")
+    void doesNotWarnWhenTheRequestedStaysFit() {
+        Fixture fixture = fixture();
+
+        ScheduleResponse response = scheduleService.update(
+                fixture.schedule().getId(),
+                new ScheduleUpdateRequest(List.of(
+                        new ScheduleUpdateRequest.Stop(fixture.first().getId(), null, 1, 1, 60),
+                        new ScheduleUpdateRequest.Stop(fixture.removed().getId(), null, 2, 1, 60)
+                ))
+        );
+
+        assertThat(response.days())
+                .flatExtracting(ScheduleResponse.Day::stops)
+                .allSatisfy(stop -> assertThat(stop.warnings())
+                        .noneMatch(warning -> warning.contains("체류시간을")));
+    }
+
+    @Test
     @DisplayName("공유 토큰은 해시로 저장하고 폐기 전까지만 일정과 지도를 조회한다")
     void shareLinkLifecycle() {
         Fixture fixture = fixture();

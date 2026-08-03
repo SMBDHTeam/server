@@ -4,6 +4,7 @@ import com.server.place.support.TourApiTheme;
 import com.server.place.support.TourApiThemeMapper;
 import com.server.schedule.dto.ScheduleCreateRequest;
 import com.server.schedule.dto.ScheduleResponse;
+import com.server.schedule.planner.MobilityPreferencePolicy;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
@@ -77,17 +78,13 @@ public ScheduleScoreResult evaluate(ScheduleCreateRequest request, ScheduleRespo
     }
 
     private ScheduleScoreResult.Metric mobilityFit(ScheduleCreateRequest request, ScheduleResponse response) {
-        boolean lowBurden = hasAnswer(request, "COMPANION_PARENTS")
-                || hasAnswer(request, "COMPANION_FAMILY_WITH_CHILD")
-                || hasAnswer(request, "MOBILITY_AVOID_HILLS_STAIRS")
-                || hasAnswer(request, "MOBILITY_LOW_WALK");
         int walkOnlyMinutes = walkOnlyMinutes(response);
         int burdenPlaceCount = burdenPlaceCount(response);
-        int score = lowBurden
-                ? Math.max(0, 25 - walkOnlyMinutes / 3 - burdenPlaceCount * 8)
-                : hasAnswer(request, "PROMPT_LOW_WALKING")
-                        ? Math.max(0, 25 - walkOnlyMinutes / 5)
-                        : Math.max(0, 25 - walkOnlyMinutes / 8);
+        int score = switch (MobilityPreferencePolicy.lowWalkLevel(request)) {
+            case STRONG -> Math.max(0, 25 - walkOnlyMinutes / 3 - burdenPlaceCount * 8);
+            case MODERATE -> Math.max(0, 25 - walkOnlyMinutes / 5);
+            case NONE -> Math.max(0, 25 - walkOnlyMinutes / 8);
+        };
         return new ScheduleScoreResult.Metric(
                 "MOBILITY_FIT",
                 "도보·언덕 부담 적합성",
