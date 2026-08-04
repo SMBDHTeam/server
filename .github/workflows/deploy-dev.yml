@@ -180,7 +180,7 @@ jobs:
             printf 'SPRING_DATASOURCE_PASSWORD=%s\n' "$SPRING_DATASOURCE_PASSWORD"
           
             printf 'PLACE_THEME_AI_ENABLED=true\n'
-            printf 'PLACE_THEME_AI_BASE_URL=http://127.0.0.1:8010/\n'
+            printf 'PLACE_THEME_AI_BASE_URL=http://data-ai:8010/\n'
 
             # 더미 데이터 생성 비활성화
             printf 'DUMMY_PLACE_SEED_ENABLED=false\n'
@@ -277,6 +277,7 @@ jobs:
               docker run -d \
                 --name server-dev \
                 --restart unless-stopped \
+                --network hackathon-network \
                 -p 127.0.0.1:8080:8080 \
                 --env-file /opt/hackathon-dev/.env.dev \
                 "${ECR_REGISTRY}/${ECR_REPOSITORY_NAME}:latest-dev"
