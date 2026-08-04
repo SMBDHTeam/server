@@ -178,6 +178,9 @@ jobs:
             printf 'SPRING_DATASOURCE_URL=%s\n' "$SPRING_DATASOURCE_URL"
             printf 'SPRING_DATASOURCE_USERNAME=%s\n' "$SPRING_DATASOURCE_USERNAME"
             printf 'SPRING_DATASOURCE_PASSWORD=%s\n' "$SPRING_DATASOURCE_PASSWORD"
+          
+            printf 'PLACE_THEME_AI_ENABLED=true\n'
+            printf 'PLACE_THEME_AI_BASE_URL=http://127.0.0.1:8010/\n'
 
             # 더미 데이터 생성 비활성화
             printf 'DUMMY_PLACE_SEED_ENABLED=false\n'
