@@ -3,6 +3,9 @@ CREATE TABLE IF NOT EXISTS users (
     nickname varchar(255) NOT NULL,
     profile_image_url text,
     created_at timestamp NOT NULL,
-    deleted_at timestamp,
-    CONSTRAINT uk_users_nickname UNIQUE (nickname)
+    deleted_at timestamp
 );
+
+CREATE UNIQUE INDEX IF NOT EXISTS uk_users_nickname_active
+    ON users (nickname)
+    WHERE deleted_at IS NULL;

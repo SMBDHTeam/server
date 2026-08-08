@@ -6,17 +6,14 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
-import jakarta.persistence.UniqueConstraint;
 import java.time.LocalDateTime;
 
+/**
+ * 닉네임 유일성은 탈퇴하지 않은 사용자에게만 적용하므로 JPA 제약 대신
+ * migration의 부분 고유 인덱스(uk_users_nickname_active)로 관리한다.
+ */
 @Entity
-@Table(
-        name = "users",
-        uniqueConstraints = @UniqueConstraint(
-                name = "uk_users_nickname",
-                columnNames = {"nickname"}
-        )
-)
+@Table(name = "users")
 public class User {
 
     @Id
