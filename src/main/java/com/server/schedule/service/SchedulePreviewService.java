@@ -7,6 +7,7 @@ import com.server.common.error.BusinessException;
 import com.server.common.error.ErrorCode;
 import com.server.common.error.FieldViolation;
 import com.server.common.error.PreviewAlreadyConsumedException;
+import com.server.external.schedule.FastApiScheduleClient;
 import com.server.place.repository.PlaceRepository;
 import com.server.question.entity.Question;
 import com.server.question.repository.QuestionRepository;
@@ -38,8 +39,8 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
-import org.springframework.stereotype.Service;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
@@ -59,6 +60,7 @@ public class SchedulePreviewService {
     private final ObjectMapper objectMapper;
     private final Clock clock;
     private final PlanningPromptInterpreter promptInterpreter;
+    private FastApiScheduleClient fastApiScheduleClient;
 
     @Autowired
     public SchedulePreviewService(
@@ -103,8 +105,16 @@ public class SchedulePreviewService {
         this.promptInterpreter = promptInterpreter;
     }
 
+    @Autowired(required = false)
+    void setFastApiScheduleClient(FastApiScheduleClient fastApiScheduleClient) {
+        this.fastApiScheduleClient = fastApiScheduleClient;
+    }
+
     @Transactional
     public SchedulePreviewResponse create(SchedulePreviewCreateRequest request) {
+        if (useFastApiDelegate()) {
+            return fastApiScheduleClient.createPreview(request);
+        }
         request = normalize(request);
         ValidationContext context = validate(request);
         Resolution resolution = resolve(request, context);
@@ -152,6 +162,9 @@ public class SchedulePreviewService {
 
     @Transactional(noRollbackFor = BusinessException.class)
     public SchedulePreviewResponse get(UUID previewId) {
+        if (useFastApiDelegate()) {
+            return fastApiScheduleClient.getPreview(previewId);
+        }
         SchedulePreview preview = find(previewId);
         if (!"CONSUMED".equals(preview.getStatus()) && isExpired(preview)) {
             preview.expire();
@@ -202,6 +215,10 @@ public class SchedulePreviewService {
     private boolean isExpired(SchedulePreview preview) {
         return "EXPIRED".equals(preview.getStatus())
                 || OffsetDateTime.now(clock).isAfter(preview.getExpiresAt());
+    }
+
+    private boolean useFastApiDelegate() {
+        return fastApiScheduleClient != null && fastApiScheduleClient.enabled();
     }
 
     private ValidationContext validate(SchedulePreviewCreateRequest request) {
