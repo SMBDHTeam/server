@@ -50,7 +50,7 @@ public class FastApiScheduleClient {
             return restClient.post()
                     .uri("/api/v1/schedule-previews")
                     .contentType(MediaType.APPLICATION_JSON)
-                    .body(writeJson(request))
+                    .body(writeJson(normalizePreviewRequest(request)))
                     .retrieve()
                     .body(SchedulePreviewResponse.class);
         } catch (RestClientResponseException exception) {
@@ -209,5 +209,22 @@ public class FastApiScheduleClient {
         } catch (JsonProcessingException exception) {
             throw new IllegalStateException("Failed to serialize FastAPI schedule request", exception);
         }
+    }
+
+    private SchedulePreviewCreateRequest normalizePreviewRequest(SchedulePreviewCreateRequest request) {
+        return new SchedulePreviewCreateRequest(
+                request.startDate(),
+                request.endDate(),
+                request.startLocation(),
+                request.startTime(),
+                request.lodgingPlan(),
+                request.endConstraint(),
+                request.selectedAnswers(),
+                request.mustVisitPlaceIdsOrEmpty(),
+                request.fixedEventsOrEmpty(),
+                request.dayOverridesOrEmpty(),
+                request.customPrompt(),
+                request.timeZone()
+        );
     }
 }
