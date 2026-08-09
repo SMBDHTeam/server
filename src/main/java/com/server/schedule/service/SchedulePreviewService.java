@@ -112,46 +112,7 @@ public class SchedulePreviewService {
 
     @Transactional
     public SchedulePreviewResponse create(SchedulePreviewCreateRequest request) {
-        if (useFastApiDelegate()) {
-            return createViaFastApi(request);
-        }
-        return createLegacyPreview(request);
-    }
-
-    private SchedulePreviewResponse createViaFastApi(SchedulePreviewCreateRequest request) {
-        return fastApiScheduleClient.createPreview(request);
-    }
-
-    /**
-     * Legacy Spring preview planner kept as a rollback path while FastAPI delegation
-     * is being stabilized in dev/prod.
-     */
-    private SchedulePreviewResponse createLegacyPreview(SchedulePreviewCreateRequest request) {
-        request = normalize(request);
-        ValidationContext context = validate(request);
-        Resolution resolution = resolve(request, context);
-        OffsetDateTime now = OffsetDateTime.now(clock);
-        String status = resolution.conflicts().isEmpty() ? "READY" : "REQUIRES_ACTION";
-
-        SchedulePreview preview = new SchedulePreview(
-                status,
-                request.startDate(),
-                request.endDate(),
-                context.timeZone(),
-                request.lodgingPlan().mode(),
-                context.routeCoverage(),
-                writeJson(request),
-                writeJson(resolution.days()),
-                resolution.endConstraint() == null ? null : writeJson(resolution.endConstraint()),
-                writeJson(resolution.defaults()),
-                writeJson(resolution.prompt()),
-                writeJson(resolution.warnings()),
-                writeJson(resolution.conflicts()),
-                now.plusMinutes(PREVIEW_EXPIRATION_MINUTES),
-                now
-        );
-        previewRepository.save(preview);
-        return toResponse(preview, null);
+        return requireFastApiScheduleClient().createPreview(request);
     }
 
     private SchedulePreviewCreateRequest normalize(SchedulePreviewCreateRequest request) {
@@ -174,75 +135,14 @@ public class SchedulePreviewService {
 
     @Transactional(noRollbackFor = BusinessException.class)
     public SchedulePreviewResponse get(UUID previewId) {
-        if (useFastApiDelegate()) {
-            return getViaFastApi(previewId);
+        return requireFastApiScheduleClient().getPreview(previewId);
+    }
+
+    private FastApiScheduleClient requireFastApiScheduleClient() {
+        if (fastApiScheduleClient == null || !fastApiScheduleClient.enabled()) {
+            throw new BusinessException(ErrorCode.EXTERNAL_PROVIDER_UNAVAILABLE);
         }
-        return getLegacyPreview(previewId);
-    }
-
-    private SchedulePreviewResponse getViaFastApi(UUID previewId) {
-        return fastApiScheduleClient.getPreview(previewId);
-    }
-
-    /**
-     * Legacy preview store lookup kept for rollback and historical data access when
-     * FastAPI delegation is disabled.
-     */
-    private SchedulePreviewResponse getLegacyPreview(UUID previewId) {
-        SchedulePreview preview = find(previewId);
-        if (!"CONSUMED".equals(preview.getStatus()) && isExpired(preview)) {
-            preview.expire();
-            throw new BusinessException(ErrorCode.PREVIEW_EXPIRED);
-        }
-        UUID scheduleId = scheduleRepository.findIdByPreviewId(previewId).orElse(null);
-        return toResponse(preview, scheduleId);
-    }
-
-    @Transactional(readOnly = true)
-    public SchedulePreview requireGeneratable(UUID previewId) {
-        SchedulePreview preview = find(previewId);
-        if (isExpired(preview)) {
-            throw new BusinessException(ErrorCode.PREVIEW_EXPIRED);
-        }
-        if ("CONSUMED".equals(preview.getStatus())) {
-            throw new PreviewAlreadyConsumedException(
-                    scheduleRepository.findIdByPreviewId(previewId).orElse(null));
-        }
-        if (!"READY".equals(preview.getStatus())) {
-            throw new BusinessException(ErrorCode.INVALID_SCHEDULE_PREVIEW_REQUEST);
-        }
-        return preview;
-    }
-
-    public SchedulePreviewCreateRequest readInput(SchedulePreview preview) {
-        return readJson(preview.getInputJson(), SchedulePreviewCreateRequest.class);
-    }
-
-    public List<SchedulePreviewResponse.ResolvedDay> readResolvedDays(SchedulePreview preview) {
-        return readJson(preview.getResolvedDaysJson(), new TypeReference<>() { });
-    }
-
-    public List<SchedulePreviewResponse.Warning> readWarnings(SchedulePreview preview) {
-        return readJson(preview.getWarningsJson(), new TypeReference<>() { });
-    }
-
-    public SchedulePreviewResponse.InterpretedPrompt readInterpretedPrompt(SchedulePreview preview) {
-        return readJson(preview.getInterpretedPromptJson(),
-                SchedulePreviewResponse.InterpretedPrompt.class);
-    }
-
-    private SchedulePreview find(UUID previewId) {
-        return previewRepository.findById(previewId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.SCHEDULE_PREVIEW_NOT_FOUND));
-    }
-
-    private boolean isExpired(SchedulePreview preview) {
-        return "EXPIRED".equals(preview.getStatus())
-                || OffsetDateTime.now(clock).isAfter(preview.getExpiresAt());
-    }
-
-    private boolean useFastApiDelegate() {
-        return fastApiScheduleClient != null && fastApiScheduleClient.enabled();
+        return fastApiScheduleClient;
     }
 
     private ValidationContext validate(SchedulePreviewCreateRequest request) {
