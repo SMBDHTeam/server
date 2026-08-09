@@ -217,7 +217,7 @@ public class FastApiScheduleClient {
                 request.endDate(),
                 request.startLocation(),
                 request.startTime(),
-                request.lodgingPlan(),
+                normalizeLodgingPlan(request.lodgingPlan()),
                 request.endConstraint(),
                 request.selectedAnswers(),
                 request.mustVisitPlaceIdsOrEmpty(),
@@ -225,6 +225,16 @@ public class FastApiScheduleClient {
                 request.dayOverridesOrEmpty(),
                 request.customPrompt(),
                 request.timeZone()
+        );
+    }
+
+    private SchedulePreviewCreateRequest.LodgingPlan normalizeLodgingPlan(
+            SchedulePreviewCreateRequest.LodgingPlan lodgingPlan
+    ) {
+        return new SchedulePreviewCreateRequest.LodgingPlan(
+                lodgingPlan.mode(),
+                lodgingPlan.baseLocation(),
+                lodgingPlan.nightStaysOrEmpty()
         );
     }
 }
