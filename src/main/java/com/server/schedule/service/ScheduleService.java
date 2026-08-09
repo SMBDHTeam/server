@@ -168,123 +168,7 @@ public class ScheduleService {
     }
 
     public ScheduleResponse create(ScheduleCreateRequest request) {
-        if (useFastApiDelegate()) {
-            return createViaFastApi(request);
-        }
-        return createLegacySchedule(request);
-    }
-
-    public ScheduleResponse createFromPreview(
-            ScheduleCreateRequest request,
-            SchedulePreview preview,
-            List<SchedulePreviewResponse.ResolvedDay> resolvedDays,
-            List<String> planningWarnings,
-            List<SchedulePreviewCreateRequest.FixedEvent> fixedEvents,
-            String customPrompt
-    ) {
-        return createLegacyScheduleFromPreview(request, new PreviewPlanningOptions(
-                preview, resolvedDays, planningWarnings, fixedEvents, customPrompt));
-    }
-
-    private ScheduleResponse createViaFastApi(ScheduleCreateRequest request) {
-        return fastApiScheduleClient.createSchedule(request);
-    }
-
-    /**
-     * Legacy Spring schedule planner kept as a rollback path while FastAPI owns
-     * schedule generation in the primary runtime path.
-     */
-    private ScheduleResponse createLegacySchedule(ScheduleCreateRequest request) {
-        return createLegacyScheduleFromPreview(request, null);
-    }
-
-    private ScheduleResponse createLegacyScheduleFromPreview(
-            ScheduleCreateRequest request,
-            PreviewPlanningOptions planningOptions
-    ) {
-        try (ExternalCallMetricsCollector.Scope externalMetrics = externalCallMetricsCollector.start()) {
-        long startedAt = System.nanoTime();
-        PlannerExecutionMetrics executionMetrics = new PlannerExecutionMetrics();
-        if (planningOptions == null) requestValidator.validate(request);
-        int tripDays = tripDays(request);
-        List<PlaceCountPolicy> dailyPlaceCountPolicies = planningOptions == null
-                ? dailyPlaceCountPolicies(request, tripDays)
-                : planningOptions.resolvedDays().stream()
-                        .map(day -> placeCountPolicyForAvailableMinutes(
-                                Duration.between(day.availableFrom(), day.availableUntil()).toMinutes(), request))
-                        .toList();
-        ScheduleCreateRequest.Location overallStart = planningOptions == null
-                ? overallStartLocation(request)
-                : toCreateLocation(planningOptions.resolvedDays().get(0).startLocation(), request.startLocation());
-        ScheduleCreateRequest.Location overallEnd = planningOptions == null
-                ? overallEndLocation(request, tripDays)
-                : toCreateLocation(planningOptions.resolvedDays().get(tripDays - 1).endLocation(), null);
-        Schedule schedule = new Schedule(
-                request.startDate(),
-                request.endDate(),
-                request.dailyStartTime(),
-                request.dailyEndTime(),
-                overallStart.name(),
-                overallStart.longitude(),
-                overallStart.latitude(),
-                overallEnd == null ? null : overallEnd.name(),
-                overallEnd == null ? null : overallEnd.longitude(),
-                overallEnd == null ? null : overallEnd.latitude(),
-                styleSummary(request),
-                conditionJson(request)
-        );
-
-        List<ScheduleDay> days = planningOptions == null
-                ? createDays(schedule, request)
-                : createResolvedDays(schedule, planningOptions.resolvedDays());
-        List<SchedulePreviewCreateRequest.FixedEvent> fixedEvents = planningOptions == null
-                ? List.of() : planningOptions.fixedEvents();
-        dailyPlaceCountPolicies = policiesWithRequiredCapacity(
-                dailyPlaceCountPolicies, days, request.mustVisitPlaceIdsOrEmpty().size(), fixedEvents);
-        List<Integer> dailyStopTargets = targetCounts(dailyPlaceCountPolicies);
-        PlaceCandidateProvider.ResolvedPlaces resolvedPlaces = placeCandidateProvider.resolve(
-                request, dailyStopTargets, days);
-        dailyPlaceCountPolicies = policiesForAvailableCandidates(
-                dailyPlaceCountPolicies, days, resolvedPlaces.places().size(), fixedEvents);
-        int reducedOptionalStops = createStopsAndRoutes(
-                days, resolvedPlaces, dailyPlaceCountPolicies, request, executionMetrics,
-                fixedEvents,
-                planningOptions == null ? null : planningOptions.customPrompt());
-        if (planningOptions != null) {
-            List<String> warnings = new ArrayList<>(planningOptions.planningWarnings());
-            if (reducedOptionalStops > 0) {
-                warnings.add("OPTIONAL_STOPS_REDUCED_FOR_FEASIBILITY");
-            }
-            schedule.applyPreview(
-                    planningOptions.preview(), planningOptions.preview().getTimeZone(),
-                    planningOptions.preview().getLodgingMode(), planningOptions.preview().getRouteCoverage(),
-                    jsonArray(warnings));
-        }
-        ScheduleHardGateResult hardGateResult = hardGateEvaluator.evaluate(
-                schedule,
-                resolvedPlaces.mustVisitPlaceIds()
-        );
-        if (!hardGateResult.passed()) {
-            throw new BusinessException(ErrorCode.INVALID_SCHEDULE_CONDITION);
-        }
-
-        persistenceService.save(schedule);
-        ScheduleResponse response = toResponse(schedule);
-        ScheduleScoreResult scoreResult = scoreEvaluator.evaluate(request, response);
-        long generationMillis = Duration.ofNanos(System.nanoTime() - startedAt).toMillis();
-        return withEvaluation(
-                response,
-                evaluationReport(
-                        hardGateResult,
-                        scoreResult,
-                        schedule,
-                        response,
-                        executionMetrics,
-                        externalMetrics.snapshot(),
-                        generationMillis
-                )
-        );
-        }
+        return requireFastApiScheduleClient().createSchedule(request);
     }
 
     private ScheduleCreateRequest.Location toCreateLocation(
@@ -316,37 +200,12 @@ public class ScheduleService {
 
     @Transactional(readOnly = true)
     public ScheduleListResponse getAll() {
-        if (useFastApiDelegate()) {
-            return getAllViaFastApi();
-        }
-        return getAllLegacySchedules();
-    }
-
-    private ScheduleListResponse getAllViaFastApi() {
-        return fastApiScheduleClient.listSchedules();
-    }
-
-    private ScheduleListResponse getAllLegacySchedules() {
-        return new ScheduleListResponse(scheduleRepository.findAllByOrderByStartDateAscCreatedAtDesc()
-                .stream()
-                .map(this::toResponse)
-                .toList());
+        return requireFastApiScheduleClient().listSchedules();
     }
 
     @Transactional(readOnly = true)
     public ScheduleResponse get(UUID scheduleId) {
-        if (useFastApiDelegate()) {
-            return getViaFastApi(scheduleId);
-        }
-        return getLegacySchedule(scheduleId);
-    }
-
-    private ScheduleResponse getViaFastApi(UUID scheduleId) {
-        return fastApiScheduleClient.getSchedule(scheduleId);
-    }
-
-    private ScheduleResponse getLegacySchedule(UUID scheduleId) {
-        return toResponse(findSchedule(scheduleId));
+        return requireFastApiScheduleClient().getSchedule(scheduleId);
     }
 
     /**
@@ -355,26 +214,7 @@ public class ScheduleService {
      * plan against the stored schedule, call the provider, then apply everything at once.
      */
     public ScheduleResponse update(UUID scheduleId, ScheduleUpdateRequest request) {
-        if (useFastApiDelegate()) {
-            return updateViaFastApi(scheduleId, request);
-        }
-        return updateLegacySchedule(scheduleId, request);
-    }
-
-    private ScheduleResponse updateViaFastApi(UUID scheduleId, ScheduleUpdateRequest request) {
-        return fastApiScheduleClient.updateSchedule(scheduleId, request);
-    }
-
-    /**
-     * Legacy route recalculation path kept for rollback while FastAPI handles schedule
-     * updates in the primary runtime path.
-     */
-    private ScheduleResponse updateLegacySchedule(UUID scheduleId, ScheduleUpdateRequest request) {
-        RouteRevisionPlan plan = readOnlyTransactionTemplate.execute(
-                status -> planRouteRevision(scheduleId, request));
-        List<TransitRouteResult> resolvedRoutes = resolveRevisionRoutes(plan);
-        return transactionTemplate.execute(
-                status -> applyRouteRevision(scheduleId, request, plan, resolvedRoutes));
+        return requireFastApiScheduleClient().updateSchedule(scheduleId, request);
     }
 
     /**
@@ -581,48 +421,14 @@ public class ScheduleService {
 
     @Transactional(readOnly = true)
     public ScheduleMapResponse getMap(UUID scheduleId, Integer dayNo) {
-        if (useFastApiDelegate()) {
-            return getMapViaFastApi(scheduleId, dayNo);
+        return requireFastApiScheduleClient().getScheduleMap(scheduleId, dayNo);
+    }
+
+    private FastApiScheduleClient requireFastApiScheduleClient() {
+        if (fastApiScheduleClient == null || !fastApiScheduleClient.enabled()) {
+            throw new BusinessException(ErrorCode.EXTERNAL_PROVIDER_UNAVAILABLE);
         }
-        return getLegacyScheduleMap(scheduleId, dayNo);
-    }
-
-    private ScheduleMapResponse getMapViaFastApi(UUID scheduleId, Integer dayNo) {
-        return fastApiScheduleClient.getScheduleMap(scheduleId, dayNo);
-    }
-
-    /**
-     * Legacy Spring map builder kept for rollback while FastAPI serves map responses
-     * in the primary runtime path.
-     */
-    private ScheduleMapResponse getLegacyScheduleMap(UUID scheduleId, Integer dayNo) {
-        Schedule schedule = findSchedule(scheduleId);
-        List<ScheduleDay> days = schedule.getDays()
-                .stream()
-                .filter(day -> dayNo == null || day.getDayNo() == dayNo)
-                .toList();
-
-        ScheduleDay firstDay = days.isEmpty() ? schedule.getDays().get(0) : days.get(0);
-        ScheduleDay lastDay = days.isEmpty() ? schedule.getDays().get(schedule.getDays().size() - 1) : days.get(days.size() - 1);
-        return new ScheduleMapResponse(
-                firstDay.getStartLongitude() == null ? null : new ScheduleMapResponse.Marker(
-                        firstDay.getStartPlaceName(), firstDay.getStartLongitude(), firstDay.getStartLatitude()),
-                lastDay.getEndLongitude() == null ? null : new ScheduleMapResponse.Marker(
-                        lastDay.getEndPlaceName(), lastDay.getEndLongitude(), lastDay.getEndLatitude()),
-                days.stream()
-                        .flatMap(day -> {
-                            Map<UUID, StopTime> stopTimes = stopTimes(schedule, day);
-                            return day.getStops()
-                                    .stream()
-                                    .map(stop -> toStopMarker(day, stop, stopTimes.get(stop.getId())));
-                        })
-                        .toList(),
-                days.stream()
-                        .flatMap(day -> day.getTransitRoutes()
-                                .stream()
-                                .flatMap(route -> toRouteLines(schedule, day, route).stream()))
-                        .toList()
-        );
+        return fastApiScheduleClient;
     }
 
     private Schedule findSchedule(UUID scheduleId) {
