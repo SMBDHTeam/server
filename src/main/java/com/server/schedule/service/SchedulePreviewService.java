@@ -113,8 +113,20 @@ public class SchedulePreviewService {
     @Transactional
     public SchedulePreviewResponse create(SchedulePreviewCreateRequest request) {
         if (useFastApiDelegate()) {
-            return fastApiScheduleClient.createPreview(request);
+            return createViaFastApi(request);
         }
+        return createLegacyPreview(request);
+    }
+
+    private SchedulePreviewResponse createViaFastApi(SchedulePreviewCreateRequest request) {
+        return fastApiScheduleClient.createPreview(request);
+    }
+
+    /**
+     * Legacy Spring preview planner kept as a rollback path while FastAPI delegation
+     * is being stabilized in dev/prod.
+     */
+    private SchedulePreviewResponse createLegacyPreview(SchedulePreviewCreateRequest request) {
         request = normalize(request);
         ValidationContext context = validate(request);
         Resolution resolution = resolve(request, context);
@@ -163,8 +175,20 @@ public class SchedulePreviewService {
     @Transactional(noRollbackFor = BusinessException.class)
     public SchedulePreviewResponse get(UUID previewId) {
         if (useFastApiDelegate()) {
-            return fastApiScheduleClient.getPreview(previewId);
+            return getViaFastApi(previewId);
         }
+        return getLegacyPreview(previewId);
+    }
+
+    private SchedulePreviewResponse getViaFastApi(UUID previewId) {
+        return fastApiScheduleClient.getPreview(previewId);
+    }
+
+    /**
+     * Legacy preview store lookup kept for rollback and historical data access when
+     * FastAPI delegation is disabled.
+     */
+    private SchedulePreviewResponse getLegacyPreview(UUID previewId) {
         SchedulePreview preview = find(previewId);
         if (!"CONSUMED".equals(preview.getStatus()) && isExpired(preview)) {
             preview.expire();

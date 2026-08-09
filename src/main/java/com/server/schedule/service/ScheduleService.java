@@ -169,9 +169,9 @@ public class ScheduleService {
 
     public ScheduleResponse create(ScheduleCreateRequest request) {
         if (useFastApiDelegate()) {
-            return fastApiScheduleClient.createSchedule(request);
+            return createViaFastApi(request);
         }
-        return createInternal(request, null);
+        return createLegacySchedule(request);
     }
 
     public ScheduleResponse createFromPreview(
@@ -182,11 +182,23 @@ public class ScheduleService {
             List<SchedulePreviewCreateRequest.FixedEvent> fixedEvents,
             String customPrompt
     ) {
-        return createInternal(request, new PreviewPlanningOptions(
+        return createLegacyScheduleFromPreview(request, new PreviewPlanningOptions(
                 preview, resolvedDays, planningWarnings, fixedEvents, customPrompt));
     }
 
-    private ScheduleResponse createInternal(
+    private ScheduleResponse createViaFastApi(ScheduleCreateRequest request) {
+        return fastApiScheduleClient.createSchedule(request);
+    }
+
+    /**
+     * Legacy Spring schedule planner kept as a rollback path while FastAPI owns
+     * schedule generation in the primary runtime path.
+     */
+    private ScheduleResponse createLegacySchedule(ScheduleCreateRequest request) {
+        return createLegacyScheduleFromPreview(request, null);
+    }
+
+    private ScheduleResponse createLegacyScheduleFromPreview(
             ScheduleCreateRequest request,
             PreviewPlanningOptions planningOptions
     ) {
@@ -305,8 +317,16 @@ public class ScheduleService {
     @Transactional(readOnly = true)
     public ScheduleListResponse getAll() {
         if (useFastApiDelegate()) {
-            return fastApiScheduleClient.listSchedules();
+            return getAllViaFastApi();
         }
+        return getAllLegacySchedules();
+    }
+
+    private ScheduleListResponse getAllViaFastApi() {
+        return fastApiScheduleClient.listSchedules();
+    }
+
+    private ScheduleListResponse getAllLegacySchedules() {
         return new ScheduleListResponse(scheduleRepository.findAllByOrderByStartDateAscCreatedAtDesc()
                 .stream()
                 .map(this::toResponse)
@@ -316,8 +336,16 @@ public class ScheduleService {
     @Transactional(readOnly = true)
     public ScheduleResponse get(UUID scheduleId) {
         if (useFastApiDelegate()) {
-            return fastApiScheduleClient.getSchedule(scheduleId);
+            return getViaFastApi(scheduleId);
         }
+        return getLegacySchedule(scheduleId);
+    }
+
+    private ScheduleResponse getViaFastApi(UUID scheduleId) {
+        return fastApiScheduleClient.getSchedule(scheduleId);
+    }
+
+    private ScheduleResponse getLegacySchedule(UUID scheduleId) {
         return toResponse(findSchedule(scheduleId));
     }
 
@@ -328,8 +356,20 @@ public class ScheduleService {
      */
     public ScheduleResponse update(UUID scheduleId, ScheduleUpdateRequest request) {
         if (useFastApiDelegate()) {
-            return fastApiScheduleClient.updateSchedule(scheduleId, request);
+            return updateViaFastApi(scheduleId, request);
         }
+        return updateLegacySchedule(scheduleId, request);
+    }
+
+    private ScheduleResponse updateViaFastApi(UUID scheduleId, ScheduleUpdateRequest request) {
+        return fastApiScheduleClient.updateSchedule(scheduleId, request);
+    }
+
+    /**
+     * Legacy route recalculation path kept for rollback while FastAPI handles schedule
+     * updates in the primary runtime path.
+     */
+    private ScheduleResponse updateLegacySchedule(UUID scheduleId, ScheduleUpdateRequest request) {
         RouteRevisionPlan plan = readOnlyTransactionTemplate.execute(
                 status -> planRouteRevision(scheduleId, request));
         List<TransitRouteResult> resolvedRoutes = resolveRevisionRoutes(plan);
@@ -542,8 +582,20 @@ public class ScheduleService {
     @Transactional(readOnly = true)
     public ScheduleMapResponse getMap(UUID scheduleId, Integer dayNo) {
         if (useFastApiDelegate()) {
-            return fastApiScheduleClient.getScheduleMap(scheduleId, dayNo);
+            return getMapViaFastApi(scheduleId, dayNo);
         }
+        return getLegacyScheduleMap(scheduleId, dayNo);
+    }
+
+    private ScheduleMapResponse getMapViaFastApi(UUID scheduleId, Integer dayNo) {
+        return fastApiScheduleClient.getScheduleMap(scheduleId, dayNo);
+    }
+
+    /**
+     * Legacy Spring map builder kept for rollback while FastAPI serves map responses
+     * in the primary runtime path.
+     */
+    private ScheduleMapResponse getLegacyScheduleMap(UUID scheduleId, Integer dayNo) {
         Schedule schedule = findSchedule(scheduleId);
         List<ScheduleDay> days = schedule.getDays()
                 .stream()

@@ -54,9 +54,27 @@ public class ScheduleV2Service {
             String idempotencyKey
     ) {
         if (useFastApiDelegate()) {
-            validateKey(idempotencyKey);
-            return fastApiScheduleClient.createScheduleFromPreview(request, idempotencyKey);
+            return createViaFastApi(request, idempotencyKey);
         }
+        return createLegacyScheduleFromPreview(request, idempotencyKey);
+    }
+
+    private ScheduleResponse createViaFastApi(
+            SchedulePreviewScheduleRequest request,
+            String idempotencyKey
+    ) {
+        validateKey(idempotencyKey);
+        return fastApiScheduleClient.createScheduleFromPreview(request, idempotencyKey);
+    }
+
+    /**
+     * Legacy Spring preview-to-schedule orchestration kept as a rollback path while
+     * FastAPI owns schedule generation in the primary runtime path.
+     */
+    private ScheduleResponse createLegacyScheduleFromPreview(
+            SchedulePreviewScheduleRequest request,
+            String idempotencyKey
+    ) {
         validateKey(idempotencyKey);
         String requestHash = sha256(request.previewId().toString());
         ScheduleCreationPersistenceService.ExistingRequest existing = persistenceService.find(idempotencyKey)
