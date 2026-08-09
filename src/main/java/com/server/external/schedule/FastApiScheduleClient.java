@@ -15,6 +15,8 @@ import com.server.schedule.dto.ScheduleUpdateRequest;
 import java.util.UUID;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.MediaType;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClient;
@@ -22,6 +24,8 @@ import org.springframework.web.client.RestClientResponseException;
 
 @Component
 public class FastApiScheduleClient {
+
+    private static final Logger log = LoggerFactory.getLogger(FastApiScheduleClient.class);
 
     private final RestClient restClient;
     private final FastApiScheduleProperties properties;
@@ -164,6 +168,8 @@ public class FastApiScheduleClient {
     }
 
     private BusinessException mapPreviewError(RestClientResponseException exception) {
+        log.warn("FastAPI preview request failed. statusCode={}, responseBody={}",
+                exception.getStatusCode(), exception.getResponseBodyAsString());
         return switch (exception.getStatusCode().value()) {
             case 400 -> new BusinessException(ErrorCode.INVALID_SCHEDULE_PREVIEW_REQUEST, exception);
             case 404 -> new BusinessException(ErrorCode.SCHEDULE_PREVIEW_NOT_FOUND, exception);
@@ -174,6 +180,8 @@ public class FastApiScheduleClient {
     }
 
     private BusinessException mapScheduleError(RestClientResponseException exception) {
+        log.warn("FastAPI schedule request failed. statusCode={}, responseBody={}",
+                exception.getStatusCode(), exception.getResponseBodyAsString());
         return switch (exception.getStatusCode().value()) {
             case 400 -> new BusinessException(ErrorCode.INVALID_SCHEDULE_CONDITION, exception);
             case 404 -> new BusinessException(ErrorCode.SCHEDULE_NOT_FOUND, exception);
