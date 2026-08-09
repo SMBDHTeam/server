@@ -2,6 +2,7 @@ package com.server.schedule.service;
 
 import com.server.common.error.BusinessException;
 import com.server.common.error.ErrorCode;
+import com.server.external.schedule.FastApiScheduleClient;
 import com.server.external.metrics.ExternalCallMetricsCollector;
 import com.server.place.domain.Place;
 import com.server.place.repository.PlaceRepository;
@@ -78,6 +79,7 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Transactional;
@@ -113,6 +115,7 @@ public class ScheduleService {
     private final ScheduleRepairEngine scheduleRepairEngine;
     private final TransactionTemplate transactionTemplate;
     private final TransactionTemplate readOnlyTransactionTemplate;
+    private FastApiScheduleClient fastApiScheduleClient;
 
     public ScheduleService(
             ScheduleRepository scheduleRepository,
@@ -159,7 +162,15 @@ public class ScheduleService {
         this.scheduleRepairEngine = scheduleRepairEngine;
     }
 
+    @Autowired(required = false)
+    void setFastApiScheduleClient(FastApiScheduleClient fastApiScheduleClient) {
+        this.fastApiScheduleClient = fastApiScheduleClient;
+    }
+
     public ScheduleResponse create(ScheduleCreateRequest request) {
+        if (useFastApiDelegate()) {
+            return fastApiScheduleClient.createSchedule(request);
+        }
         return createInternal(request, null);
     }
 
@@ -293,6 +304,9 @@ public class ScheduleService {
 
     @Transactional(readOnly = true)
     public ScheduleListResponse getAll() {
+        if (useFastApiDelegate()) {
+            return fastApiScheduleClient.listSchedules();
+        }
         return new ScheduleListResponse(scheduleRepository.findAllByOrderByStartDateAscCreatedAtDesc()
                 .stream()
                 .map(this::toResponse)
@@ -301,6 +315,9 @@ public class ScheduleService {
 
     @Transactional(readOnly = true)
     public ScheduleResponse get(UUID scheduleId) {
+        if (useFastApiDelegate()) {
+            return fastApiScheduleClient.getSchedule(scheduleId);
+        }
         return toResponse(findSchedule(scheduleId));
     }
 
@@ -310,6 +327,9 @@ public class ScheduleService {
      * plan against the stored schedule, call the provider, then apply everything at once.
      */
     public ScheduleResponse update(UUID scheduleId, ScheduleUpdateRequest request) {
+        if (useFastApiDelegate()) {
+            return fastApiScheduleClient.updateSchedule(scheduleId, request);
+        }
         RouteRevisionPlan plan = readOnlyTransactionTemplate.execute(
                 status -> planRouteRevision(scheduleId, request));
         List<TransitRouteResult> resolvedRoutes = resolveRevisionRoutes(plan);
@@ -521,6 +541,9 @@ public class ScheduleService {
 
     @Transactional(readOnly = true)
     public ScheduleMapResponse getMap(UUID scheduleId, Integer dayNo) {
+        if (useFastApiDelegate()) {
+            return fastApiScheduleClient.getScheduleMap(scheduleId, dayNo);
+        }
         Schedule schedule = findSchedule(scheduleId);
         List<ScheduleDay> days = schedule.getDays()
                 .stream()
@@ -2490,5 +2513,9 @@ public class ScheduleService {
             coordinates.add(List.of(new BigDecimal(matcher.group(1)), new BigDecimal(matcher.group(2))));
         }
         return coordinates;
+    }
+
+    private boolean useFastApiDelegate() {
+        return fastApiScheduleClient != null && fastApiScheduleClient.enabled();
     }
 }

@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.server.common.error.BusinessException;
 import com.server.common.error.ErrorCode;
+import com.server.external.schedule.FastApiScheduleClient;
 import com.server.schedule.domain.SchedulePreview;
 import com.server.schedule.dto.ScheduleCreateRequest;
 import com.server.schedule.dto.SchedulePreviewCreateRequest;
@@ -19,6 +20,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -28,6 +30,7 @@ public class ScheduleV2Service {
     private final ScheduleService scheduleService;
     private final ScheduleCreationPersistenceService persistenceService;
     private final ObjectMapper objectMapper;
+    private FastApiScheduleClient fastApiScheduleClient;
 
     public ScheduleV2Service(
             SchedulePreviewService previewService,
@@ -41,10 +44,19 @@ public class ScheduleV2Service {
         this.objectMapper = objectMapper;
     }
 
+    @Autowired(required = false)
+    void setFastApiScheduleClient(FastApiScheduleClient fastApiScheduleClient) {
+        this.fastApiScheduleClient = fastApiScheduleClient;
+    }
+
     public ScheduleResponse create(
             SchedulePreviewScheduleRequest request,
             String idempotencyKey
     ) {
+        if (useFastApiDelegate()) {
+            validateKey(idempotencyKey);
+            return fastApiScheduleClient.createScheduleFromPreview(request, idempotencyKey);
+        }
         validateKey(idempotencyKey);
         String requestHash = sha256(request.previewId().toString());
         ScheduleCreationPersistenceService.ExistingRequest existing = persistenceService.find(idempotencyKey)
@@ -177,5 +189,9 @@ public class ScheduleV2Service {
         } catch (NoSuchAlgorithmException exception) {
             throw new IllegalStateException("SHA-256 is not available", exception);
         }
+    }
+
+    private boolean useFastApiDelegate() {
+        return fastApiScheduleClient != null && fastApiScheduleClient.enabled();
     }
 }

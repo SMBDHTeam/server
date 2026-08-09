@@ -76,6 +76,11 @@ app:
     base-url: ${PLACE_THEME_AI_BASE_URL:http://127.0.0.1:8010}
     connect-timeout: ${PLACE_THEME_AI_CONNECT_TIMEOUT:1s}
     read-timeout: ${PLACE_THEME_AI_READ_TIMEOUT:3s}
+  schedule-fastapi:
+    enabled: ${SCHEDULE_FASTAPI_ENABLED:false}
+    base-url: ${SCHEDULE_FASTAPI_BASE_URL:${PLACE_THEME_AI_BASE_URL:http://127.0.0.1:8010}}
+    connect-timeout: ${SCHEDULE_FASTAPI_CONNECT_TIMEOUT:3s}
+    read-timeout: ${SCHEDULE_FASTAPI_READ_TIMEOUT:15s}
   place-ingestion:
     tour-api:
       enabled: ${TOUR_API_PLACE_INGESTION_ENABLED:false}
