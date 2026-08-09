@@ -1,5 +1,7 @@
 package com.server.external.schedule;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.server.common.error.BusinessException;
 import com.server.common.error.ErrorCode;
 import com.server.schedule.dto.ScheduleCreateRequest;
@@ -23,13 +25,16 @@ public class FastApiScheduleClient {
 
     private final RestClient restClient;
     private final FastApiScheduleProperties properties;
+    private final ObjectMapper objectMapper;
 
     public FastApiScheduleClient(
             @Qualifier("fastApiScheduleRestClient") RestClient restClient,
-            FastApiScheduleProperties properties
+            FastApiScheduleProperties properties,
+            ObjectMapper objectMapper
     ) {
         this.restClient = restClient;
         this.properties = properties;
+        this.objectMapper = objectMapper;
     }
 
     public boolean enabled() {
@@ -41,7 +46,7 @@ public class FastApiScheduleClient {
             return restClient.post()
                     .uri("/api/v1/schedule-previews")
                     .contentType(MediaType.APPLICATION_JSON)
-                    .body(request)
+                    .body(writeJson(request))
                     .retrieve()
                     .body(SchedulePreviewResponse.class);
         } catch (RestClientResponseException exception) {
@@ -69,7 +74,7 @@ public class FastApiScheduleClient {
             return restClient.post()
                     .uri("/api/v1/schedules")
                     .contentType(MediaType.APPLICATION_JSON)
-                    .body(request)
+                    .body(writeJson(request))
                     .retrieve()
                     .body(ScheduleResponse.class);
         } catch (RestClientResponseException exception) {
@@ -88,7 +93,7 @@ public class FastApiScheduleClient {
                     .uri("/api/v1/schedules")
                     .contentType(MediaType.APPLICATION_JSON)
                     .header("Idempotency-Key", idempotencyKey)
-                    .body(request)
+                    .body(writeJson(request))
                     .retrieve()
                     .body(ScheduleResponse.class);
         } catch (RestClientResponseException exception) {
@@ -129,7 +134,7 @@ public class FastApiScheduleClient {
             return restClient.patch()
                     .uri("/api/v1/schedules/{scheduleId}", scheduleId)
                     .contentType(MediaType.APPLICATION_JSON)
-                    .body(request)
+                    .body(writeJson(request))
                     .retrieve()
                     .body(ScheduleResponse.class);
         } catch (RestClientResponseException exception) {
@@ -188,5 +193,13 @@ public class FastApiScheduleClient {
             return new BusinessException(ErrorCode.PREVIEW_ALREADY_CONSUMED, exception);
         }
         return new BusinessException(ErrorCode.IDEMPOTENCY_KEY_REUSED, exception);
+    }
+
+    private String writeJson(Object value) {
+        try {
+            return objectMapper.writeValueAsString(value);
+        } catch (JsonProcessingException exception) {
+            throw new IllegalStateException("Failed to serialize FastAPI schedule request", exception);
+        }
     }
 }
