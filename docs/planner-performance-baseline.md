@@ -1,3 +1,8 @@
+> **보관 문서 (2026-08-10)**
+> Spring의 Planner 구현은 FastAPI(`data` 레포)로 이전되면서 삭제됐다.
+> 이 문서는 당시 설계 의도와 품질 기준을 남기기 위한 기록이며 현재 Spring 코드와 대응하지 않는다.
+> 현재 구조는 [schedule-fastapi-migration.md](schedule-fastapi-migration.md)를 참고한다.
+
 # 일정 Planner 성능 기준선
 
 ## 목적
