@@ -9,7 +9,7 @@ import java.util.Map;
  * understands.
  *
  * <p>Naver returns free-form Korean categories such as {@code 음식점>한식>육류,고기요리} and no
- * content type. Without one, {@link com.server.schedule.planner.VisitDurationPolicy} falls back
+ * content type. Without one, the schedule layer falls back
  * to a flat dwell time and {@link TourApiThemeMapper}'s content type rules never fire, so a place
  * the traveller picked themselves would be planned worse than an ingested one. Deriving a content
  * type at registration time keeps both paths identical.
