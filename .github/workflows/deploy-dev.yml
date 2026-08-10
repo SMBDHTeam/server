@@ -178,7 +178,13 @@ jobs:
             printf 'SPRING_DATASOURCE_URL=%s\n' "$SPRING_DATASOURCE_URL"
             printf 'SPRING_DATASOURCE_USERNAME=%s\n' "$SPRING_DATASOURCE_USERNAME"
             printf 'SPRING_DATASOURCE_PASSWORD=%s\n' "$SPRING_DATASOURCE_PASSWORD"
-          
+
+            # 일정 생성/조회를 FastAPI(data-ai)에 위임한다.
+            # 이 값이 없으면 기본값 false로 기동해 일정 API 전체가 503을 반환한다.
+            # base-url은 끝에 슬래시를 붙이지 않는다. 붙이면 //api/v1/... 로 요청이 나가 404가 된다.
+            printf 'SCHEDULE_FASTAPI_ENABLED=true\n'
+            printf 'SCHEDULE_FASTAPI_BASE_URL=http://data-ai:8010\n'
+
             printf 'PLACE_THEME_AI_ENABLED=true\n'
             printf 'PLACE_THEME_AI_BASE_URL=http://data-ai:8010/\n'
 
