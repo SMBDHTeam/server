@@ -171,33 +171,6 @@ public class ScheduleService {
         return requireFastApiScheduleClient().createSchedule(request);
     }
 
-    private ScheduleCreateRequest.Location toCreateLocation(
-            SchedulePreviewResponse.Location location,
-            ScheduleCreateRequest.Location fallback
-    ) {
-        if (location == null) return fallback;
-        return new ScheduleCreateRequest.Location(location.name(), location.longitude(), location.latitude());
-    }
-
-    private List<ScheduleDay> createResolvedDays(
-            Schedule schedule,
-            List<SchedulePreviewResponse.ResolvedDay> resolvedDays
-    ) {
-        List<ScheduleDay> days = new ArrayList<>();
-        for (int index = 0; index < resolvedDays.size(); index++) {
-            SchedulePreviewResponse.ResolvedDay resolved = resolvedDays.get(index);
-            SchedulePreviewResponse.Location start = resolved.startLocation();
-            SchedulePreviewResponse.Location end = resolved.endLocation();
-            days.add(new ScheduleDay(
-                    schedule, index + 1, resolved.date(), resolved.availableFrom(), resolved.availableUntil(),
-                    start == null ? null : start.name(), start == null ? null : start.longitude(),
-                    start == null ? null : start.latitude(), end == null ? null : end.name(),
-                    end == null ? null : end.longitude(), end == null ? null : end.latitude(),
-                    resolved.startLocationSource(), resolved.endLocationSource()));
-        }
-        return days;
-    }
-
     /**
      * 목록은 축약 응답만 반환한다. 방문지·경로·평가 리포트는 상세 조회에서 제공한다.
      * FastAPI가 아직 요약 엔드포인트를 제공하지 않아 전체 응답을 받아 여기서 줄인다.
@@ -221,208 +194,6 @@ public class ScheduleService {
         return requireFastApiScheduleClient().updateSchedule(scheduleId, request);
     }
 
-    /**
-     * Reads the stored schedule and works out which legs the revised itinerary needs,
-     * without writing anything. Endpoint decisions are predicted through the same domain
-     * rules that {@link ScheduleDay#resolvePlannerEndpoints} applies later.
-     */
-    private RouteRevisionPlan planRouteRevision(UUID scheduleId, ScheduleUpdateRequest request) {
-        Schedule schedule = findSchedule(scheduleId);
-        Map<Integer, ScheduleDay> dayByNumber = schedule.getDays().stream()
-                .collect(Collectors.toMap(ScheduleDay::getDayNo, Function.identity()));
-        Map<UUID, ScheduleStop> existingStopById = schedule.getDays().stream()
-                .flatMap(day -> day.getStops().stream())
-                .collect(Collectors.toMap(ScheduleStop::getId, Function.identity()));
-        validateUpdateRequest(request, dayByNumber, existingStopById);
-
-        Map<Long, Place> placeById = placesForUpdate(request);
-        List<RouteRevisionDay> days = new ArrayList<>();
-        for (ScheduleDay day : schedule.getDays()) {
-            List<Place> orderedPlaces = request.stops().stream()
-                    .filter(stop -> stop.dayNo() == day.getDayNo())
-                    .sorted(Comparator.comparingInt(ScheduleUpdateRequest.Stop::order))
-                    .map(stop -> stop.stopId() != null
-                            ? existingStopById.get(stop.stopId()).getPlace()
-                            : placeById.get(stop.placeId()))
-                    .toList();
-            days.add(new RouteRevisionDay(day.getDayNo(), List.copyOf(orderedPlaces),
-                    revisionLegs(day, orderedPlaces)));
-        }
-        return new RouteRevisionPlan(List.copyOf(days));
-    }
-
-    /**
-     * Mirrors the leg walk in {@link #recalculateRoutes} so the resolved routes line up
-     * one-to-one with what gets persisted.
-     */
-    private List<RouteRevisionLeg> revisionLegs(ScheduleDay day, List<Place> orderedPlaces) {
-        TransitPoint start = plannedStartPoint(day, orderedPlaces);
-        TransitPoint end = plannedEndPoint(day, orderedPlaces);
-        List<RouteRevisionLeg> legs = new ArrayList<>();
-        TransitPoint previous = start;
-        for (int index = 0; index < orderedPlaces.size(); index++) {
-            Place place = orderedPlaces.get(index);
-            TransitPoint destination = new TransitPoint(
-                    place.getName(), place.getLongitude(), place.getLatitude());
-            if (previous != null && !samePoint(previous, destination)) {
-                legs.add(new RouteRevisionLeg(previous, destination, index));
-            }
-            previous = destination;
-        }
-        if (end != null && previous != null && !samePoint(previous, end)) {
-            legs.add(new RouteRevisionLeg(previous, end, -1));
-        }
-        return List.copyOf(legs);
-    }
-
-    private TransitPoint plannedStartPoint(ScheduleDay day, List<Place> orderedPlaces) {
-        Place firstPlace = orderedPlaces.isEmpty() ? null : orderedPlaces.get(0);
-        if (day.adoptsStartFrom(firstPlace)) {
-            return new TransitPoint(
-                    firstPlace.getName(), firstPlace.getLongitude(), firstPlace.getLatitude());
-        }
-        if (day.getStartLongitude() == null) return null;
-        return new TransitPoint(
-                day.getStartPlaceName(), day.getStartLongitude(), day.getStartLatitude());
-    }
-
-    private TransitPoint plannedEndPoint(ScheduleDay day, List<Place> orderedPlaces) {
-        Place lastPlace = orderedPlaces.isEmpty() ? null : orderedPlaces.get(orderedPlaces.size() - 1);
-        if (day.adoptsEndFrom(lastPlace)) {
-            return new TransitPoint(
-                    lastPlace.getName(), lastPlace.getLongitude(), lastPlace.getLatitude());
-        }
-        if (day.getEndLongitude() == null) return null;
-        return new TransitPoint(
-                day.getEndPlaceName(), day.getEndLongitude(), day.getEndLatitude());
-    }
-
-    /** The only step that talks to a transit provider, and it holds no transaction. */
-    private List<TransitRouteResult> resolveRevisionRoutes(RouteRevisionPlan plan) {
-        RouteSearchContext routeSearch = new RouteSearchContext();
-        PlannerExecutionMetrics executionMetrics = new PlannerExecutionMetrics();
-        return plan.days().stream()
-                .flatMap(day -> day.legs().stream())
-                .map(leg -> resolveRoute(
-                        routeSearch, executionMetrics, leg.origin(), leg.destination()))
-                .toList();
-    }
-
-    private ScheduleResponse applyRouteRevision(
-            UUID scheduleId,
-            ScheduleUpdateRequest request,
-            RouteRevisionPlan plan,
-            List<TransitRouteResult> resolvedRoutes
-    ) {
-        Schedule schedule = applyStopRevision(scheduleId, request);
-        Map<Integer, ScheduleDay> dayByNumber = schedule.getDays().stream()
-                .collect(Collectors.toMap(ScheduleDay::getDayNo, Function.identity()));
-        int routeIndex = 0;
-        for (RouteRevisionDay plannedDay : plan.days()) {
-            ScheduleDay day = dayByNumber.get(plannedDay.dayNo());
-            resolvePlannerEndpoints(day, plannedDay.orderedPlaces());
-            List<ScheduleStop> stops = day.getStops();
-            for (RouteRevisionLeg leg : plannedDay.legs()) {
-                TransitRouteResult result = resolvedRoutes.get(routeIndex++);
-                boolean finalLeg = leg.stopIndex() < 0;
-                createRoute(
-                        day,
-                        finalLeg ? null : stops.get(leg.stopIndex()),
-                        finalLeg ? "FINAL" : "INBOUND",
-                        finalLeg ? stops.size() + 1 : stops.get(leg.stopIndex()).getStopOrder(),
-                        result);
-            }
-            List<Integer> requestedStayMinutes = stops.stream()
-                    .map(ScheduleStop::getStayMinutes)
-                    .toList();
-            if (!feasibilityChecker.fitWithinAvailableTime(day)) {
-                throw new BusinessException(ErrorCode.INVALID_SCHEDULE_CONDITION);
-            }
-            warnAboutShortenedStays(day, requestedStayMinutes);
-        }
-        schedule.touch();
-        return toResponse(schedule);
-    }
-
-    /**
-     * Fitting a day into its available window silently shortens stays, so the traveller has to
-     * be told which stop lost time and how much. Without this the response looks like the edit
-     * was applied exactly as asked.
-     */
-    private void warnAboutShortenedStays(ScheduleDay day, List<Integer> requestedStayMinutes) {
-        List<ScheduleStop> stops = day.getStops();
-        for (int index = 0; index < stops.size(); index++) {
-            ScheduleStop stop = stops.get(index);
-            int requested = requestedStayMinutes.get(index);
-            if (stop.getStayMinutes() >= requested) {
-                continue;
-            }
-            List<String> warnings = new ArrayList<>(jsonArrayValues(stop.getWarningsJson()));
-            warnings.add("하루 가용 시간에 맞춰 체류시간을 " + requested + "분에서 "
-                    + stop.getStayMinutes() + "분으로 줄였습니다.");
-            stop.updateDeliveryInfo(stop.getSelectionReasonsJson(), jsonArray(warnings));
-        }
-    }
-
-    private Schedule applyStopRevision(UUID scheduleId, ScheduleUpdateRequest request) {
-        Schedule schedule = findSchedule(scheduleId);
-        Map<Integer, ScheduleDay> dayByNumber = schedule.getDays().stream()
-                .collect(Collectors.toMap(ScheduleDay::getDayNo, Function.identity()));
-        Map<UUID, ScheduleStop> existingStopById = schedule.getDays().stream()
-                .flatMap(day -> day.getStops().stream())
-                .collect(Collectors.toMap(ScheduleStop::getId, Function.identity()));
-        validateUpdateRequest(request, dayByNumber, existingStopById);
-
-        Map<UUID, ScheduleDay> currentDayByStopId = new HashMap<>();
-        schedule.getDays().forEach(day -> day.getStops()
-                .forEach(stop -> currentDayByStopId.put(stop.getId(), day)));
-        schedule.getDays().forEach(ScheduleDay::clearTransitRoutes);
-
-        int temporaryOrder = Integer.MAX_VALUE;
-        for (ScheduleDay day : schedule.getDays()) {
-            for (ScheduleStop stop : day.getStops()) {
-                stop.reassign(day, temporaryOrder--, stop.getStayMinutes());
-            }
-        }
-        scheduleRepository.flush();
-
-        Set<UUID> retainedStopIds = request.stops().stream()
-                .map(ScheduleUpdateRequest.Stop::stopId)
-                .filter(Objects::nonNull)
-                .collect(Collectors.toSet());
-        schedule.getDays().forEach(day -> List.copyOf(day.getStops()).stream()
-                .filter(stop -> !retainedStopIds.contains(stop.getId()))
-                .forEach(day::removeStop));
-        scheduleRepository.flush();
-
-        Map<Long, Place> placeById = placesForUpdate(request);
-        for (ScheduleUpdateRequest.Stop item : request.stops()) {
-            ScheduleDay targetDay = dayByNumber.get(item.dayNo());
-            if (item.stopId() != null) {
-                ScheduleStop stop = existingStopById.get(item.stopId());
-                ScheduleDay currentDay = currentDayByStopId.get(item.stopId());
-                if (currentDay != targetDay) {
-                    currentDay.removeStop(stop);
-                    targetDay.addStop(stop);
-                }
-                stop.reassign(targetDay, item.order(), item.stayMinutes());
-            } else {
-                ScheduleStop stop = new ScheduleStop(
-                        targetDay,
-                        placeById.get(item.placeId()),
-                        item.order(),
-                        item.stayMinutes()
-                );
-                stop.updateDeliveryInfo(
-                        jsonArray(List.of("사용자가 일정 수정에서 추가한 장소입니다.")),
-                        "[]"
-                );
-            }
-        }
-        schedule.getDays().forEach(ScheduleDay::sortStops);
-        return schedule;
-    }
-
     @Transactional(readOnly = true)
     public ScheduleMapResponse getMap(UUID scheduleId, Integer dayNo) {
         return requireFastApiScheduleClient().getScheduleMap(scheduleId, dayNo);
@@ -433,64 +204,6 @@ public class ScheduleService {
             throw new BusinessException(ErrorCode.EXTERNAL_PROVIDER_UNAVAILABLE);
         }
         return fastApiScheduleClient;
-    }
-
-    private Schedule findSchedule(UUID scheduleId) {
-        return scheduleRepository.findById(scheduleId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.SCHEDULE_NOT_FOUND));
-    }
-
-    private void validateUpdateRequest(
-            ScheduleUpdateRequest request,
-            Map<Integer, ScheduleDay> dayByNumber,
-            Map<UUID, ScheduleStop> existingStopById
-    ) {
-        Set<UUID> stopIds = new HashSet<>();
-        Set<String> dayOrders = new HashSet<>();
-        Map<Integer, Set<Integer>> ordersByDay = new HashMap<>();
-        for (ScheduleUpdateRequest.Stop item : request.stops()) {
-            boolean validReference = (item.stopId() == null) != (item.placeId() == null)
-                    && (item.placeId() == null || item.placeId() > 0);
-            if (!validReference
-                    || item.dayNo() <= 0
-                    || item.order() <= 0
-                    || item.stayMinutes() < 30
-                    || !dayByNumber.containsKey(item.dayNo())
-                    || !dayOrders.add(item.dayNo() + ":" + item.order())
-                    || (item.stopId() != null
-                    && (!existingStopById.containsKey(item.stopId()) || !stopIds.add(item.stopId())))) {
-                throw new BusinessException(ErrorCode.INVALID_SCHEDULE_CONDITION);
-            }
-            ordersByDay.computeIfAbsent(item.dayNo(), ignored -> new HashSet<>()).add(item.order());
-        }
-        for (Integer dayNo : dayByNumber.keySet()) {
-            Set<Integer> orders = ordersByDay.get(dayNo);
-            if (orders == null || orders.isEmpty()
-                    || orders.size() > DailyScheduleTargetPolicy.MAX_STOPS_PER_DAY) {
-                throw new BusinessException(ErrorCode.INVALID_SCHEDULE_CONDITION);
-            }
-            for (int order = 1; order <= orders.size(); order++) {
-                if (!orders.contains(order)) {
-                    throw new BusinessException(ErrorCode.INVALID_SCHEDULE_CONDITION);
-                }
-            }
-        }
-    }
-
-    private Map<Long, Place> placesForUpdate(ScheduleUpdateRequest request) {
-        Set<Long> placeIds = request.stops().stream()
-                .map(ScheduleUpdateRequest.Stop::placeId)
-                .filter(Objects::nonNull)
-                .collect(Collectors.toCollection(LinkedHashSet::new));
-        if (placeIds.isEmpty()) {
-            return Map.of();
-        }
-        Map<Long, Place> placeById = placeRepository.findAllById(placeIds).stream()
-                .collect(Collectors.toMap(Place::getId, Function.identity()));
-        if (!placeById.keySet().containsAll(placeIds)) {
-            throw new BusinessException(ErrorCode.PLACE_NOT_FOUND);
-        }
-        return placeById;
     }
 
     private int tripDays(ScheduleCreateRequest request) {
@@ -1873,135 +1586,6 @@ public class ScheduleService {
         );
     }
 
-    private ScheduleMapResponse.StopMarker toStopMarker(ScheduleDay day, ScheduleStop stop, StopTime stopTime) {
-        Place place = stop.getPlace();
-        List<String> warnings = jsonArrayValues(stop.getWarningsJson());
-        return new ScheduleMapResponse.StopMarker(
-                day.getDayNo(),
-                stop.getStopOrder(),
-                place.getId(),
-                place.getName(),
-                stopTime == null ? null : stopTime.arriveAt(),
-                stopTime == null ? null : stopTime.departAt(),
-                markerSubtitle(place, stop),
-                warnings.isEmpty() ? "NORMAL" : "NOTICE",
-                place.getLongitude(),
-                place.getLatitude()
-        );
-    }
-
-    private List<ScheduleMapResponse.RouteLine> toRouteLines(Schedule schedule, ScheduleDay day, TransitRoute route) {
-        List<ScheduleMapResponse.RouteLine> response = new ArrayList<>();
-        List<TransitSegment> segments = route.getSegments();
-        int segmentStartIndex = 0;
-        for (TransitRouteLine routeLine : route.getRouteLines()) {
-            SegmentMatch segmentMatch = nextMatchingSegment(segments, segmentStartIndex, routeLine.getMode());
-            TransitSegment segment = segmentMatch.segment();
-            segmentStartIndex = segmentMatch.nextIndex();
-            int segmentOrder = segment == null ? routeLine.getLineOrder() : segment.getSegmentOrder();
-            List<List<BigDecimal>> coordinates = coordinates(routeLine.getCoordinatesJson());
-            response.add(new ScheduleMapResponse.RouteLine(
-                    day.getDayNo(),
-                    route.getRouteOrder(),
-                    routeLine.getLineOrder(),
-                    routeLine.getMode(),
-                    routeLine.getLineName(),
-                    routeLineStartName(schedule, day, route, segment, segmentOrder),
-                    routeLineEndName(schedule, day, route, segment, segmentOrder),
-                    routeLine.getDurationMinutes(),
-                    routeLineDistanceMeters(routeLine.getDistanceMeters(), coordinates),
-                    routeLine.getInstruction(),
-                    routeLine.isFallbackUsed(),
-                    coordinates
-            ));
-        }
-        return response;
-    }
-
-    private int routeLineDistanceMeters(
-            Integer providerDistanceMeters,
-            List<List<BigDecimal>> coordinates
-    ) {
-        if (providerDistanceMeters != null && providerDistanceMeters > 0) {
-            return providerDistanceMeters;
-        }
-        double total = 0;
-        for (int index = 1; index < coordinates.size(); index++) {
-            List<BigDecimal> previous = coordinates.get(index - 1);
-            List<BigDecimal> current = coordinates.get(index);
-            total += distanceMeters(previous.get(0), previous.get(1), current.get(0), current.get(1));
-        }
-        return Math.max(0, (int) Math.round(total));
-    }
-
-    private SegmentMatch nextMatchingSegment(List<TransitSegment> segments, int startIndex, String mode) {
-        for (int index = startIndex; index < segments.size(); index++) {
-            TransitSegment segment = segments.get(index);
-            if (segment.getMode().equals(mode)) {
-                return new SegmentMatch(segment, index + 1);
-            }
-        }
-        return new SegmentMatch(null, startIndex);
-    }
-
-    private String routeLineStartName(
-            Schedule schedule,
-            ScheduleDay day,
-            TransitRoute route,
-            TransitSegment segment,
-            int segmentOrder
-    ) {
-        if (segment != null && !"WALK".equals(segment.getMode())) {
-            return firstNonBlank(segment.getStartStationName(), routeOriginName(schedule, day, route));
-        }
-
-        TransitSegment previousTransit = previousTransitSegment(route, segmentOrder);
-        if (previousTransit != null) {
-            return firstNonBlank(previousTransit.getEndStationName(), routeOriginName(schedule, day, route));
-        }
-        return routeOriginName(schedule, day, route);
-    }
-
-    private String routeLineEndName(
-            Schedule schedule,
-            ScheduleDay day,
-            TransitRoute route,
-            TransitSegment segment,
-            int segmentOrder
-    ) {
-        if (segment != null && !"WALK".equals(segment.getMode())) {
-            return firstNonBlank(segment.getEndStationName(), routeDestinationName(day, route));
-        }
-
-        TransitSegment nextTransit = nextTransitSegment(route, segmentOrder);
-        if (nextTransit != null) {
-            return firstNonBlank(nextTransit.getStartStationName(), routeDestinationName(day, route));
-        }
-        return routeDestinationName(day, route);
-    }
-
-    private TransitSegment previousTransitSegment(TransitRoute route, int lineOrder) {
-        TransitSegment previous = null;
-        for (TransitSegment segment : route.getSegments()) {
-            if (segment.getSegmentOrder() >= lineOrder) {
-                break;
-            }
-            if (!"WALK".equals(segment.getMode())) {
-                previous = segment;
-            }
-        }
-        return previous;
-    }
-
-    private TransitSegment nextTransitSegment(TransitRoute route, int lineOrder) {
-        return route.getSegments()
-                .stream()
-                .filter(segment -> segment.getSegmentOrder() > lineOrder)
-                .filter(segment -> !"WALK".equals(segment.getMode()))
-                .findFirst()
-                .orElse(null);
-    }
-
     private String routeOriginName(Schedule schedule, ScheduleDay day, TransitRoute route) {
         if (route.getRouteOrder() == 1) {
             return day.getStartPlaceName();
@@ -2226,41 +1810,6 @@ public class ScheduleService {
         return category + " · 체류 " + stop.getStayMinutes() + "분";
     }
 
-    private Map<UUID, StopTime> stopTimes(Schedule schedule, ScheduleDay day) {
-        Map<UUID, StopTime> times = new HashMap<>();
-        Map<UUID, TransitRoute> inboundRouteByStopId = inboundRouteByStopId(day);
-        List<MealTimePolicy.MealSlot> mealSlots = MealTimePolicy.activeSlots(day);
-        Set<MealTimePolicy.MealSlot> assignedMealSlots = EnumSet.noneOf(MealTimePolicy.MealSlot.class);
-        LocalTime cursor = day.getStartTime();
-        for (ScheduleStop stop : day.getStops()) {
-            TransitRoute inboundRoute = inboundRouteByStopId.get(stop.getId());
-            if (inboundRoute != null) {
-                cursor = cursor.plusMinutes(inboundRoute.getTotalMinutes());
-            }
-            LocalTime arriveAt = cursor;
-            LocalTime departAt;
-            if (stop.getFixedStartsAt() != null) {
-                LocalTime fixedStart = stop.getFixedStartsAt()
-                        .atZoneSameInstant(java.time.ZoneId.of("Asia/Seoul")).toLocalTime();
-                arriveAt = arriveAt.isBefore(fixedStart) ? fixedStart : arriveAt;
-                departAt = stop.getFixedEndsAt()
-                        .atZoneSameInstant(java.time.ZoneId.of("Asia/Seoul")).toLocalTime();
-                MealTimePolicy.Alignment alignment = MealTimePolicy.alignArrival(
-                        arriveAt, stop.getPlace(), mealSlots, assignedMealSlots);
-                if (alignment.slot() != null) assignedMealSlots.add(alignment.slot());
-            } else {
-                MealTimePolicy.Alignment alignment = MealTimePolicy.alignArrival(
-                        arriveAt, stop.getPlace(), mealSlots, assignedMealSlots);
-                arriveAt = alignment.arrival();
-                if (alignment.slot() != null) assignedMealSlots.add(alignment.slot());
-                departAt = arriveAt.plusMinutes(stop.getStayMinutes());
-            }
-            times.put(stop.getId(), new StopTime(arriveAt, departAt));
-            cursor = departAt;
-        }
-        return times;
-    }
-
     private String jsonArray(List<String> values) {
         if (values == null || values.isEmpty()) {
             return "[]";
@@ -2323,23 +1872,6 @@ public class ScheduleService {
     }
 
     /** A revised itinerary and every transit leg it needs, resolved before anything is written. */
-    private record RouteRevisionPlan(List<RouteRevisionDay> days) {
-    }
-
-    private record RouteRevisionDay(
-            int dayNo,
-            List<Place> orderedPlaces,
-            List<RouteRevisionLeg> legs
-    ) {
-    }
-
-    /** {@code stopIndex} is the arrival stop's position, or -1 for the leg back to the day's end. */
-    private record RouteRevisionLeg(TransitPoint origin, TransitPoint destination, int stopIndex) {
-    }
-
-    private record StopTime(LocalTime arriveAt, LocalTime departAt) {
-    }
-
     private record MultiDayPlanOrder(
             MultiDayPlanOptimizer.OptimizedPlan plan,
             List<List<Place>> orders
@@ -2350,18 +1882,6 @@ public class ScheduleService {
             MultiDayPlanOptimizer.OptimizedPlan plan,
             List<List<Place>> orders,
             long actualCost
-    ) {
-    }
-
-    private record SegmentMatch(TransitSegment segment, int nextIndex) {
-    }
-
-    private record PreviewPlanningOptions(
-            SchedulePreview preview,
-            List<SchedulePreviewResponse.ResolvedDay> resolvedDays,
-            List<String> planningWarnings,
-            List<SchedulePreviewCreateRequest.FixedEvent> fixedEvents,
-            String customPrompt
     ) {
     }
 
@@ -2377,7 +1897,4 @@ public class ScheduleService {
         return coordinates;
     }
 
-    private boolean useFastApiDelegate() {
-        return fastApiScheduleClient != null && fastApiScheduleClient.enabled();
-    }
 }
