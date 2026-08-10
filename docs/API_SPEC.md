@@ -514,7 +514,7 @@ V2에서는 top-level `dailyStartTime`, `dailyEndTime`을 제거하고 일차별
 - 생성 시점에만 계산하고 저장하지 않은 `evaluation` 운영 지표는 생략한다.
 - 존재하지 않는 일정은 `404 SCHEDULE_NOT_FOUND`를 반환한다.
 
-`GET /api/v1/schedules`는 V2부터 `startDate ASC`, 같은 시작일은 `createdAt DESC` 순서로 반환한다. 인증 도입 전까지 전체 일정 반환 정책은 유지한다.
+`GET /api/v1/schedules`는 V2부터 `startDate ASC`, 같은 시작일은 `createdAt DESC` 순서로 반환한다. 인증 도입 전까지 전체 일정 반환 정책은 유지한다. 목록 응답은 축약 필드만 담으므로 상세 데이터가 필요하면 단건 조회를 사용한다. 응답 형식은 `4. 일정 목록 조회`를 참고한다.
 
 ### V2-8. V2 오류·충돌 코드
 
@@ -842,7 +842,19 @@ Preview의 `endLocationSource=PLANNER_DECIDES`인 일차는 Planner가 방문 �
 `GET /api/v1/schedules`
 
 요청 파라미터와 요청 본문이 없다. 1차 스프린트에서는 저장된 전체 일정을 반환한다.
-`evaluation`은 생성 시점에만 계산되는 값이므로 목록 응답에서는 생략한다.
+
+목록은 **축약 응답만 반환한다.** 방문지(`days`), 경로(`transit`), 평가 리포트(`evaluation`)는 담지 않는다.
+목록 카드 한 장을 그리는 데 필요한 정보만 내려주고, 상세가 필요하면 `GET /api/v1/schedules/{scheduleId}`를 호출한다.
+
+| 필드 | 타입 | 설명 |
+| --- | --- | --- |
+| `id` | UUID | 일정 ID |
+| `status` | string | 일정 상태 |
+| `startDate` / `endDate` | date | 여행 시작일과 종료일 |
+| `styleSummary` | string | 일정 한 줄 요약 |
+| `dayCount` | int | 총 일차 수 |
+| `stopCount` | int | 전체 방문지 수 |
+| `previewPlaceNames` | string[] | 카드 미리보기용 장소 이름. 방문 순서대로 최대 3개, 중복 제거 |
 
 ```json
 {
@@ -853,24 +865,9 @@ Preview의 `endLocationSource=PLANNER_DECIDES`인 일차는 Planner가 방문 �
       "startDate": "2026-06-23",
       "endDate": "2026-06-25",
       "styleSummary": "부모님과 함께하는 로컬 중심 일정",
-      "days": [
-        {
-          "dayNo": 1,
-          "date": "2026-06-23",
-          "stops": [
-            {
-              "id": "stop-uuid",
-              "place": {
-                "id": 101,
-                "name": "이송도전망대"
-              },
-              "inboundTransit": {
-                "totalMinutes": 25
-              }
-            }
-          ]
-        }
-      ]
+      "dayCount": 3,
+      "stopCount": 12,
+      "previewPlaceNames": ["이송도전망대", "감천문화마을", "자갈치시장"]
     }
   ]
 }
