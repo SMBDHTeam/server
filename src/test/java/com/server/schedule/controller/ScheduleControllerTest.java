@@ -14,6 +14,7 @@ import com.server.common.web.TraceIdFilter;
 import com.server.schedule.dto.ScheduleCreateRequest;
 import com.server.schedule.dto.ScheduleEvaluationReport;
 import com.server.schedule.dto.ScheduleListResponse;
+import com.server.schedule.dto.ScheduleSummaryListResponse;
 import com.server.schedule.dto.ScheduleMapResponse;
 import com.server.schedule.dto.ScheduleResponse;
 import com.server.schedule.service.ScheduleService;
@@ -158,14 +159,18 @@ class ScheduleControllerTest {
     }
 
     @Test
-    @DisplayName("전체 일정 목록을 조회한다")
-    void getAllReturnsSchedules() throws Exception {
-        when(scheduleService.getAll()).thenReturn(new ScheduleListResponse(List.of(responseWithoutEvaluation())));
+    @DisplayName("일정 목록은 축약 정보만 반환하고 방문지와 평가는 담지 않는다")
+    void getAllReturnsSummariesOnly() throws Exception {
+        when(scheduleService.getAll()).thenReturn(ScheduleSummaryListResponse.from(
+                new ScheduleListResponse(List.of(responseWithoutEvaluation()))));
 
         mockMvc.perform(get("/api/v1/schedules"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.items[0].status").value("CONFIRMED"))
-                .andExpect(jsonPath("$.items[0].days[0].stops[0].place.id").value(101))
+                .andExpect(jsonPath("$.items[0].dayCount").value(1))
+                .andExpect(jsonPath("$.items[0].stopCount").value(1))
+                .andExpect(jsonPath("$.items[0].previewPlaceNames[0]").value("이송도전망대"))
+                .andExpect(jsonPath("$.items[0].days").doesNotExist())
                 .andExpect(jsonPath("$.items[0].evaluation").doesNotExist());
     }
 

@@ -2,6 +2,18 @@
 
 API 계약이 변경될 때마다 최신 항목을 위에 추가한다.
 
+## 2026-08-10 (일정 목록 조회가 축약 응답을 반환)
+
+- API: `GET /api/v1/schedules`
+- 구분: 변경 (호환성 파괴)
+- 이전: `items[]`에 `ScheduleResponse`를 통째로 담았다. 일정 하나마다 `days[] -> stops[] -> transit` 좌표까지 포함되어, 목록 화면이 쓰지 않는 상세 데이터가 일정 수만큼 곱해져 내려갔다.
+- 이후: 목록 카드에 필요한 축약 필드만 반환한다. `id`, `status`, `startDate`, `endDate`, `styleSummary`, `dayCount`, `stopCount`, `previewPlaceNames`. `days`, `evaluation`, `planningAssumptions`는 더 이상 포함하지 않는다.
+- 이유: 목록 엔드포인트가 상세 페이로드를 반환해 응답 크기가 불필요하게 컸다. 상세는 `GET /api/v1/schedules/{scheduleId}`가 이미 담당한다.
+- 호환성 파괴: 예. `items[].days`를 참조하던 클라이언트는 단건 조회로 옮겨야 한다. 프론트 연동 문서상 목록 화면 소비처가 아직 없어 영향 범위는 없는 것으로 확인했다.
+- DB/ERD: 변경 없음
+- 비고: 요약 계산은 현재 Spring이 FastAPI 전체 응답을 받아 축약한다. FastAPI가 요약 엔드포인트를 제공하면 공개 계약 변경 없이 교체할 수 있다.
+- 관련 PR 또는 이슈: 없음
+
 ## 2026-08-03 (일정 수정 시 체류시간 축소를 경고로 알림)
 
 - API: `PATCH /api/v1/schedules/{scheduleId}`

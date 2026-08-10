@@ -1,7 +1,7 @@
 package com.server.schedule.controller;
 
 import com.server.schedule.dto.ScheduleCreateRequest;
-import com.server.schedule.dto.ScheduleListResponse;
+import com.server.schedule.dto.ScheduleSummaryListResponse;
 import com.server.schedule.dto.ScheduleMapResponse;
 import com.server.schedule.dto.ScheduleResponse;
 import com.server.schedule.dto.ScheduleUpdateRequest;
@@ -89,8 +89,11 @@ public class ScheduleController {
     }
 
     @GetMapping
-    @Operation(summary = "전체 일정 조회")
-    public ScheduleListResponse getAll() {
+    @Operation(
+            summary = "일정 목록 조회",
+            description = "목록 카드에 필요한 축약 정보만 반환한다. 방문지·경로·평가는 단건 조회를 사용한다."
+    )
+    public ScheduleSummaryListResponse getAll() {
         return scheduleService.getAll();
     }
 
