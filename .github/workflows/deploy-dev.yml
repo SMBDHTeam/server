@@ -166,7 +166,11 @@ jobs:
             "$DEV_SSH_USER@$DEV_HOST" \
             "echo 'SSH connection successful'"
 
-          echo "[5/8] Create .env.dev"
+          # data 레포의 배포 워크플로도 같은 디렉터리에 환경변수 파일을 만든다.
+          # 예전에는 두 레포가 모두 .env.dev를 써서 나중에 배포한 쪽이 상대의 값을
+          # 덮어썼고, 그 뒤 상대 컨테이너가 재시작하면 설정을 잃었다.
+          # 파일을 분리해 서로 간섭하지 않게 한다. (data-ai는 .env.data를 쓴다)
+          echo "[5/8] Create .env.server"
 
           # GitHub Secrets를 기반으로 임시 환경변수 파일을 만든다.
           {
@@ -212,9 +216,9 @@ jobs:
             if [ -n "${CORS_ALLOWED_ORIGINS:-}" ]; then
               printf 'CORS_ALLOWED_ORIGINS=%s\n' "$CORS_ALLOWED_ORIGINS"
             fi
-          } > .env.dev
+          } > .env.server
 
-          chmod 600 .env.dev
+          chmod 600 .env.server
 
           echo "[6/8] Prepare EC2 deploy directory"
 
@@ -230,15 +234,15 @@ jobs:
               sudo chown -R "$DEV_SSH_USER:$DEV_SSH_USER" /opt/hackathon-dev
           EOF
 
-          echo "[7/8] Upload .env.dev to EC2"
+          echo "[7/8] Upload .env.server to EC2"
 
           # Runner에서 만든 환경변수 파일을 EC2로 복사한다.
           scp \
             -o BatchMode=yes \
             -o ConnectTimeout=10 \
             -i ~/.ssh/dev_key \
-            .env.dev \
-            "$DEV_SSH_USER@$DEV_HOST:/opt/hackathon-dev/.env.dev"
+            .env.server \
+            "$DEV_SSH_USER@$DEV_HOST:/opt/hackathon-dev/.env.server"
 
           echo "[8/8] Deploy new container"
 
@@ -251,7 +255,7 @@ jobs:
               set -euo pipefail
 
               echo "Set env file permission"
-              chmod 600 /opt/hackathon-dev/.env.dev
+              chmod 600 /opt/hackathon-dev/.env.server
 
               echo "Login to Amazon ECR from EC2"
 
@@ -285,7 +289,7 @@ jobs:
                 --restart unless-stopped \
                 --network hackathon-network \
                 -p 127.0.0.1:8080:8080 \
-                --env-file /opt/hackathon-dev/.env.dev \
+                --env-file /opt/hackathon-dev/.env.server \
                 "${ECR_REGISTRY}/${ECR_REPOSITORY_NAME}:latest-dev"
 
               echo "Wait for container startup"
@@ -342,6 +346,6 @@ jobs:
           EOF
 
           # Actions Runner에 생성한 민감 파일을 삭제한다.
-          rm -f .env.dev ~/.ssh/dev_key
+          rm -f .env.server ~/.ssh/dev_key
 
           echo "Deployment completed successfully"
