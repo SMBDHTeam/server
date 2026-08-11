@@ -49,7 +49,11 @@ public class ScheduleController {
 
     @PostMapping(headers = "!Idempotency-Key")
     @ResponseStatus(HttpStatus.CREATED)
-    @Operation(summary = "일정 생성")
+    @Operation(
+            summary = "일정 생성 (V1 호환)",
+            description = "기존 클라이언트 호환용이다. 신규 연동은 Idempotency-Key 를 붙인 V2 요청을 쓴다.",
+            hidden = true
+    )
     public ScheduleResponse create(
             @io.swagger.v3.oas.annotations.parameters.RequestBody(
                     required = true,
@@ -77,9 +81,32 @@ public class ScheduleController {
 
     @PostMapping(headers = "Idempotency-Key")
     @ResponseStatus(HttpStatus.CREATED)
-    @Operation(summary = "Preview 기반 일정 생성")
+    @Operation(
+            summary = "일정 생성",
+            description = "POST /api/v1/schedule-previews 로 만든 Preview 를 소비해 일정을 만든다. "
+                    + "Preview 하나로 일정 하나만 만들 수 있고, 이미 소비된 Preview 는 409 로 응답한다. "
+                    + "같은 Idempotency-Key 로 다시 요청하면 새 일정을 만들지 않는다."
+    )
     public ScheduleResponse createFromPreview(
+            @Parameter(
+                    description = "재요청 시 중복 생성을 막는 키. 화면에서 생성 버튼을 누를 때 UUID 를 만들어 "
+                            + "재시도까지 같은 값을 쓴다. 최대 128자.",
+                    required = true,
+                    example = "3f1b9c2e-6a4d-4f77-9b2a-1c8d5e0f4a31"
+            )
             @RequestHeader("Idempotency-Key") String idempotencyKey,
+            @io.swagger.v3.oas.annotations.parameters.RequestBody(
+                    required = true,
+                    content = @Content(
+                            mediaType = "application/json",
+                            schema = @Schema(implementation = SchedulePreviewScheduleRequest.class),
+                            examples = @ExampleObject(
+                                    name = "fromPreview",
+                                    summary = "Preview 응답의 previewId 를 그대로 전달",
+                                    value = "{\"previewId\": \"6afa151a-3fb2-4f3d-821f-53228b88d1c0\"}"
+                            )
+                    )
+            )
             @Valid @RequestBody SchedulePreviewScheduleRequest request
     ) {
         if (scheduleV2Service == null) {
@@ -98,15 +125,24 @@ public class ScheduleController {
     }
 
     @GetMapping("/{scheduleId}")
-    @Operation(summary = "일정 단건 조회")
-    public ScheduleResponse get(@PathVariable UUID scheduleId) {
+    @Operation(
+            summary = "일정 단건 조회",
+            description = "방문지·경로·planningAssumptions 를 포함한 전체 일정을 반환한다. "
+                    + "생성 시점에만 계산하는 evaluation 은 포함하지 않는다."
+    )
+    public ScheduleResponse get(
+            @Parameter(description = "일정 생성 응답의 id",
+                    example = "f2536c52-69d1-4e6c-8ab6-2ede45dba2cd")
+            @PathVariable UUID scheduleId) {
         return scheduleService.get(scheduleId);
     }
 
     @PatchMapping("/{scheduleId}")
     @Operation(summary = "일정 수정", description = "stopId는 생성 응답 값으로, 새 장소를 추가할 때는 placeId로 교체해야 합니다.")
     public ScheduleResponse update(
-            @Parameter(description = "일정 ID") @PathVariable UUID scheduleId,
+            @Parameter(description = "일정 생성 응답의 id",
+                    example = "f2536c52-69d1-4e6c-8ab6-2ede45dba2cd")
+            @PathVariable UUID scheduleId,
             @io.swagger.v3.oas.annotations.parameters.RequestBody(
                     required = true,
                     content = @Content(
@@ -127,8 +163,11 @@ public class ScheduleController {
     @GetMapping("/{scheduleId}/map")
     @Operation(summary = "일정 지도 조회")
     public ScheduleMapResponse getMap(
-            @Parameter(description = "일정 ID") @PathVariable UUID scheduleId,
-            @Parameter(description = "조회할 일차", example = "1")
+            @Parameter(description = "일정 생성 응답의 id",
+                    example = "f2536c52-69d1-4e6c-8ab6-2ede45dba2cd")
+            @PathVariable UUID scheduleId,
+            @Parameter(description = "조회할 일차. 생략하면 전체 일차의 마커와 경로선을 함께 반환한다.",
+                    example = "1")
             @RequestParam(required = false) Integer dayNo
     ) {
         return scheduleService.getMap(scheduleId, dayNo);

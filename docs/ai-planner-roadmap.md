@@ -1,3 +1,8 @@
+> **보관 문서 (2026-08-11)**
+> Spring의 Planner 구현은 FastAPI(`SMBDHTeam/data`)로 이전되면서 삭제됐다.
+> 이 문서는 당시 설계 의도와 품질 기준을 남기기 위한 기록이며 현재 Spring 코드와 대응하지 않는다.
+> 현재 구조는 [schedule-fastapi-migration.md](schedule-fastapi-migration.md)를 참고한다.
+
 # AI 기반 일정 Planner 전환 계획
 
 ## 현재 상태

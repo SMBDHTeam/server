@@ -55,6 +55,12 @@ class PostgresMigrationIntegrationTest {
                         + "where table_schema = 'public' and table_name = 'schedule_creation_requests'",
                 Integer.class
         );
+        Integer stopTimeColumnCount = jdbcTemplate.queryForObject(
+                "select count(*) from information_schema.columns "
+                        + "where table_schema = 'public' and table_name = 'schedule_stops' "
+                        + "and column_name in ('arrive_at', 'depart_at')",
+                Integer.class
+        );
         Integer questionUiStepColumnCount = jdbcTemplate.queryForObject(
                 "select count(*) from information_schema.columns "
                         + "where table_schema = 'public' and table_name = 'questions' "
@@ -70,6 +76,7 @@ class PostgresMigrationIntegrationTest {
         assertThat(previewTableCount).isEqualTo(1);
         assertThat(creationRequestTableCount).isEqualTo(1);
         assertThat(questionUiStepColumnCount).isEqualTo(1);
+        assertThat(stopTimeColumnCount).isEqualTo(2);
     }
 
     /** classpath의 db/migration 아래 있는 실제 스크립트 수. */

@@ -215,8 +215,14 @@ TourAPI의 일일 요청 제한을 서버 재시작과 중복 실행 이후에�
 | `place_id` | bigint | FK, O | 방문할 `places.id` |
 | `stop_order` | integer | UK 일부, O | 해당 날짜 안의 방문 순서 |
 | `stay_minutes` | integer | O | 체류시간(분) |
+| `arrive_at` | time | X | 도착 시각. 날짜는 소속 `schedule_days.date`로 결정된다 |
+| `depart_at` | time | X | 출발 시각 |
+| `fixed_starts_at` | timestamptz | X | 고정 행사 시작. 고정 행사가 아닌 방문지는 `null` |
+| `fixed_ends_at` | timestamptz | X | 고정 행사 종료 |
 | `selection_reasons_json` | json | O | 장소 선택 이유 문자열 배열 |
 | `warnings_json` | json | O | 방문지 주의사항 문자열 배열 |
+
+`arrive_at`과 `depart_at`은 V7 이전에 저장하지 않았다. 그 이전에 만들어진 방문지는 `null`이며 값을 복원할 수 없다.
 
 하루 안에서 `schedule_day_id + stop_order`는 중복될 수 없다. `mustVisitPlaceIds`로 전달된 장소는 생성 결과의 방문 계획에 포함해야 한다.
 

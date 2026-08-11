@@ -397,7 +397,7 @@ V2 응답은 top-level `dailyStartTime`, `dailyEndTime`을 사용하지 않는�
 | `evaluation.operations.providerEstimateFailureCount` | integer | O | Provider 경량 조회 실패 횟수 |
 | `evaluation.operations.routeResolutionCount` | integer | O | 최종 선택 구간의 실제 경로 해석 요청 횟수 |
 | `evaluation.operations.routeCacheHitCount` | integer | O | 최종 선택 구간의 요청 단위 실제 경로 캐시 적중 횟수 |
-| `evaluation.operations.providerCallCount` | integer | O | 최종 선택 구간을 확정하기 위한 `TransitRouteProvider` 호출 횟수 |
+| `evaluation.operations.providerCallCount` | integer | O | 최종 선택 구간을 확정하기 위한 경로 Provider 호출 횟수 |
 | `evaluation.operations.providerFailureCount` | integer | O | 외부 Provider 호출 실패 횟수 |
 | `evaluation.operations.externalHttpCallCount` | integer | O | ODsay 경로검색·loadLane·TMAP 도보 HTTP 시도 합계 |
 | `evaluation.operations.externalHttpFailureCount` | integer | O | 외부 HTTP 오류·유효하지 않은 응답 횟수 |
