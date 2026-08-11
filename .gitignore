@@ -56,3 +56,7 @@ docs/examples/kakao-map-local-config.js
 docs/examples/generated-*
 docs/examples/schedule-map-example*
 docs/examples/schedule-map-route-example.md
+
+# macOS
+.DS_Store
+**/.DS_Store
