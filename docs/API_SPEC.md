@@ -1275,6 +1275,10 @@ Provider 응답의 `distanceMeters`가 누락되거나 0 이하이면 서버는 
 | 503 | `EXTERNAL_PROVIDER_UNAVAILABLE` | 외부 서비스가 응답하지 않음 |
 | 500 | `INTERNAL_ERROR` | 서버가 처리하지 못한 예외 |
 
+OpenAPI 문서(`/v3/api-docs`, Swagger UI)에도 오퍼레이션별로 가능한 오류 응답과 `code` 목록이 함께
+노출된다. 컨트롤러마다 애노테이션을 붙이지 않고 공통 커스터마이저가 일괄 적용하므로, 엔드포인트가
+추가돼도 문서가 자동으로 따라온다.
+
 **모든 오류는 위 형태를 지킨다.** 깨진 JSON 본문, 잘못된 형식의 경로 변수(`/schedules/abc`),
 필수 쿼리 파라미터 누락, 존재하지 않는 경로, 예상하지 못한 예외까지 전부 `code`·`fieldErrors`·`traceId`를
 담아 반환한다. 클라이언트는 HTTP 상태가 아니라 `code`로 분기해도 된다.
