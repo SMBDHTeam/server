@@ -31,54 +31,13 @@ external:
     mobile-app: ${TOUR_API_MOBILE_APP:tour-server}
     connect-timeout: 3s
     read-timeout: 10s
-  odsay:
-    enabled: ${ODSAY_ENABLED:false}
-    base-url: ${ODSAY_BASE_URL:https://api.odsay.com}
-    api-key: ${ODSAY_API_KEY:}
-    connect-timeout: 3s
-    read-timeout: 10s
-    min-request-interval: ${ODSAY_MIN_REQUEST_INTERVAL:150ms}
-    cache:
-      path-ttl: ${ODSAY_ROUTE_CACHE_TTL:30m}
-      detail-ttl: ${ODSAY_ROUTE_DETAIL_CACHE_TTL:5m}
-      max-entries: ${ODSAY_ROUTE_CACHE_MAX_ENTRIES:2048}
-  busan-bims:
-    enabled: ${BUSAN_BIMS_ENABLED:false}
-    base-url: ${BUSAN_BIMS_BASE_URL:https://apis.data.go.kr/6260000/BusanBIMS}
-    service-key: ${BUSAN_BIMS_API_KEY:}
-    connect-timeout: 3s
-    read-timeout: 5s
-  tmap:
-    base-url: ${TMAP_BASE_URL:https://apis.openapi.sk.com}
-    app-key: ${SKT_API_KEY:}
-    connect-timeout: 3s
-    read-timeout: 5s
-    walking:
-      enabled: ${TMAP_WALKING_ENABLED:false}
 
 app:
   cors:
     allowed-origins: "${CORS_ALLOWED_ORIGINS:http://localhost:3000,http://127.0.0.1:3000,http://localhost:8080,http://127.0.0.1:8080,https://busantour.site,https://www.busantour.site}"
-  schedule-planner:
-    actual-route-rerank-enabled: ${SCHEDULE_ACTUAL_ROUTE_RERANK_ENABLED:true}
-    actual-route-rerank-candidates: ${SCHEDULE_ACTUAL_ROUTE_RERANK_CANDIDATES:3}
-    multi-day-actual-rerank-candidates: ${SCHEDULE_MULTI_DAY_ACTUAL_RERANK_CANDIDATES:3}
-    max-route-estimate-provider-calls: ${SCHEDULE_MAX_ROUTE_ESTIMATE_PROVIDER_CALLS:30}
-  ai-planner:
-    enabled: ${AI_PLANNER_ENABLED:false}
-    base-url: ${OPENAI_BASE_URL:https://api.openai.com}
-    api-key: ${OPENAI_API_KEY:}
-    model: ${AI_PLANNER_MODEL:gpt-5.6-luna}
-    connect-timeout: 3s
-    read-timeout: 8s
-  place-theme-ai:
-    enabled: ${PLACE_THEME_AI_ENABLED:false}
-    base-url: ${PLACE_THEME_AI_BASE_URL:http://127.0.0.1:8010}
-    connect-timeout: ${PLACE_THEME_AI_CONNECT_TIMEOUT:1s}
-    read-timeout: ${PLACE_THEME_AI_READ_TIMEOUT:3s}
   schedule-fastapi:
     enabled: ${SCHEDULE_FASTAPI_ENABLED:false}
-    base-url: ${SCHEDULE_FASTAPI_BASE_URL:${PLACE_THEME_AI_BASE_URL:http://127.0.0.1:8010}}
+    base-url: ${SCHEDULE_FASTAPI_BASE_URL:http://127.0.0.1:8010}
     connect-timeout: ${SCHEDULE_FASTAPI_CONNECT_TIMEOUT:3s}
     read-timeout: ${SCHEDULE_FASTAPI_READ_TIMEOUT:15s}
   place-ingestion:
@@ -89,6 +48,10 @@ app:
       page-size: ${TOUR_API_PAGE_SIZE:100}
       max-pages: ${TOUR_API_MAX_PAGES:1}
       max-requests-per-day: ${TOUR_API_MAX_REQUESTS_PER_DAY:900}
+      # 상세 보강은 장소당 TourAPI를 3회 더 호출한다. 소개글·운영정보·이미지는
+      # 일정 생성에 쓰이지 않고 장소 상세 화면에만 쓰이므로, 상세를 외부 지도로
+      # 넘기면 꺼서 같은 예산으로 약 3배 많은 장소를 발견할 수 있다.
+      enrichment-enabled: ${TOUR_API_ENRICHMENT_ENABLED:true}
       scheduler:
         enabled: ${TOUR_API_INGESTION_SCHEDULER_ENABLED:false}
         cron: "${TOUR_API_INGESTION_CRON:0 0 4 * * *}"

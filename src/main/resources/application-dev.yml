@@ -31,3 +31,15 @@ app:
   seed:
     dummy-place:
       enabled: ${DUMMY_PLACE_SEED_ENABLED:false}
+
+springdoc:
+  api-docs:
+    enabled: ${SPRINGDOC_ENABLED:true}
+    path: /v3/api-docs
+  swagger-ui:
+    enabled: ${SPRINGDOC_ENABLED:true}
+    path: /swagger-ui.html
+    display-request-duration: true
+    try-it-out-enabled: true
+    operations-sorter: method
+    tags-sorter: alpha

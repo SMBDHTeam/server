@@ -10,7 +10,16 @@ public record TourApiPlaceIngestionProperties(
         List<String> contentTypeIds,
         int pageSize,
         int maxPages,
-        int maxRequestsPerDay
+        int maxRequestsPerDay,
+        /**
+         * 상세 보강(detailCommon2 + detailIntro2 + detailImage2) 수행 여부.
+         *
+         * <p>보강은 장소당 TourAPI를 3회 호출해 소개글·운영정보·이미지를 채운다.
+         * 이 값들은 일정 생성에 쓰이지 않고 장소 상세 화면 표시에만 쓰인다.
+         * 상세 화면을 외부 지도 서비스로 넘기면 보강이 불필요해지고, 끄면 같은
+         * 일일 호출 예산으로 약 3배 많은 장소를 발견할 수 있다.
+         */
+        boolean enrichmentEnabled
 ) {
 
     public TourApiPlaceIngestionProperties {
