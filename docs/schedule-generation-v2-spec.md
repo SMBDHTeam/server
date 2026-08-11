@@ -328,8 +328,12 @@ Preview에서는 ODsay·TMAP 상세 경로를 호출하지 않는다. 직선거�
 - 일정 생성은 동일 `Idempotency-Key`에 동일 응답을 재생해야 한다.
 - Preview와 생성 요청의 원문에 비밀값과 인증 헤더를 저장하지 않는다.
 - `customPrompt`는 애플리케이션 로그에 남기지 않는다.
-- 소비된 Preview는 일정과 함께 보존하고 만료된 미소비 Preview는 만료 24시간 후 매일 04:30 정리한다.
-- 멱등성 키는 최대 128자이며 완료 기록은 24시간 보존한 뒤 매일 04:30 정리한다.
+- 소비된 Preview는 일정과 함께 보존한다.
+- 만료된 미소비 Preview는 만료 24시간 후 매일 04:30 정리하도록 정해져 있으나, **현재 이를 실행하는 주체가 없다.**
+  Spring의 `ScheduleGenerationCleanupService`가 Planner 정리 과정에서 삭제됐고 FastAPI에도 같은 로직이 없다.
+  Spring에 복원할지, FastAPI가 맡을지, 정책을 접을지 결정이 필요하다.
+- 멱등성 키는 최대 128자다. 완료 기록을 24시간 보존한 뒤 정리하는 정책도 위와 같은 이유로 실행되지 않는다.
+  `schedule_creation_requests` 테이블은 현재 Spring도 FastAPI도 쓰지 않는다.
 - 외부 장소는 검색만으로 저장하지 않는다.
 
 ## 15. 완료 기준
