@@ -12,8 +12,14 @@ package com.server.schedule.controller;
  */
 final class SchedulePreviewOpenApiExamples {
 
-    /** 기본 생성 화면이 실제로 보내는 최소 요청. */
-    static final String UNDECIDED_LODGING = """
+    /**
+     * 기본 생성 화면이 실제로 보내는 요청.
+     *
+     * <p>프론트 1차 범위에서는 {@code startTime}, {@code endConstraint},
+     * {@code customPrompt} 를 보내지 않고 {@code fixedEvents}, {@code dayOverrides} 는
+     * 빈 배열로 둔다. 서버가 일차별 시간을 채우고 결과를 응답의 appliedDefaults 로 알린다.
+     */
+    static final String FRONTEND_BASIC = """
             {
               "startDate": "2026-09-20",
               "endDate": "2026-09-21",
@@ -22,7 +28,6 @@ final class SchedulePreviewOpenApiExamples {
                 "longitude": 129.0403,
                 "latitude": 35.1151
               },
-              "startTime": "10:00",
               "lodgingPlan": {
                 "mode": "UNDECIDED"
               },
@@ -39,8 +44,12 @@ final class SchedulePreviewOpenApiExamples {
             }
             """;
 
-    /** 숙소를 정한 다일 일정. 종료 제약과 자유 요청까지 포함한다. */
-    static final String FIXED_LODGING = """
+    /**
+     * API 가 지원하는 전체 입력. 프론트 1차 범위에서는 Deferred 다.
+     *
+     * <p>고정 숙소, 종료 제약, 일차별 시간 조정, 자유 요청을 함께 보낸다.
+     */
+    static final String FULL_OPTIONS = """
             {
               "startDate": "2026-09-20",
               "endDate": "2026-09-22",

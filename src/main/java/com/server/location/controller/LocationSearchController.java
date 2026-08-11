@@ -29,7 +29,8 @@ public class LocationSearchController {
     @Operation(summary = "출발지·도착지 검색")
     public LocationSearchResponse search(
             @Parameter(example = "부산역") @RequestParam @NotBlank String keyword,
-            @Parameter(example = "5") @RequestParam(defaultValue = "10") @Min(1) int size
+            @Parameter(description = "최대 결과 수. 출발지 검색 화면은 10을 쓴다.", example = "10")
+            @RequestParam(defaultValue = "10") @Min(1) int size
     ) {
         return locationSearchService.search(keyword, size);
     }

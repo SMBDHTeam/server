@@ -76,7 +76,7 @@ class LocalOpenApiConfigTest {
                 .andExpect(status().isOk())
                 // 본문을 받는 단계는 요청 예시를 제공한다
                 .andExpect(jsonPath("$.paths['/api/v1/places/resolve'].post.requestBody.content['application/json'].examples.naver").exists())
-                .andExpect(jsonPath("$.paths['/api/v1/schedule-previews'].post.requestBody.content['application/json'].examples.undecidedLodging").exists())
+                .andExpect(jsonPath("$.paths['/api/v1/schedule-previews'].post.requestBody.content['application/json'].examples.frontendBasic").exists())
                 // 경로 변수와 주요 쿼리는 example 을 제공한다
                 .andExpect(jsonPath("$.paths['/api/v1/schedule-previews/{previewId}'].get.parameters[0].example").exists())
                 .andExpect(jsonPath("$.paths['/api/v1/schedules/{scheduleId}'].get.parameters[0].example").exists())

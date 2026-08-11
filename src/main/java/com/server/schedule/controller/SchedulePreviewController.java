@@ -47,14 +47,14 @@ public class SchedulePreviewController {
                             schema = @Schema(implementation = SchedulePreviewCreateRequest.class),
                             examples = {
                                     @ExampleObject(
-                                            name = "undecidedLodging",
-                                            summary = "숙소 미정 1박 2일 (기본 생성 화면)",
-                                            value = SchedulePreviewOpenApiExamples.UNDECIDED_LODGING
+                                            name = "frontendBasic",
+                                            summary = "기본 생성 화면이 실제로 보내는 요청 (숙소 미정 1박 2일)",
+                                            value = SchedulePreviewOpenApiExamples.FRONTEND_BASIC
                                     ),
                                     @ExampleObject(
-                                            name = "fixedLodging",
-                                            summary = "고정 숙소 2박 3일, 종료 제약과 자유 요청 포함",
-                                            value = SchedulePreviewOpenApiExamples.FIXED_LODGING
+                                            name = "fullOptions",
+                                            summary = "API 전체 입력. 고정 숙소·종료 제약·자유 요청 포함 (프론트 1차 Deferred)",
+                                            value = SchedulePreviewOpenApiExamples.FULL_OPTIONS
                                     )
                             }
                     )
