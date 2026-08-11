@@ -486,13 +486,18 @@ V2 응답은 top-level `dailyStartTime`, `dailyEndTime`을 사용하지 않는�
 | 응답 필드 | 자료형 | 필수 | 의미 |
 | --- | --- | :---: | --- |
 | `id` | integer | O | 내부 장소 ID |
-| `externalContentId` | string | O | TourAPI 콘텐츠 ID |
+| `source` | string | O | 장소 출처. `TOUR_API`, `NAVER_LOCAL`, `KAKAO_LOCAL` |
+| `externalContentId` | string | O | 출처의 장소 ID |
 | `contentTypeId` | string | X | TourAPI 관광 타입 |
 | `name` | string | O | 장소명 |
+| `category` | string | X | 원본 분류값 |
+| `categoryLabel` | string | O | 화면 표시용 카테고리 라벨 |
 | `address` | string | X | 주소 |
 | `longitude` | number | O | 경도 |
 | `latitude` | number | O | 위도 |
-| `overview` | string | X | 상세 설명 |
+| `placeUrl` | string | X | 외부 지도 서비스의 장소 페이지 링크 |
+| `primaryImageUrl` | string | X | 대표 이미지 |
+| `overview` | string | X | 상세 설명. 외부 검색으로 등록한 장소는 `null` |
 | `operatingInfo` | object | X | 운영 정보 |
 | `operatingInfo.openingHoursText` | string | X | 운영시간 원문 |
 | `operatingInfo.closedDaysText` | string | X | 휴무일 원문 |

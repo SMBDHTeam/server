@@ -989,12 +989,17 @@ GET /api/v1/places?longitude=129.0403&latitude=35.1151&radius=1000
 ```json
 {
   "id": 101,
+  "source": "TOUR_API",
   "externalContentId": "126508",
   "contentTypeId": "12",
   "name": "이송도전망대",
+  "category": "A01011200",
+  "categoryLabel": "자연 관광지",
   "address": "부산 서구 암남동",
   "longitude": 129.047956,
   "latitude": 35.075519,
+  "placeUrl": null,
+  "primaryImageUrl": "https://example.com/image.jpg",
   "overview": "장소 설명",
   "operatingInfo": {
     "openingHoursText": "09:00~18:00",
@@ -1014,6 +1019,12 @@ GET /api/v1/places?longitude=129.0403&latitude=35.1151&radius=1000
 ```
 
 TourAPI 기본·상세·소개·이미지 응답을 내부 DB에 적재한 결과를 조회한다.
+
+사용자가 네이버·카카오 검색으로 직접 등록한 장소는 `overview`·`operatingInfo`·`images`가 비어 있다.
+TourAPI가 그 장소를 모르고 외부 지역검색 API도 이 값들을 제공하지 않기 때문이며, **조회 실패가 아니라
+정상 응답이다.** 이 경우 `placeUrl`로 외부 지도 서비스의 장소 페이지를 연결한다.
+
+`placeUrl`이 없는 장소(TourAPI 적재분)는 `name`과 좌표로 지도 API를 조회해 같은 화면을 구성할 수 있다.
 
 ## 8. 주변 편의시설 조회
 

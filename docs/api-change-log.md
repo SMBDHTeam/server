@@ -2,6 +2,18 @@
 
 API 계약이 변경될 때마다 최신 항목을 위에 추가한다.
 
+## 2026-08-11 (장소 상세에 출처와 외부 링크 추가)
+
+- API: `GET /api/v1/places/{placeId}`
+- 구분: 응답 필드 추가 및 버그 수정
+- 이전: 상세 응답에 `source`, `category`, `categoryLabel`, `placeUrl`, `primaryImageUrl`이 없었다. 검색 응답에는 있는 값들이라, 검색 결과를 눌러 상세로 들어가면 오히려 정보가 줄었다. 특히 `placeUrl`은 `POST /places/resolve` 시 DB에 저장까지 하면서 상세 응답에서 빠져 있었다.
+- 이후: 위 다섯 필드를 추가한다. 사용자가 외부 검색으로 등록한 장소는 `overview`·`operatingInfo`·`images`가 비어 있으므로, 클라이언트는 `placeUrl`로 외부 지도 서비스의 장소 페이지를 연결한다. `placeUrl`이 없는 TourAPI 적재 장소는 `name`과 좌표로 지도 API를 조회하면 된다.
+- 함께 수정: `categoryLabel`이 TourAPI `B`(숙박)·`C`(추천코스) 분류코드를 라벨로 바꾸지 못하고 `"B02011100"` 같은 원시 코드를 그대로 반환하던 문제를 고쳤다. 검색·상세·일정 응답의 `categoryLabel`이 함께 바뀐다. 카테고리가 비어 있고 콘텐츠 유형도 없는 장소에서 `NullPointerException`으로 500이 나던 경로도 막았다.
+- 이유: 상세 화면을 외부 지도 서비스로 넘기기로 하면서, 클라이언트가 연결에 필요한 값을 모두 받도록 하기 위함
+- 호환성 파괴: 아니오. 필드 추가이며 기존 필드와 타입은 그대로다. 다만 `categoryLabel` 값이 일부 장소에서 코드에서 한글 라벨로 바뀐다.
+- DB/ERD: 변경 없음. 모두 기존 컬럼이다.
+- 관련 PR 또는 이슈: 없음
+
 ## 2026-08-10 (일정 목록 조회가 축약 응답을 반환)
 
 - API: `GET /api/v1/schedules`
