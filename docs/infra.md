@@ -41,8 +41,12 @@ docker compose -f docker-compose.local.yml up -d postgres
 ./gradlew bootRun --args='--spring.profiles.active=local'
 ```
 
-- Swagger UI: `http://localhost:8080/swagger-ui.html`
-- OpenAPI JSON: `http://localhost:8080/v3/api-docs`
+- Swagger UI (로컬): `http://localhost:8080/swagger-ui.html`
+- OpenAPI JSON (로컬): `http://localhost:8080/v3/api-docs`
+- Swagger UI (dev): `https://api.busantour.site/swagger-ui.html`
+- OpenAPI JSON (dev): `https://api.busantour.site/v3/api-docs`
+
+dev의 문서는 배포된 코드에서 생성되므로 실제 계약과 항상 일치한다. 끄려면 배포 환경변수에 `SPRINGDOC_ENABLED=false`를 넣는다.
 
 Swagger의 `POST /api/v1/schedules`에는 자동 추천 1일 일정과 현재 로컬 장소 ID를
 동적으로 연결한 3박 4일 일정 예제가 있다. `mustVisitPlaceIds`에 장소를 직접 지정하려면 먼저
