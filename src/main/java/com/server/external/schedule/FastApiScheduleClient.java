@@ -17,6 +17,7 @@ import com.server.schedule.dto.ScheduleUpdateRequest;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import java.util.function.Supplier;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.MediaType;
 import org.slf4j.Logger;
@@ -51,43 +52,60 @@ public class FastApiScheduleClient {
 
     public SchedulePreviewResponse createPreview(SchedulePreviewCreateRequest request) {
         try {
-            return restClient.post()
+            SchedulePreviewCreateRequest normalized = normalizePreviewRequest(request);
+            return executeWithLogging(
+                    "createPreview",
+                    "startDate=%s, endDate=%s".formatted(normalized.startDate(), normalized.endDate()),
+                    () -> restClient.post()
                     .uri("/api/v1/schedule-previews")
                     .contentType(MediaType.APPLICATION_JSON)
-                    .body(writeJson(normalizePreviewRequest(request)))
+                    .body(writeJson(normalized))
                     .retrieve()
-                    .body(SchedulePreviewResponse.class);
+                    .body(SchedulePreviewResponse.class)
+            );
         } catch (RestClientResponseException exception) {
             throw mapPreviewError(exception);
         } catch (ResourceAccessException exception) {
+            log.warn("FastAPI createPreview access failure: {}", exception.getMessage());
             throw new BusinessException(ErrorCode.EXTERNAL_PROVIDER_UNAVAILABLE, exception);
         }
     }
 
     public SchedulePreviewResponse getPreview(UUID previewId) {
         try {
-            return restClient.get()
+            return executeWithLogging(
+                    "getPreview",
+                    "previewId=%s".formatted(previewId),
+                    () -> restClient.get()
                     .uri("/api/v1/schedule-previews/{previewId}", previewId)
                     .retrieve()
-                    .body(SchedulePreviewResponse.class);
+                    .body(SchedulePreviewResponse.class)
+            );
         } catch (RestClientResponseException exception) {
             throw mapPreviewError(exception);
         } catch (ResourceAccessException exception) {
+            log.warn("FastAPI getPreview access failure. previewId={}, reason={}",
+                    previewId, exception.getMessage());
             throw new BusinessException(ErrorCode.EXTERNAL_PROVIDER_UNAVAILABLE, exception);
         }
     }
 
     public ScheduleResponse createSchedule(ScheduleCreateRequest request) {
         try {
-            return restClient.post()
+            return executeWithLogging(
+                    "createSchedule",
+                    "startDate=%s, endDate=%s".formatted(request.startDate(), request.endDate()),
+                    () -> restClient.post()
                     .uri("/api/v1/schedules")
                     .contentType(MediaType.APPLICATION_JSON)
                     .body(writeJson(request))
                     .retrieve()
-                    .body(ScheduleResponse.class);
+                    .body(ScheduleResponse.class)
+            );
         } catch (RestClientResponseException exception) {
             throw mapScheduleError(exception);
         } catch (ResourceAccessException exception) {
+            log.warn("FastAPI createSchedule access failure: {}", exception.getMessage());
             throw new BusinessException(ErrorCode.EXTERNAL_PROVIDER_UNAVAILABLE, exception);
         }
     }
@@ -97,64 +115,90 @@ public class FastApiScheduleClient {
             String idempotencyKey
     ) {
         try {
-            return restClient.post()
+            return executeWithLogging(
+                    "createScheduleFromPreview",
+                    "previewId=%s, idempotencyKey=%s".formatted(request.previewId(), idempotencyKey),
+                    () -> restClient.post()
                     .uri("/api/v1/schedules")
                     .contentType(MediaType.APPLICATION_JSON)
                     .header("Idempotency-Key", idempotencyKey)
                     .body(writeJson(request))
                     .retrieve()
-                    .body(ScheduleResponse.class);
+                    .body(ScheduleResponse.class)
+            );
         } catch (RestClientResponseException exception) {
             throw mapScheduleError(exception);
         } catch (ResourceAccessException exception) {
+            log.warn("FastAPI createScheduleFromPreview access failure. previewId={}, idempotencyKey={}, reason={}",
+                    request.previewId(), idempotencyKey, exception.getMessage());
             throw new BusinessException(ErrorCode.EXTERNAL_PROVIDER_UNAVAILABLE, exception);
         }
     }
 
     public ScheduleListResponse listSchedules() {
         try {
-            return restClient.get()
+            return executeWithLogging(
+                    "listSchedules",
+                    "",
+                    () -> restClient.get()
                     .uri("/api/v1/schedules")
                     .retrieve()
-                    .body(ScheduleListResponse.class);
+                    .body(ScheduleListResponse.class)
+            );
         } catch (RestClientResponseException exception) {
             throw mapScheduleError(exception);
         } catch (ResourceAccessException exception) {
+            log.warn("FastAPI listSchedules access failure: {}", exception.getMessage());
             throw new BusinessException(ErrorCode.EXTERNAL_PROVIDER_UNAVAILABLE, exception);
         }
     }
 
     public ScheduleResponse getSchedule(UUID scheduleId) {
         try {
-            return restClient.get()
+            return executeWithLogging(
+                    "getSchedule",
+                    "scheduleId=%s".formatted(scheduleId),
+                    () -> restClient.get()
                     .uri("/api/v1/schedules/{scheduleId}", scheduleId)
                     .retrieve()
-                    .body(ScheduleResponse.class);
+                    .body(ScheduleResponse.class)
+            );
         } catch (RestClientResponseException exception) {
             throw mapScheduleError(exception);
         } catch (ResourceAccessException exception) {
+            log.warn("FastAPI getSchedule access failure. scheduleId={}, reason={}",
+                    scheduleId, exception.getMessage());
             throw new BusinessException(ErrorCode.EXTERNAL_PROVIDER_UNAVAILABLE, exception);
         }
     }
 
     public ScheduleResponse updateSchedule(UUID scheduleId, ScheduleUpdateRequest request) {
         try {
-            return restClient.patch()
+            return executeWithLogging(
+                    "updateSchedule",
+                    "scheduleId=%s".formatted(scheduleId),
+                    () -> restClient.patch()
                     .uri("/api/v1/schedules/{scheduleId}", scheduleId)
                     .contentType(MediaType.APPLICATION_JSON)
                     .body(writeJson(request))
                     .retrieve()
-                    .body(ScheduleResponse.class);
+                    .body(ScheduleResponse.class)
+            );
         } catch (RestClientResponseException exception) {
             throw mapScheduleError(exception);
         } catch (ResourceAccessException exception) {
+            log.warn("FastAPI updateSchedule access failure. scheduleId={}, reason={}",
+                    scheduleId, exception.getMessage());
             throw new BusinessException(ErrorCode.EXTERNAL_PROVIDER_UNAVAILABLE, exception);
         }
     }
 
     public ScheduleMapResponse getScheduleMap(UUID scheduleId, Integer dayNo) {
         try {
-            return restClient.get()
+            return executeWithLogging(
+                    "getScheduleMap",
+                    "scheduleId=%s, dayNo=%s".formatted(scheduleId, dayNo),
+                    () -> restClient.get()
                     .uri(uriBuilder -> {
                         var builder = uriBuilder.path("/api/v1/schedules/{scheduleId}/map");
                         if (dayNo != null) {
@@ -163,11 +207,32 @@ public class FastApiScheduleClient {
                         return builder.build(scheduleId);
                     })
                     .retrieve()
-                    .body(ScheduleMapResponse.class);
+                    .body(ScheduleMapResponse.class)
+            );
         } catch (RestClientResponseException exception) {
             throw mapScheduleError(exception);
         } catch (ResourceAccessException exception) {
+            log.warn("FastAPI getScheduleMap access failure. scheduleId={}, dayNo={}, reason={}",
+                    scheduleId, dayNo, exception.getMessage());
             throw new BusinessException(ErrorCode.EXTERNAL_PROVIDER_UNAVAILABLE, exception);
+        }
+    }
+
+    private <T> T executeWithLogging(String operation, String context, Supplier<T> call) {
+        long startedAt = System.currentTimeMillis();
+        try {
+            T result = call.get();
+            log.info("FastAPI {} succeeded in {} ms{}",
+                    operation,
+                    System.currentTimeMillis() - startedAt,
+                    context.isBlank() ? "" : " [" + context + "]");
+            return result;
+        } catch (RuntimeException exception) {
+            log.warn("FastAPI {} failed in {} ms{}",
+                    operation,
+                    System.currentTimeMillis() - startedAt,
+                    context.isBlank() ? "" : " [" + context + "]");
+            throw exception;
         }
     }
 
