@@ -143,11 +143,35 @@ class TourApiPlaceIngestionServiceTest {
         verify(ingestionLock, never()).release(any());
     }
 
+    @Test
+    @DisplayName("상세 보강을 끄면 발견만 하고 TourAPI 상세 API를 호출하지 않는다")
+    void skipsEnrichmentWhenDisabled() {
+        TourApiPlaceIngestionService service = createService(false);
+        stubList(validItem("20260713040000"));
+        when(placeWriter.discover(any(), any())).thenReturn(candidate(true, true));
+
+        TourApiPlaceIngestionResult result = service.ingestConfigured();
+
+        assertThat(result.discovered()).isEqualTo(1);
+        assertThat(result.enriched()).isZero();
+        // 목록 1회만 쓰고 장소당 3회짜리 상세 보강은 건너뛴다.
+        assertThat(result.apiRequests()).isEqualTo(1);
+        verify(tourApiClient, never()).getCommonDetail(any());
+        verify(tourApiClient, never()).getIntro(any(), any());
+        verify(tourApiClient, never()).getImages(any());
+        verify(placeWriter, never()).completeEnrichment(any(), any(), any(LocalDateTime.class));
+    }
+
     private TourApiPlaceIngestionService createService() {
+        return createService(true);
+    }
+
+    private TourApiPlaceIngestionService createService(boolean enrichmentEnabled) {
         return new TourApiPlaceIngestionService(
                 tourApiClient,
                 placeWriter,
-                new TourApiPlaceIngestionProperties(false, "6", List.of("12"), 100, 1, 900),
+                new TourApiPlaceIngestionProperties(
+                        false, "6", List.of("12"), 100, 1, 900, enrichmentEnabled),
                 ingestionLock,
                 requestQuota
         );

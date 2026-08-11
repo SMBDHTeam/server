@@ -89,6 +89,10 @@ app:
       page-size: ${TOUR_API_PAGE_SIZE:100}
       max-pages: ${TOUR_API_MAX_PAGES:1}
       max-requests-per-day: ${TOUR_API_MAX_REQUESTS_PER_DAY:900}
+      # 상세 보강은 장소당 TourAPI를 3회 더 호출한다. 소개글·운영정보·이미지는
+      # 일정 생성에 쓰이지 않고 장소 상세 화면에만 쓰이므로, 상세를 외부 지도로
+      # 넘기면 꺼서 같은 예산으로 약 3배 많은 장소를 발견할 수 있다.
+      enrichment-enabled: ${TOUR_API_ENRICHMENT_ENABLED:true}
       scheduler:
         enabled: ${TOUR_API_INGESTION_SCHEDULER_ENABLED:false}
         cron: "${TOUR_API_INGESTION_CRON:0 0 4 * * *}"
