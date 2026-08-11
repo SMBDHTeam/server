@@ -126,6 +126,11 @@ public class PlaceService {
     /**
      * Matches on proximity plus a normalized name so "해운대 해수욕장" from an external provider
      * links to our ingested "해운대해수욕장" instead of duplicating it.
+     *
+     * <p>이름은 정규화 후 완전히 같을 때만 같은 장소로 본다. 부분 일치를 허용하면 "해운대"처럼
+     * 짧고 일반적인 이름이 "해운대 빛축제", "해운대 로데오거리"처럼 같은 권역의 다른 장소에
+     * 모두 걸리고, 그중 가장 가까운 장소가 사용자가 고르지 않은 결과로 반환된다.
+     * 같은 장소를 놓쳐 행이 하나 늘어나는 쪽이 다른 장소를 반환하는 것보다 안전하다.
      */
     private Optional<Place> findSamePlace(PlaceResolveRequest request) {
         String incomingName = normalizedName(request.name());
@@ -136,13 +141,7 @@ public class PlaceService {
                 .filter(place -> place.getLongitude() != null && place.getLatitude() != null)
                 .filter(place -> distanceMeters(request.longitude(), request.latitude(), place)
                         <= SAME_PLACE_RADIUS_METERS)
-                .filter(place -> {
-                    String existingName = normalizedName(place.getName());
-                    return !existingName.isEmpty()
-                            && (existingName.equals(incomingName)
-                            || existingName.contains(incomingName)
-                            || incomingName.contains(existingName));
-                })
+                .filter(place -> normalizedName(place.getName()).equals(incomingName))
                 .min(Comparator.comparingInt(
                         place -> distanceMeters(request.longitude(), request.latitude(), place)));
     }
