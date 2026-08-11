@@ -2,7 +2,9 @@ package com.server.common.database;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.io.IOException;
 import org.junit.jupiter.api.DisplayName;
+import org.springframework.core.io.support.PathMatchingResourcePatternResolver;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -27,7 +29,7 @@ class PostgresMigrationIntegrationTest {
 
     @Test
     @DisplayName("Flyway 전체 migration과 JPA 스키마 검증을 통과한다")
-    void migrationsMatchJpaSchema() {
+    void migrationsMatchJpaSchema() throws IOException {
         Integer migrationCount = jdbcTemplate.queryForObject(
                 "select count(*) from flyway_schema_history where success = true",
                 Integer.class
@@ -60,11 +62,19 @@ class PostgresMigrationIntegrationTest {
                 Integer.class
         );
 
-        assertThat(migrationCount).isEqualTo(5);
+        // migration을 추가할 때마다 기대값을 고치지 않도록 실제 파일 수와 대조한다.
+        // 예전에는 5로 고정돼 있어 V6가 들어온 뒤 이 테스트가 계속 실패했다.
+        assertThat(migrationCount).isEqualTo(migrationScriptCount());
         assertThat(retryColumnCount).isEqualTo(1);
         assertThat(quotaTableCount).isEqualTo(1);
         assertThat(previewTableCount).isEqualTo(1);
         assertThat(creationRequestTableCount).isEqualTo(1);
         assertThat(questionUiStepColumnCount).isEqualTo(1);
+    }
+
+    /** classpath의 db/migration 아래 있는 실제 스크립트 수. */
+    private int migrationScriptCount() throws IOException {
+        return new PathMatchingResourcePatternResolver()
+                .getResources("classpath:db/migration/V*__*.sql").length;
     }
 }
