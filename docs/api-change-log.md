@@ -2,6 +2,18 @@
 
 API 계약이 변경될 때마다 최신 항목을 위에 추가한다.
 
+## 2026-08-11 (오류 응답 계약을 모든 경우에 적용)
+
+- API: 전체
+- 구분: 오류 응답 보완 및 코드 신설
+- 이전: 오류의 절반가량이 `ErrorResponse`가 아니라 Spring 기본 응답(`timestamp`/`status`/`error`/`path`)으로 나갔다. 깨진 JSON 본문, 잘못된 형식의 경로 변수(`/schedules/abc`), 필수 쿼리 파라미터 누락, 존재하지 않는 경로, 그리고 처리하지 못한 모든 예외가 여기 해당했다. `code`와 `traceId`가 없어 클라이언트가 코드로 분기할 수 없었고, 500 응답은 `traceId`가 없어 로그와 연결할 수도 없었다.
+- 이후: 위 다섯 경우 모두 `code`·`fieldErrors`·`traceId`를 갖춘 `ErrorResponse`로 반환한다. 신설 코드는 `MALFORMED_REQUEST`(400), `RESOURCE_NOT_FOUND`(404), `INTERNAL_ERROR`(500)다. 500 응답에 내부 예외 메시지는 담지 않고 서버 로그에만 `traceId`와 함께 남긴다.
+- 함께 변경: 장소·위치 검색의 요청 오류가 `INVALID_SCHEDULE_CONDITION`("일정 조건이 올바르지 않습니다")으로 나가던 것을 신설한 `INVALID_PLACE_SEARCH_REQUEST`(400)로 바꾸고, `fieldErrors`에 어느 파라미터가 문제인지 담는다. 예: `size -> 1 이상 50 이하여야 합니다. 요청 값: 1000`, `keyword -> keyword 또는 longitude·latitude 중 하나는 있어야 합니다.`
+- 이유: 오류 응답 형태가 경우에 따라 달라 클라이언트가 일관되게 처리할 수 없었고, 장소 API가 일정 도메인 오류를 반환해 원인 파악이 어려웠다
+- 호환성 파괴: 일부. 응답 스키마는 그대로지만 장소·위치 검색 실패의 `code` 값이 `INVALID_SCHEDULE_CONDITION`에서 `INVALID_PLACE_SEARCH_REQUEST`로 바뀐다. 기존에 Spring 기본 응답을 받던 경우는 이제 `ErrorResponse`를 받는다.
+- DB/ERD: 변경 없음
+- 관련 PR 또는 이슈: 없음
+
 ## 2026-08-10 (일정 목록 조회가 축약 응답을 반환)
 
 - API: `GET /api/v1/schedules`
