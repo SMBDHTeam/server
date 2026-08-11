@@ -244,13 +244,18 @@ public class PlaceService {
     }
 
     private PlaceDetailResponse toDetailResponse(Place place) {
+        String overview = place.getDetail() == null ? null : place.getDetail().getOverview();
+        PlaceDetailResponse.OperatingInfo operatingInfo = toOperatingInfo(place.getOperatingInfo());
+        List<PlaceDetailResponse.Image> images = place.getImages().stream().map(this::toImage).toList();
         return new PlaceDetailResponse(
-                place.getId(), place.getExternalContentId(), place.getContentTypeId(), place.getName(),
+                place.getId(), place.getSource(), place.getExternalContentId(), place.getContentTypeId(),
+                place.getName(), place.getCategory(),
+                PlaceCategoryLabelResolver.resolve(place.getCategory(), place.getContentTypeId()),
                 place.getAddress(), place.getLongitude(), place.getLatitude(),
-                place.getDetail() == null ? null : place.getDetail().getOverview(),
-                toOperatingInfo(place.getOperatingInfo()),
-                place.getImages().stream().map(this::toImage).toList());
+                place.getPlaceUrl(), place.getPrimaryImageUrl(),
+                overview, operatingInfo, images);
     }
+
 
     private PlaceDetailResponse.OperatingInfo toOperatingInfo(PlaceOperatingInfo operatingInfo) {
         if (operatingInfo == null) return null;
