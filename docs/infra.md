@@ -227,3 +227,19 @@ SCHEDULE_MAX_ROUTE_ESTIMATE_PROVIDER_CALLS=30
 `SCHEDULE_MULTI_DAY_ACTUAL_RERANK_CANDIDATES`는 실제 경로로 비교할 장소·날짜 배치안 상한이며 `1~6` 범위다. 경량 경로 호출 상한은 다일 배치안과 일차별 순서 재평가를 합친 요청 전체에 적용한다. 남은 예산은 일차별 순서 후보에 균등 배분한다. 운영 계정 정책에 맞춰 상한과 간격을 조정할 수 있다. `0ms`는 제한기를 끄므로 실제 Provider 환경에서는 사용하지 않는다.
 
 ODsay 경로 캐시는 좌표쌍 기준 프로세스 메모리 캐시다. 경량 최적 경로는 기본 30분, 상세 선형과 실시간 보정 결과는 기본 5분 동안 유지하며 실패 응답은 저장하지 않는다. 서버 재시작 시 비워지고 여러 인스턴스 사이에는 공유되지 않는다. 실시간성이 더 중요한 환경은 상세 TTL을 줄이고, 반복 일정 생성 성능이 중요한 환경은 운영 모니터링 후 늘릴 수 있다.
+
+## 테스트 게이트와 배포 헬스체크
+
+`.github/workflows/test.yml`이 main 대상 PR과 push에서 `./gradlew test`를 실행한다.
+실패하면 리포트를 아티팩트로 올린다. Testcontainers를 쓰는 migration 테스트는
+러너의 Docker를 그대로 사용한다.
+
+`.githooks/pre-push`는 main 직접 push와 최신 main 미반영을 막는다. 기본으로는
+꺼져 있으므로 각자 한 번 켜야 한다.
+
+```bash
+git config core.hooksPath .githooks
+```
+
+배포 헬스체크는 장소 검색과 일정 목록을 **둘 다** 확인한다. 예전에는 장소 검색만
+확인해서, 일정 API가 전부 503이던 동안 다섯 번의 배포가 초록불로 통과했다.
