@@ -1,6 +1,7 @@
 package com.server.schedule.dto;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
+import io.swagger.v3.oas.annotations.media.Schema;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalTime;
@@ -8,13 +9,15 @@ import java.util.List;
 import java.util.UUID;
 
 public record ScheduleResponse(
-        UUID id,
-        String status,
-        LocalDate startDate,
-        LocalDate endDate,
+        @Schema(example = "f2536c52-69d1-4e6c-8ab6-2ede45dba2cd") UUID id,
+        @Schema(example = "CONFIRMED", allowableValues = {"DRAFT", "CONFIRMED"}) String status,
+        @Schema(example = "2026-09-20") LocalDate startDate,
+        @Schema(example = "2026-09-21") LocalDate endDate,
         @JsonInclude(JsonInclude.Include.NON_NULL) LocalTime dailyStartTime,
         @JsonInclude(JsonInclude.Include.NON_NULL) LocalTime dailyEndTime,
+        @Schema(description = "선택한 답변을 요약한 문구", example = "친구와 함께하는 여유로운 자연 중심 일정")
         String styleSummary,
+        @Schema(description = "일차별 방문지와 이동. 목록 조회에서는 반환하지 않는다.")
         List<Day> days,
         @JsonInclude(JsonInclude.Include.NON_NULL) ScheduleEvaluationReport evaluation,
         @JsonInclude(JsonInclude.Include.NON_NULL) UUID previewId,

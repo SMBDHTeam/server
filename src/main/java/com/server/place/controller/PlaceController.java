@@ -6,6 +6,9 @@ import com.server.place.dto.PlaceResolveRequest;
 import com.server.place.dto.PlaceResolveResponse;
 import com.server.place.service.PlaceService;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.ExampleObject;
+import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.constraints.Min;
@@ -39,7 +42,11 @@ public class PlaceController {
             @Parameter(example = "129.0403") @RequestParam(required = false) BigDecimal longitude,
             @Parameter(example = "35.1151") @RequestParam(required = false) BigDecimal latitude,
             @Parameter(example = "5000") @RequestParam(required = false) @Min(1) Integer radius,
+            @Parameter(description = "INTERNAL 은 내부 DB 만, ALL 은 결과가 부족할 때 외부 검색으로 보강한다. "
+                    + "가고싶은 장소 검색 화면은 ALL 을 쓴다.",
+                    example = "ALL")
             @RequestParam(defaultValue = "INTERNAL") String scope,
+            @Parameter(description = "최대 결과 수. 1 이상 50 이하", example = "20")
             @RequestParam(defaultValue = "20") Integer size
     ) {
         if ("INTERNAL".equals(scope) && Integer.valueOf(20).equals(size)) {
@@ -49,8 +56,34 @@ public class PlaceController {
     }
 
     @PostMapping("/resolve")
-    @Operation(summary = "외부 장소 확정", description = "선택한 Kakao Local 후보만 내부 장소로 저장합니다.")
-    public PlaceResolveResponse resolve(@Valid @RequestBody PlaceResolveRequest request) {
+    @Operation(
+            summary = "외부 장소 확정",
+            description = "사용자가 선택한 외부 검색 결과만 내부 장소로 저장한다. "
+                    + "같은 (source, externalId)는 upsert 되며, 좌표 100m 이내이고 공백·기호를 제거한 이름이 "
+                    + "완전히 같은 기존 장소가 있으면 그 장소의 placeId를 반환한다. "
+                    + "이때 응답 source는 기존 장소의 출처이며 적재해 둔 값은 덮어쓰지 않는다."
+    )
+    public PlaceResolveResponse resolve(
+            @io.swagger.v3.oas.annotations.parameters.RequestBody(
+                    required = true,
+                    content = @Content(
+                            mediaType = "application/json",
+                            schema = @Schema(implementation = PlaceResolveRequest.class),
+                            examples = {
+                                    @ExampleObject(
+                                            name = "naver",
+                                            summary = "네이버 지역검색 결과",
+                                            value = PlaceOpenApiExamples.RESOLVE_NAVER
+                                    ),
+                                    @ExampleObject(
+                                            name = "kakao",
+                                            summary = "카카오 로컬 결과",
+                                            value = PlaceOpenApiExamples.RESOLVE_KAKAO
+                                    )
+                            }
+                    )
+            )
+            @Valid @RequestBody PlaceResolveRequest request) {
         return placeService.resolve(request);
     }
 

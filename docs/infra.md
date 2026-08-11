@@ -283,3 +283,27 @@ TOUR_API_ENRICHMENT_ENABLED=false
 
 끄면 같은 예산으로 약 3배 많은 장소를 발견할 수 있고, 이는 곧 일정 생성의
 후보 장소 풀이 넓어진다는 뜻이다. 이미 보강된 장소의 데이터는 그대로 남는다.
+
+## Swagger 사용
+
+```
+로컬  http://localhost:8080/swagger-ui.html
+dev   https://api.busantour.site/swagger-ui.html
+```
+
+문서는 코드에서 생성되므로 배포된 서버의 실제 계약과 항상 일치한다.
+
+본문을 받는 모든 엔드포인트에 요청 예시가 붙어 있어 `Try it out`으로 바로 실행할 수 있다.
+
+| 엔드포인트 | 예시 |
+| --- | --- |
+| `POST /schedule-previews` | 숙소 미정 1박 2일 / 고정 숙소 2박 3일 |
+| `POST /schedules` | 1일 / 3박 4일 |
+| `PATCH /schedules/{id}` | 순서 변경과 장소 추가 |
+| `POST /places/resolve` | 네이버 / 카카오 |
+| `POST /schedules/{id}/shares` | 7일 만료 / 만료 없음 |
+
+오류 응답도 오퍼레이션마다 나열된다. 각 상태의 설명에 그 상태로 나올 수 있는 `code`
+목록이 함께 적혀 있어, 클라이언트가 분기 대상을 문서에서 바로 확인할 수 있다.
+
+끄려면 배포 환경변수에 `SPRINGDOC_ENABLED=false`를 넣는다.

@@ -4,6 +4,9 @@ import com.server.share.dto.ShareLinkCreateRequest;
 import com.server.share.dto.ShareLinkResponse;
 import com.server.share.service.ShareService;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.media.ExampleObject;
+import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -30,9 +33,32 @@ public class ShareController {
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    @Operation(summary = "공유 링크 생성")
+    @Operation(
+            summary = "공유 링크 생성",
+            description = "토큰은 응답에서 한 번만 내려주며 서버에는 해시만 저장한다. "
+                    + "폐기된 링크와 없는 링크는 모두 404 SHARE_LINK_NOT_FOUND 로 응답한다."
+    )
     public ShareLinkResponse create(
             @Parameter(description = "일정 ID") @PathVariable UUID scheduleId,
+            @io.swagger.v3.oas.annotations.parameters.RequestBody(
+                    required = true,
+                    content = @Content(
+                            mediaType = "application/json",
+                            schema = @Schema(implementation = ShareLinkCreateRequest.class),
+                            examples = {
+                                    @ExampleObject(
+                                            name = "expiresInWeek",
+                                            summary = "7일 뒤 만료",
+                                            value = "{\"expiresInDays\": 7}"
+                                    ),
+                                    @ExampleObject(
+                                            name = "neverExpires",
+                                            summary = "만료 없음",
+                                            value = "{\"expiresInDays\": null}"
+                                    )
+                            }
+                    )
+            )
             @Valid @RequestBody ShareLinkCreateRequest request
     ) {
         return shareService.create(scheduleId, request);
