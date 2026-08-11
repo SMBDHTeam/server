@@ -4,6 +4,7 @@ import com.server.schedule.dto.SchedulePreviewCreateRequest;
 import com.server.schedule.dto.SchedulePreviewResponse;
 import com.server.schedule.service.SchedulePreviewService;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.media.ExampleObject;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -63,8 +64,14 @@ public class SchedulePreviewController {
     }
 
     @GetMapping("/{previewId}")
-    @Operation(summary = "일정 미리보기 조회")
-    public SchedulePreviewResponse get(@PathVariable UUID previewId) {
+    @Operation(
+            summary = "일정 미리보기 조회",
+            description = "새로고침 복원용이다. 만료된 Preview 는 410 PREVIEW_EXPIRED 로 응답한다."
+    )
+    public SchedulePreviewResponse get(
+            @Parameter(description = "Preview 생성 응답의 previewId",
+                    example = "6afa151a-3fb2-4f3d-821f-53228b88d1c0")
+            @PathVariable UUID previewId) {
         return previewService.get(previewId);
     }
 }

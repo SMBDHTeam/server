@@ -42,7 +42,11 @@ public class PlaceController {
             @Parameter(example = "129.0403") @RequestParam(required = false) BigDecimal longitude,
             @Parameter(example = "35.1151") @RequestParam(required = false) BigDecimal latitude,
             @Parameter(example = "5000") @RequestParam(required = false) @Min(1) Integer radius,
+            @Parameter(description = "INTERNAL 은 내부 DB 만, ALL 은 결과가 부족할 때 외부 검색으로 보강한다. "
+                    + "가고싶은 장소 검색 화면은 ALL 을 쓴다.",
+                    example = "ALL")
             @RequestParam(defaultValue = "INTERNAL") String scope,
+            @Parameter(description = "최대 결과 수. 1 이상 50 이하", example = "20")
             @RequestParam(defaultValue = "20") Integer size
     ) {
         if ("INTERNAL".equals(scope) && Integer.valueOf(20).equals(size)) {
