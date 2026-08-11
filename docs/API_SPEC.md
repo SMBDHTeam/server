@@ -989,12 +989,18 @@ GET /api/v1/places?longitude=129.0403&latitude=35.1151&radius=1000
 ```json
 {
   "id": 101,
+  "source": "TOUR_API",
   "externalContentId": "126508",
   "contentTypeId": "12",
   "name": "이송도전망대",
+  "category": "A01011200",
+  "categoryLabel": "자연 관광지",
   "address": "부산 서구 암남동",
   "longitude": 129.047956,
   "latitude": 35.075519,
+  "placeUrl": null,
+  "primaryImageUrl": "https://example.com/image.jpg",
+  "detailLevel": "FULL",
   "overview": "장소 설명",
   "operatingInfo": {
     "openingHoursText": "09:00~18:00",
@@ -1014,6 +1020,42 @@ GET /api/v1/places?longitude=129.0403&latitude=35.1151&radius=1000
 ```
 
 TourAPI 기본·상세·소개·이미지 응답을 내부 DB에 적재한 결과를 조회한다.
+
+### 상세 정보 수준 (`detailLevel`)
+
+사용자가 네이버·카카오 검색으로 직접 등록한 장소는 소개글·운영정보·이미지가 없다.
+TourAPI가 그 장소를 모르기 때문이며, 외부 지역검색 API도 이 값들을 제공하지 않는다.
+
+`detailLevel`은 클라이언트가 상세 화면 구성을 나눌 수 있도록 이를 명시한다.
+
+| 값 | 의미 | 제공 필드 |
+| --- | --- | --- |
+| `FULL` | `overview`·`operatingInfo`·`images` 중 하나 이상 있음 | 전체 |
+| `BASIC` | 위 셋이 모두 없음 | `name`, `address`, `categoryLabel`, 좌표, `placeUrl` |
+
+`BASIC` 응답에서 `overview`, `operatingInfo`, `images`가 비어 있는 것은 **조회 실패가 아니라 정상 응답**이다.
+클라이언트는 빈 상세 화면을 그리는 대신 `placeUrl`을 외부 링크로 제공한다.
+
+```json
+{
+  "id": 474,
+  "source": "NAVER_LOCAL",
+  "externalContentId": "1291626049-351595354",
+  "contentTypeId": "12",
+  "name": "해운대",
+  "category": "여행,명소>관광,명소",
+  "categoryLabel": "여행,명소>관광,명소",
+  "address": "부산 해운대구 우동",
+  "longitude": 129.1626,
+  "latitude": 35.1595,
+  "placeUrl": "https://map.naver.com/p/entry/place/1234567",
+  "primaryImageUrl": null,
+  "detailLevel": "BASIC",
+  "overview": null,
+  "operatingInfo": null,
+  "images": []
+}
+```
 
 ## 8. 주변 편의시설 조회
 

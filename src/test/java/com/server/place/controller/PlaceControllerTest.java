@@ -72,12 +72,18 @@ class PlaceControllerTest {
         when(placeService.getDetail(101L))
                 .thenReturn(new PlaceDetailResponse(
                         101L,
+                        "TOUR_API",
                         "126508",
                         "12",
                         "이송도전망대",
+                        "A0101",
+                        "자연 관광지",
                         "부산 서구 암남동",
                         new BigDecimal("129.047956"),
                         new BigDecimal("35.075519"),
+                        null,
+                        "https://example.com/image.jpg",
+                        PlaceDetailResponse.DETAIL_LEVEL_FULL,
                         "장소 설명",
                         new PlaceDetailResponse.OperatingInfo("09:00~18:00", "연중무휴", "무료", "주차 가능", true),
                         List.of(new PlaceDetailResponse.Image(
@@ -97,7 +103,10 @@ class PlaceControllerTest {
                 .andExpect(jsonPath("$.overview").value("장소 설명"))
                 .andExpect(jsonPath("$.operatingInfo.openingHoursText").value("09:00~18:00"))
                 .andExpect(jsonPath("$.operatingInfo.requiresManualCheck").value(true))
-                .andExpect(jsonPath("$.images[0].url").value("https://example.com/image.jpg"));
+                .andExpect(jsonPath("$.images[0].url").value("https://example.com/image.jpg"))
+                .andExpect(jsonPath("$.source").value("TOUR_API"))
+                .andExpect(jsonPath("$.categoryLabel").value("자연 관광지"))
+                .andExpect(jsonPath("$.detailLevel").value("FULL"));
     }
 
     @Test

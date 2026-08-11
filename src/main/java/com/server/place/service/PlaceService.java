@@ -231,12 +231,32 @@ public class PlaceService {
     }
 
     private PlaceDetailResponse toDetailResponse(Place place) {
+        String overview = place.getDetail() == null ? null : place.getDetail().getOverview();
+        PlaceDetailResponse.OperatingInfo operatingInfo = toOperatingInfo(place.getOperatingInfo());
+        List<PlaceDetailResponse.Image> images = place.getImages().stream().map(this::toImage).toList();
         return new PlaceDetailResponse(
-                place.getId(), place.getExternalContentId(), place.getContentTypeId(), place.getName(),
+                place.getId(), place.getSource(), place.getExternalContentId(), place.getContentTypeId(),
+                place.getName(), place.getCategory(),
+                PlaceCategoryLabelResolver.resolve(place.getCategory(), place.getContentTypeId()),
                 place.getAddress(), place.getLongitude(), place.getLatitude(),
-                place.getDetail() == null ? null : place.getDetail().getOverview(),
-                toOperatingInfo(place.getOperatingInfo()),
-                place.getImages().stream().map(this::toImage).toList());
+                place.getPlaceUrl(), place.getPrimaryImageUrl(),
+                detailLevel(overview, operatingInfo, images),
+                overview, operatingInfo, images);
+    }
+
+    /**
+     * 소개글·운영정보·이미지 중 하나라도 있으면 FULL로 본다. 사용자가 외부 검색으로 등록한
+     * 장소는 셋 다 없으므로 BASIC이 되고, 클라이언트는 이를 보고 축약 화면을 그린다.
+     */
+    private String detailLevel(
+            String overview,
+            PlaceDetailResponse.OperatingInfo operatingInfo,
+            List<PlaceDetailResponse.Image> images
+    ) {
+        boolean hasAny = (overview != null && !overview.isBlank())
+                || operatingInfo != null
+                || !images.isEmpty();
+        return hasAny ? PlaceDetailResponse.DETAIL_LEVEL_FULL : PlaceDetailResponse.DETAIL_LEVEL_BASIC;
     }
 
     private PlaceDetailResponse.OperatingInfo toOperatingInfo(PlaceOperatingInfo operatingInfo) {

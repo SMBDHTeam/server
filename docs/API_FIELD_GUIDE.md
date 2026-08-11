@@ -486,13 +486,19 @@ V2 응답은 top-level `dailyStartTime`, `dailyEndTime`을 사용하지 않는�
 | 응답 필드 | 자료형 | 필수 | 의미 |
 | --- | --- | :---: | --- |
 | `id` | integer | O | 내부 장소 ID |
-| `externalContentId` | string | O | TourAPI 콘텐츠 ID |
+| `source` | string | O | 장소 출처. `TOUR_API`, `NAVER_LOCAL`, `KAKAO_LOCAL` |
+| `externalContentId` | string | O | 출처의 장소 ID |
 | `contentTypeId` | string | X | TourAPI 관광 타입 |
 | `name` | string | O | 장소명 |
+| `category` | string | X | 원본 분류값 |
+| `categoryLabel` | string | O | 화면 표시용 카테고리 라벨 |
 | `address` | string | X | 주소 |
 | `longitude` | number | O | 경도 |
 | `latitude` | number | O | 위도 |
-| `overview` | string | X | 상세 설명 |
+| `placeUrl` | string | X | 외부 제공자의 장소 페이지 링크. `BASIC` 화면의 더 보기 대상 |
+| `primaryImageUrl` | string | X | 대표 이미지 |
+| `detailLevel` | string | O | `FULL` 또는 `BASIC`. 아래 설명 참고 |
+| `overview` | string | X | 상세 설명. `BASIC`에서는 항상 `null` |
 | `operatingInfo` | object | X | 운영 정보 |
 | `operatingInfo.openingHoursText` | string | X | 운영시간 원문 |
 | `operatingInfo.closedDaysText` | string | X | 휴무일 원문 |
@@ -503,6 +509,17 @@ V2 응답은 top-level `dailyStartTime`, `dailyEndTime`을 사용하지 않는�
 | `images[].url` | string | O | 원본 이미지 |
 | `images[].thumbnailUrl` | string | X | 썸네일 |
 | `images[].copyrightType` | string | X | 저작권 구분 |
+
+`detailLevel`은 제공 가능한 상세 정보의 수준을 알린다.
+
+| 값 | 조건 | 클라이언트 처리 |
+| --- | --- | --- |
+| `FULL` | `overview`·`operatingInfo`·`images` 중 하나 이상 있음 | 전체 상세 화면 |
+| `BASIC` | 위 셋이 모두 없음 | 축약 화면. 지도·카테고리·`placeUrl` 링크 |
+
+`BASIC`은 사용자가 네이버·카카오 검색으로 직접 등록한 장소에서 나타난다. TourAPI가 그 장소를
+모르고 외부 지역검색 API도 소개글·이미지를 제공하지 않기 때문이다. **조회 실패가 아니므로
+오류로 처리하지 않는다.**
 
 ## 8. 주변 편의시설
 

@@ -2,6 +2,18 @@
 
 API 계약이 변경될 때마다 최신 항목을 위에 추가한다.
 
+## 2026-08-11 (장소 상세에 출처·링크·상세 수준 추가)
+
+- API: `GET /api/v1/places/{placeId}`
+- 구분: 응답 필드 추가 및 버그 수정
+- 이전: 상세 응답이 `id`, `externalContentId`, `contentTypeId`, `name`, `address`, 좌표, `overview`, `operatingInfo`, `images`만 반환했다. 검색 응답에는 있는 `source`, `categoryLabel`, `placeUrl`, `primaryImageUrl`이 상세에는 없어, 검색 결과를 눌러 상세로 들어가면 오히려 정보가 줄었다. 사용자가 네이버·카카오 검색으로 직접 등록한 장소는 `overview`·`operatingInfo`·`images`가 모두 비어 상세 화면이 빈 채로 보였고, DB에 저장해 둔 `placeUrl`조차 내려주지 않아 대체 수단이 없었다.
+- 이후: `source`, `category`, `categoryLabel`, `placeUrl`, `primaryImageUrl`, `detailLevel`을 추가한다. `detailLevel`은 `FULL`(소개글·운영정보·이미지 중 하나 이상 있음) 또는 `BASIC`(모두 없음)이다. `BASIC`은 조회 실패가 아니라 정상 응답이며, 클라이언트는 이 값으로 축약 화면을 그리고 `placeUrl`로 외부 링크를 제공한다.
+- 함께 수정: `categoryLabel`이 TourAPI `B`(숙박)·`C`(추천코스) 분류코드를 라벨로 바꾸지 못하고 `"B02011100"` 같은 원시 코드를 그대로 반환하던 문제를 고쳤다. 검색·상세·일정 응답의 `categoryLabel`이 함께 바뀐다. 카테고리가 비어 있고 콘텐츠 유형도 없는 장소에서 `NullPointerException`으로 500이 나던 경로도 함께 막았다.
+- 이유: 외부 검색으로 등록한 장소의 상세 화면이 비어 보이는 문제를 해결하고, 클라이언트가 "데이터 없음"과 "조회 실패"를 구분할 수 있게 하기 위함
+- 호환성 파괴: 아니오. 기존 필드와 타입은 그대로이며 필드만 추가된다. 다만 `categoryLabel` 값이 일부 장소에서 코드에서 한글 라벨로 바뀐다.
+- DB/ERD: 변경 없음. 모두 기존 컬럼이다.
+- 관련 PR 또는 이슈: 없음
+
 ## 2026-08-10 (일정 목록 조회가 축약 응답을 반환)
 
 - API: `GET /api/v1/schedules`
