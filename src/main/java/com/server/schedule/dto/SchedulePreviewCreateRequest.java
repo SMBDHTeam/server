@@ -12,9 +12,9 @@ import java.time.LocalTime;
 import java.util.List;
 
 public record SchedulePreviewCreateRequest(
-        @NotNull LocalDate startDate,
-        @NotNull LocalDate endDate,
-        @Valid @NotNull Location startLocation,
+        @NotNull(message = "출발일은 필수입니다.") LocalDate startDate,
+        @NotNull(message = "도착일은 필수입니다.") LocalDate endDate,
+        @Valid @NotNull(message = "출발 장소는 필수입니다.") Location startLocation,
         LocalTime startTime,
         @Valid @NotNull LodgingPlan lodgingPlan,
         @Valid EndConstraint endConstraint,

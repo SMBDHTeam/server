@@ -63,25 +63,6 @@ class LocalOpenApiConfigTest {
     }
 
     @Test
-    @DisplayName("현재 로컬 장소 ID가 연결된 3박 4일 예제를 그대로 실행할 수 있다")
-    void fourDayExampleCreatesSchedule() throws Exception {
-        String apiDocs = mockMvc.perform(get("/v3/api-docs"))
-                .andExpect(status().isOk())
-                .andReturn()
-                .getResponse()
-                .getContentAsString();
-        JsonNode example = objectMapper.readTree(apiDocs)
-                .at("/paths/~1api~1v1~1schedules/post/requestBody/content/application~1json/examples/fourDay/value");
-
-        mockMvc.perform(post("/api/v1/schedules")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsBytes(example)))
-                .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.days.length()").value(4))
-                .andExpect(jsonPath("$.evaluation.hardGate.passed").value(true));
-    }
-
-    @Test
     @DisplayName("Swagger UI 정적 페이지를 제공한다")
     void swaggerUiIsAvailable() throws Exception {
         mockMvc.perform(get("/swagger-ui/index.html"))

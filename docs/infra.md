@@ -41,8 +41,12 @@ docker compose -f docker-compose.local.yml up -d postgres
 ./gradlew bootRun --args='--spring.profiles.active=local'
 ```
 
-- Swagger UI: `http://localhost:8080/swagger-ui.html`
-- OpenAPI JSON: `http://localhost:8080/v3/api-docs`
+- Swagger UI (로컬): `http://localhost:8080/swagger-ui.html`
+- OpenAPI JSON (로컬): `http://localhost:8080/v3/api-docs`
+- Swagger UI (dev): `https://api.busantour.site/swagger-ui.html`
+- OpenAPI JSON (dev): `https://api.busantour.site/v3/api-docs`
+
+dev의 문서는 배포된 코드에서 생성되므로 실제 계약과 항상 일치한다. 끄려면 배포 환경변수에 `SPRINGDOC_ENABLED=false`를 넣는다.
 
 Swagger의 `POST /api/v1/schedules`에는 자동 추천 1일 일정과 현재 로컬 장소 ID를
 동적으로 연결한 3박 4일 일정 예제가 있다. `mustVisitPlaceIds`에 장소를 직접 지정하려면 먼저
@@ -227,3 +231,55 @@ SCHEDULE_MAX_ROUTE_ESTIMATE_PROVIDER_CALLS=30
 `SCHEDULE_MULTI_DAY_ACTUAL_RERANK_CANDIDATES`는 실제 경로로 비교할 장소·날짜 배치안 상한이며 `1~6` 범위다. 경량 경로 호출 상한은 다일 배치안과 일차별 순서 재평가를 합친 요청 전체에 적용한다. 남은 예산은 일차별 순서 후보에 균등 배분한다. 운영 계정 정책에 맞춰 상한과 간격을 조정할 수 있다. `0ms`는 제한기를 끄므로 실제 Provider 환경에서는 사용하지 않는다.
 
 ODsay 경로 캐시는 좌표쌍 기준 프로세스 메모리 캐시다. 경량 최적 경로는 기본 30분, 상세 선형과 실시간 보정 결과는 기본 5분 동안 유지하며 실패 응답은 저장하지 않는다. 서버 재시작 시 비워지고 여러 인스턴스 사이에는 공유되지 않는다. 실시간성이 더 중요한 환경은 상세 TTL을 줄이고, 반복 일정 생성 성능이 중요한 환경은 운영 모니터링 후 늘릴 수 있다.
+
+## 테스트 게이트와 배포 헬스체크
+
+`.github/workflows/test.yml`이 main 대상 PR과 push에서 `./gradlew test`를 실행한다.
+실패하면 리포트를 아티팩트로 올린다. Testcontainers를 쓰는 migration 테스트는
+러너의 Docker를 그대로 사용한다.
+
+`.githooks/pre-push`는 main 직접 push와 최신 main 미반영을 막는다. 기본으로는
+꺼져 있으므로 각자 한 번 켜야 한다.
+
+```bash
+git config core.hooksPath .githooks
+```
+
+### 배포 환경변수 파일
+
+server 레포는 EC2의 `/opt/hackathon-dev/.env.server`에 환경변수를 기록하고
+컨테이너에 `--env-file`로 전달한다. data 레포는 같은 디렉터리의 다른 파일을 쓴다.
+
+두 레포가 모두 `.env.dev`를 쓰던 때에는 나중에 배포한 쪽이 상대의 값을 덮어썼고,
+그 뒤 상대 컨테이너가 재시작하면 설정을 잃었다. 2026-08-11 08:24~09:00 사이에
+실제로 서로를 덮어썼고 `data-ai`가 환경변수 없이 기동해 일정이 메모리에만 저장되고
+후보 장소가 468곳에서 15곳으로 줄었다.
+
+파일을 나눠 두면 배포 순서와 무관하게 각자의 설정이 유지된다.
+
+배포 헬스체크는 장소 검색과 일정 목록을 **둘 다** 확인한다. 예전에는 장소 검색만
+확인해서, 일정 API가 전부 503이던 동안 다섯 번의 배포가 초록불로 통과했다.
+
+## TourAPI 적재와 호출 예산
+
+적재는 두 단계다.
+
+| 단계 | TourAPI 호출 | 채우는 값 |
+| --- | --- | --- |
+| 발견(discover) | `areaBasedList2` 페이지당 1회 | 이름·좌표·카테고리·콘텐츠유형 |
+| 보강(enrich) | 장소당 3회 (`detailCommon2`, `detailIntro2`, `detailImage2`) | 소개글·운영정보·이미지 |
+
+**발견 단계 값만 일정 생성에 쓰인다.** 보강으로 채우는 소개글·운영정보·이미지는
+장소 상세 화면 표시에만 쓰이며 Planner는 참조하지 않는다.
+
+일일 예산은 `TOUR_API_MAX_REQUESTS_PER_DAY`(기본 900)다. 보강이 켜져 있으면
+장소 하나에 약 3회가 더 들어가므로, 하루에 담을 수 있는 장소 수가 크게 줄어든다.
+
+장소 상세 화면을 외부 지도 서비스로 넘기면 보강이 불필요해진다. 그때는 아래를 끈다.
+
+```
+TOUR_API_ENRICHMENT_ENABLED=false
+```
+
+끄면 같은 예산으로 약 3배 많은 장소를 발견할 수 있고, 이는 곧 일정 생성의
+후보 장소 풀이 넓어진다는 뜻이다. 이미 보강된 장소의 데이터는 그대로 남는다.

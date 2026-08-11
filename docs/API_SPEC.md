@@ -989,12 +989,17 @@ GET /api/v1/places?longitude=129.0403&latitude=35.1151&radius=1000
 ```json
 {
   "id": 101,
+  "source": "TOUR_API",
   "externalContentId": "126508",
   "contentTypeId": "12",
   "name": "이송도전망대",
+  "category": "A01011200",
+  "categoryLabel": "자연 관광지",
   "address": "부산 서구 암남동",
   "longitude": 129.047956,
   "latitude": 35.075519,
+  "placeUrl": null,
+  "primaryImageUrl": "https://example.com/image.jpg",
   "overview": "장소 설명",
   "operatingInfo": {
     "openingHoursText": "09:00~18:00",
@@ -1014,6 +1019,12 @@ GET /api/v1/places?longitude=129.0403&latitude=35.1151&radius=1000
 ```
 
 TourAPI 기본·상세·소개·이미지 응답을 내부 DB에 적재한 결과를 조회한다.
+
+사용자가 네이버·카카오 검색으로 직접 등록한 장소는 `overview`·`operatingInfo`·`images`가 비어 있다.
+TourAPI가 그 장소를 모르고 외부 지역검색 API도 이 값들을 제공하지 않기 때문이며, **조회 실패가 아니라
+정상 응답이다.** 이 경우 `placeUrl`로 외부 지도 서비스의 장소 페이지를 연결한다.
+
+`placeUrl`이 없는 장소(TourAPI 적재분)는 `name`과 좌표로 지도 API를 조회해 같은 화면을 구성할 수 있다.
 
 ## 8. 주변 편의시설 조회
 
@@ -1253,12 +1264,37 @@ Provider 응답의 `distanceMeters`가 누락되거나 0 이하이면 서버는 
 | HTTP | 오류 코드 | 상황 |
 | --- | --- | --- |
 | 400 | `INVALID_SCHEDULE_CONDITION` | 일정 조건 또는 요청값이 잘못됨 |
+| 400 | `INVALID_PLACE_SEARCH_REQUEST` | 장소·위치 검색 파라미터가 잘못됨 |
+| 400 | `MALFORMED_REQUEST` | 요청 본문이 JSON으로 읽히지 않음 |
 | 404 | `SCHEDULE_NOT_FOUND` | 일정을 찾을 수 없음 |
 | 404 | `PLACE_NOT_FOUND` | 장소를 찾을 수 없음 |
 | 404 | `SHARE_LINK_NOT_FOUND` | 공유 링크가 없거나 폐기됨 |
+| 404 | `RESOURCE_NOT_FOUND` | 존재하지 않는 경로 |
 | 422 | `TRANSIT_ROUTE_NOT_FOUND` | 장소 사이 대중교통 경로를 찾지 못함 |
 | 501 | `FACILITY_TYPE_NOT_SUPPORTED` | 지원하지 않는 편의시설 유형 |
 | 503 | `EXTERNAL_PROVIDER_UNAVAILABLE` | 외부 서비스가 응답하지 않음 |
+| 500 | `INTERNAL_ERROR` | 서버가 처리하지 못한 예외 |
+
+OpenAPI 문서(`/v3/api-docs`, Swagger UI)에도 오퍼레이션별로 가능한 오류 응답과 `code` 목록이 함께
+노출된다. 컨트롤러마다 애노테이션을 붙이지 않고 공통 커스터마이저가 일괄 적용하므로, 엔드포인트가
+추가돼도 문서가 자동으로 따라온다.
+
+**모든 오류는 위 형태를 지킨다.** 깨진 JSON 본문, 잘못된 형식의 경로 변수(`/schedules/abc`),
+필수 쿼리 파라미터 누락, 존재하지 않는 경로, 예상하지 못한 예외까지 전부 `code`·`fieldErrors`·`traceId`를
+담아 반환한다. 클라이언트는 HTTP 상태가 아니라 `code`로 분기해도 된다.
+
+`INTERNAL_ERROR` 응답에는 내부 예외 메시지를 담지 않는다. 원인은 서버 로그에 같은 `traceId`로 남으므로,
+문의 시 `traceId`를 함께 전달하면 된다.
+
+장소·위치 검색 오류 예시:
+
+| field | 사유 |
+| --- | --- |
+| `size` | `1 이상 50 이하여야 합니다. 요청 값: 1000` |
+| `scope` | `INTERNAL 또는 ALL 이어야 합니다.` |
+| `keyword` | `keyword 또는 longitude·latitude 중 하나는 있어야 합니다.` |
+| `keyword` | `keyword 검색과 좌표 검색은 함께 사용할 수 없습니다.` |
+| `longitude` / `latitude` | `좌표 검색에는 longitude와 latitude가 모두 필요합니다.` |
 
 ## 1차 스프린트 제외
 

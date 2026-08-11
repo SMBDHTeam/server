@@ -2,6 +2,7 @@ package com.server.place.service;
 
 import com.server.common.error.BusinessException;
 import com.server.common.error.ErrorCode;
+import com.server.common.error.FieldViolation;
 import com.server.external.kakao.KakaoLocalClient;
 import com.server.external.kakao.KakaoLocalSearchResponse;
 import com.server.place.domain.Place;
@@ -71,27 +72,39 @@ public class PlaceService {
             Integer size
     ) {
         int resolvedSize = size == null ? DEFAULT_SEARCH_SIZE : size;
-        if (resolvedSize < 1 || resolvedSize > MAX_SEARCH_SIZE
-                || !("INTERNAL".equals(scope) || "ALL".equals(scope))) {
-            throw new BusinessException(ErrorCode.INVALID_SCHEDULE_CONDITION);
+        if (resolvedSize < 1 || resolvedSize > MAX_SEARCH_SIZE) {
+            throw new BusinessException(ErrorCode.INVALID_PLACE_SEARCH_REQUEST, List.of(
+                    new FieldViolation("size",
+                            "1 이상 %d 이하여야 합니다. 요청 값: %d".formatted(MAX_SEARCH_SIZE, resolvedSize))));
+        }
+        if (!("INTERNAL".equals(scope) || "ALL".equals(scope))) {
+            throw new BusinessException(ErrorCode.INVALID_PLACE_SEARCH_REQUEST, List.of(
+                    new FieldViolation("scope",
+                            "INTERNAL 또는 ALL 이어야 합니다. 요청 값: %s".formatted(scope))));
         }
         boolean hasKeyword = keyword != null && !keyword.isBlank();
         boolean hasLongitude = longitude != null;
         boolean hasLatitude = latitude != null;
 
         if (hasKeyword && (hasLongitude || hasLatitude)) {
-            throw new BusinessException(ErrorCode.INVALID_SCHEDULE_CONDITION);
+            throw new BusinessException(ErrorCode.INVALID_PLACE_SEARCH_REQUEST, List.of(
+                    new FieldViolation("keyword",
+                            "keyword 검색과 좌표 검색은 함께 사용할 수 없습니다.")));
         }
         if (hasKeyword) {
             return searchByKeyword(keyword.trim(), scope, resolvedSize);
         }
         if (hasLongitude || hasLatitude) {
             if (!hasLongitude || !hasLatitude) {
-                throw new BusinessException(ErrorCode.INVALID_SCHEDULE_CONDITION);
+                throw new BusinessException(ErrorCode.INVALID_PLACE_SEARCH_REQUEST, List.of(
+                        new FieldViolation(hasLongitude ? "latitude" : "longitude",
+                                "좌표 검색에는 longitude와 latitude가 모두 필요합니다.")));
             }
             return searchByLocation(longitude, latitude, radius == null ? DEFAULT_RADIUS_METERS : radius, resolvedSize);
         }
-        throw new BusinessException(ErrorCode.INVALID_SCHEDULE_CONDITION);
+        throw new BusinessException(ErrorCode.INVALID_PLACE_SEARCH_REQUEST, List.of(
+                new FieldViolation("keyword",
+                        "keyword 또는 longitude·latitude 중 하나는 있어야 합니다.")));
     }
 
     @Transactional
@@ -230,13 +243,18 @@ public class PlaceService {
     }
 
     private PlaceDetailResponse toDetailResponse(Place place) {
+        String overview = place.getDetail() == null ? null : place.getDetail().getOverview();
+        PlaceDetailResponse.OperatingInfo operatingInfo = toOperatingInfo(place.getOperatingInfo());
+        List<PlaceDetailResponse.Image> images = place.getImages().stream().map(this::toImage).toList();
         return new PlaceDetailResponse(
-                place.getId(), place.getExternalContentId(), place.getContentTypeId(), place.getName(),
+                place.getId(), place.getSource(), place.getExternalContentId(), place.getContentTypeId(),
+                place.getName(), place.getCategory(),
+                PlaceCategoryLabelResolver.resolve(place.getCategory(), place.getContentTypeId()),
                 place.getAddress(), place.getLongitude(), place.getLatitude(),
-                place.getDetail() == null ? null : place.getDetail().getOverview(),
-                toOperatingInfo(place.getOperatingInfo()),
-                place.getImages().stream().map(this::toImage).toList());
+                place.getPlaceUrl(), place.getPrimaryImageUrl(),
+                overview, operatingInfo, images);
     }
+
 
     private PlaceDetailResponse.OperatingInfo toOperatingInfo(PlaceOperatingInfo operatingInfo) {
         if (operatingInfo == null) return null;

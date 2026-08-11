@@ -64,7 +64,12 @@ public class TourApiPlaceIngestionService {
     private TourApiPlaceIngestionResult ingestWithLock() {
         Counters counters = new Counters();
         List<PlaceSyncCandidate> enrichmentCandidates = discoverPlaces(counters);
-        enrichPlaces(enrichmentCandidates, counters);
+        if (properties.enrichmentEnabled()) {
+            enrichPlaces(enrichmentCandidates, counters);
+        } else {
+            log.info("TourAPI place enrichment is disabled. Skipping {} candidates. "
+                    + "Remaining daily budget goes to discovery.", enrichmentCandidates.size());
+        }
         return counters.toResult();
     }
 

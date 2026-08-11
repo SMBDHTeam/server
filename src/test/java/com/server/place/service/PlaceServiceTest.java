@@ -7,6 +7,7 @@ import static org.mockito.Mockito.when;
 
 import com.server.common.error.BusinessException;
 import com.server.common.error.ErrorCode;
+import com.server.common.error.FieldViolation;
 import com.server.place.domain.Place;
 import com.server.place.domain.PlaceDetail;
 import com.server.place.domain.PlaceImage;
@@ -70,20 +71,37 @@ class PlaceServiceTest {
     @Test
     @DisplayName("검색 조건이 없거나 충돌하면 비즈니스 예외를 던진다")
     void invalidSearchConditionThrowsBusinessException() {
+        // 장소 검색 실패는 일정 도메인 코드가 아니라 장소 전용 코드로 알린다.
         assertThatThrownBy(() -> placeService.search(null, null, null, null))
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode")
-                .isEqualTo(ErrorCode.INVALID_SCHEDULE_CONDITION);
+                .isEqualTo(ErrorCode.INVALID_PLACE_SEARCH_REQUEST);
 
         assertThatThrownBy(() -> placeService.search("부산", new BigDecimal("129.0"), null, null))
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode")
-                .isEqualTo(ErrorCode.INVALID_SCHEDULE_CONDITION);
+                .isEqualTo(ErrorCode.INVALID_PLACE_SEARCH_REQUEST);
 
         assertThatThrownBy(() -> placeService.search(null, new BigDecimal("129.0"), null, null))
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode")
-                .isEqualTo(ErrorCode.INVALID_SCHEDULE_CONDITION);
+                .isEqualTo(ErrorCode.INVALID_PLACE_SEARCH_REQUEST);
+    }
+
+    @Test
+    @DisplayName("장소 검색 오류는 어느 파라미터가 문제인지 fieldErrors로 알려준다")
+    void invalidSearchConditionExplainsField() {
+        assertThatThrownBy(() -> placeService.search(null, null, null, null))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(thrown -> assertThat(((BusinessException) thrown).getFieldViolations())
+                        .extracting(FieldViolation::field)
+                        .containsExactly("keyword"));
+
+        assertThatThrownBy(() -> placeService.search(null, new BigDecimal("129.0"), null, null))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(thrown -> assertThat(((BusinessException) thrown).getFieldViolations())
+                        .extracting(FieldViolation::field)
+                        .containsExactly("latitude"));
     }
 
     @Test

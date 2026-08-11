@@ -1,9 +1,11 @@
 package com.server.external.schedule;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.server.common.error.BusinessException;
 import com.server.common.error.ErrorCode;
+import com.server.common.error.FieldViolation;
 import com.server.schedule.dto.ScheduleCreateRequest;
 import com.server.schedule.dto.ScheduleListResponse;
 import com.server.schedule.dto.ScheduleMapResponse;
@@ -12,6 +14,8 @@ import com.server.schedule.dto.SchedulePreviewResponse;
 import com.server.schedule.dto.SchedulePreviewScheduleRequest;
 import com.server.schedule.dto.ScheduleResponse;
 import com.server.schedule.dto.ScheduleUpdateRequest;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.MediaType;
@@ -171,10 +175,12 @@ public class FastApiScheduleClient {
         log.warn("FastAPI preview request failed. statusCode={}, responseBody={}",
                 exception.getStatusCode(), exception.getResponseBodyAsString());
         return switch (exception.getStatusCode().value()) {
-            case 400 -> new BusinessException(ErrorCode.INVALID_SCHEDULE_PREVIEW_REQUEST, exception);
+            case 400, 422 -> new BusinessException(
+                    ErrorCode.INVALID_SCHEDULE_PREVIEW_REQUEST,
+                    extractFieldViolations(exception.getResponseBodyAsString())
+            );
             case 404 -> new BusinessException(ErrorCode.SCHEDULE_PREVIEW_NOT_FOUND, exception);
             case 410 -> new BusinessException(ErrorCode.PREVIEW_EXPIRED, exception);
-            case 422 -> new BusinessException(ErrorCode.INVALID_SCHEDULE_PREVIEW_REQUEST, exception);
             default -> new BusinessException(ErrorCode.EXTERNAL_PROVIDER_UNAVAILABLE, exception);
         };
     }
@@ -183,11 +189,13 @@ public class FastApiScheduleClient {
         log.warn("FastAPI schedule request failed. statusCode={}, responseBody={}",
                 exception.getStatusCode(), exception.getResponseBodyAsString());
         return switch (exception.getStatusCode().value()) {
-            case 400 -> new BusinessException(ErrorCode.INVALID_SCHEDULE_CONDITION, exception);
+            case 400, 422 -> new BusinessException(
+                    ErrorCode.INVALID_SCHEDULE_CONDITION,
+                    extractFieldViolations(exception.getResponseBodyAsString())
+            );
             case 404 -> new BusinessException(ErrorCode.SCHEDULE_NOT_FOUND, exception);
             case 409 -> mapConflictError(exception);
             case 410 -> new BusinessException(ErrorCode.PREVIEW_EXPIRED, exception);
-            case 422 -> new BusinessException(ErrorCode.INVALID_SCHEDULE_CONDITION, exception);
             default -> new BusinessException(ErrorCode.EXTERNAL_PROVIDER_UNAVAILABLE, exception);
         };
     }
@@ -236,5 +244,55 @@ public class FastApiScheduleClient {
                 lodgingPlan.baseLocation(),
                 lodgingPlan.nightStaysOrEmpty()
         );
+    }
+
+    private List<FieldViolation> extractFieldViolations(String responseBody) {
+        if (responseBody == null || responseBody.isBlank()) {
+            return List.of();
+        }
+
+        try {
+            JsonNode root = objectMapper.readTree(responseBody);
+            JsonNode detail = root.path("detail");
+            if (detail.isMissingNode() || detail.isNull()) {
+                return List.of();
+            }
+            if (detail.isTextual()) {
+                return List.of(FieldViolation.of("", detail.asText()));
+            }
+            if (!detail.isArray()) {
+                return List.of();
+            }
+
+            List<FieldViolation> violations = new ArrayList<>();
+            for (JsonNode item : detail) {
+                String fieldPath = toFieldPath(item.path("loc"));
+                String message = item.path("msg").asText("");
+                if (message.isBlank()) {
+                    continue;
+                }
+                violations.add(FieldViolation.of(fieldPath, message));
+            }
+            return violations;
+        } catch (JsonProcessingException exception) {
+            log.debug("Failed to parse FastAPI validation response body: {}", responseBody, exception);
+            return List.of();
+        }
+    }
+
+    private String toFieldPath(JsonNode locationNode) {
+        if (!locationNode.isArray()) {
+            return "";
+        }
+
+        List<String> parts = new ArrayList<>();
+        for (JsonNode part : locationNode) {
+            String value = part.asText();
+            if ("body".equals(value)) {
+                continue;
+            }
+            parts.add(value);
+        }
+        return String.join(".", parts);
     }
 }
