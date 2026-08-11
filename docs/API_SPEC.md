@@ -514,7 +514,7 @@ V2에서는 top-level `dailyStartTime`, `dailyEndTime`을 제거하고 일차별
 - 생성 시점에만 계산하고 저장하지 않은 `evaluation` 운영 지표는 생략한다.
 - 존재하지 않는 일정은 `404 SCHEDULE_NOT_FOUND`를 반환한다.
 
-`GET /api/v1/schedules`는 V2부터 `startDate ASC`, 같은 시작일은 `createdAt DESC` 순서로 반환한다. 인증 도입 전까지 전체 일정 반환 정책은 유지한다.
+`GET /api/v1/schedules`는 V2부터 `startDate ASC`, 같은 시작일은 `createdAt DESC` 순서로 반환한다. 인증 도입 전까지 전체 일정 반환 정책은 유지한다. 목록 응답은 축약 필드만 담으므로 상세 데이터가 필요하면 단건 조회를 사용한다. 응답 형식은 `4. 일정 목록 조회`를 참고한다.
 
 ### V2-8. V2 오류·충돌 코드
 
@@ -842,7 +842,19 @@ Preview의 `endLocationSource=PLANNER_DECIDES`인 일차는 Planner가 방문 �
 `GET /api/v1/schedules`
 
 요청 파라미터와 요청 본문이 없다. 1차 스프린트에서는 저장된 전체 일정을 반환한다.
-`evaluation`은 생성 시점에만 계산되는 값이므로 목록 응답에서는 생략한다.
+
+목록은 **축약 응답만 반환한다.** 방문지(`days`), 경로(`transit`), 평가 리포트(`evaluation`)는 담지 않는다.
+목록 카드 한 장을 그리는 데 필요한 정보만 내려주고, 상세가 필요하면 `GET /api/v1/schedules/{scheduleId}`를 호출한다.
+
+| 필드 | 타입 | 설명 |
+| --- | --- | --- |
+| `id` | UUID | 일정 ID |
+| `status` | string | 일정 상태 |
+| `startDate` / `endDate` | date | 여행 시작일과 종료일 |
+| `styleSummary` | string | 일정 한 줄 요약 |
+| `dayCount` | int | 총 일차 수 |
+| `stopCount` | int | 전체 방문지 수 |
+| `previewPlaceNames` | string[] | 카드 미리보기용 장소 이름. 방문 순서대로 최대 3개, 중복 제거 |
 
 ```json
 {
@@ -853,24 +865,9 @@ Preview의 `endLocationSource=PLANNER_DECIDES`인 일차는 Planner가 방문 �
       "startDate": "2026-06-23",
       "endDate": "2026-06-25",
       "styleSummary": "부모님과 함께하는 로컬 중심 일정",
-      "days": [
-        {
-          "dayNo": 1,
-          "date": "2026-06-23",
-          "stops": [
-            {
-              "id": "stop-uuid",
-              "place": {
-                "id": 101,
-                "name": "이송도전망대"
-              },
-              "inboundTransit": {
-                "totalMinutes": 25
-              }
-            }
-          ]
-        }
-      ]
+      "dayCount": 3,
+      "stopCount": 12,
+      "previewPlaceNames": ["이송도전망대", "감천문화마을", "자갈치시장"]
     }
   ]
 }
@@ -992,12 +989,17 @@ GET /api/v1/places?longitude=129.0403&latitude=35.1151&radius=1000
 ```json
 {
   "id": 101,
+  "source": "TOUR_API",
   "externalContentId": "126508",
   "contentTypeId": "12",
   "name": "이송도전망대",
+  "category": "A01011200",
+  "categoryLabel": "자연 관광지",
   "address": "부산 서구 암남동",
   "longitude": 129.047956,
   "latitude": 35.075519,
+  "placeUrl": null,
+  "primaryImageUrl": "https://example.com/image.jpg",
   "overview": "장소 설명",
   "operatingInfo": {
     "openingHoursText": "09:00~18:00",
@@ -1017,6 +1019,12 @@ GET /api/v1/places?longitude=129.0403&latitude=35.1151&radius=1000
 ```
 
 TourAPI 기본·상세·소개·이미지 응답을 내부 DB에 적재한 결과를 조회한다.
+
+사용자가 네이버·카카오 검색으로 직접 등록한 장소는 `overview`·`operatingInfo`·`images`가 비어 있다.
+TourAPI가 그 장소를 모르고 외부 지역검색 API도 이 값들을 제공하지 않기 때문이며, **조회 실패가 아니라
+정상 응답이다.** 이 경우 `placeUrl`로 외부 지도 서비스의 장소 페이지를 연결한다.
+
+`placeUrl`이 없는 장소(TourAPI 적재분)는 `name`과 좌표로 지도 API를 조회해 같은 화면을 구성할 수 있다.
 
 ## 8. 주변 편의시설 조회
 
@@ -1256,12 +1264,37 @@ Provider 응답의 `distanceMeters`가 누락되거나 0 이하이면 서버는 
 | HTTP | 오류 코드 | 상황 |
 | --- | --- | --- |
 | 400 | `INVALID_SCHEDULE_CONDITION` | 일정 조건 또는 요청값이 잘못됨 |
+| 400 | `INVALID_PLACE_SEARCH_REQUEST` | 장소·위치 검색 파라미터가 잘못됨 |
+| 400 | `MALFORMED_REQUEST` | 요청 본문이 JSON으로 읽히지 않음 |
 | 404 | `SCHEDULE_NOT_FOUND` | 일정을 찾을 수 없음 |
 | 404 | `PLACE_NOT_FOUND` | 장소를 찾을 수 없음 |
 | 404 | `SHARE_LINK_NOT_FOUND` | 공유 링크가 없거나 폐기됨 |
+| 404 | `RESOURCE_NOT_FOUND` | 존재하지 않는 경로 |
 | 422 | `TRANSIT_ROUTE_NOT_FOUND` | 장소 사이 대중교통 경로를 찾지 못함 |
 | 501 | `FACILITY_TYPE_NOT_SUPPORTED` | 지원하지 않는 편의시설 유형 |
 | 503 | `EXTERNAL_PROVIDER_UNAVAILABLE` | 외부 서비스가 응답하지 않음 |
+| 500 | `INTERNAL_ERROR` | 서버가 처리하지 못한 예외 |
+
+OpenAPI 문서(`/v3/api-docs`, Swagger UI)에도 오퍼레이션별로 가능한 오류 응답과 `code` 목록이 함께
+노출된다. 컨트롤러마다 애노테이션을 붙이지 않고 공통 커스터마이저가 일괄 적용하므로, 엔드포인트가
+추가돼도 문서가 자동으로 따라온다.
+
+**모든 오류는 위 형태를 지킨다.** 깨진 JSON 본문, 잘못된 형식의 경로 변수(`/schedules/abc`),
+필수 쿼리 파라미터 누락, 존재하지 않는 경로, 예상하지 못한 예외까지 전부 `code`·`fieldErrors`·`traceId`를
+담아 반환한다. 클라이언트는 HTTP 상태가 아니라 `code`로 분기해도 된다.
+
+`INTERNAL_ERROR` 응답에는 내부 예외 메시지를 담지 않는다. 원인은 서버 로그에 같은 `traceId`로 남으므로,
+문의 시 `traceId`를 함께 전달하면 된다.
+
+장소·위치 검색 오류 예시:
+
+| field | 사유 |
+| --- | --- |
+| `size` | `1 이상 50 이하여야 합니다. 요청 값: 1000` |
+| `scope` | `INTERNAL 또는 ALL 이어야 합니다.` |
+| `keyword` | `keyword 또는 longitude·latitude 중 하나는 있어야 합니다.` |
+| `keyword` | `keyword 검색과 좌표 검색은 함께 사용할 수 없습니다.` |
+| `longitude` / `latitude` | `좌표 검색에는 longitude와 latitude가 모두 필요합니다.` |
 
 ## 1차 스프린트 제외
 

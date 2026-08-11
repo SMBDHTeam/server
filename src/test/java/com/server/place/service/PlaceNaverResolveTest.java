@@ -87,6 +87,55 @@ class PlaceNaverResolveTest {
     }
 
     @Test
+    @DisplayName("짧고 일반적인 이름은 같은 권역의 다른 장소에 연결하지 않는다")
+    void doesNotLinkAShortNameToANearbyDifferentPlace() {
+        Place lightFestival = new Place(
+                "TOUR_API", "175", "15", "해운대 빛축제", "A02080300",
+                "부산광역시 해운대구", new BigDecimal("129.16260491"), new BigDecimal("35.15953545"), null);
+        ReflectionTestUtils.setField(lightFestival, "id", 175L);
+        when(placeRepository.findBySourceAndExternalContentId("NAVER_LOCAL", "1291626049-351595354"))
+                .thenReturn(Optional.empty());
+        when(placeRepository.findAll()).thenReturn(List.of(lightFestival));
+        when(placeRepository.save(any(Place.class))).thenAnswer(invocation -> {
+            Place place = invocation.getArgument(0);
+            ReflectionTestUtils.setField(place, "id", 902L);
+            return place;
+        });
+
+        PlaceResolveResponse response = service.resolve(new PlaceResolveRequest(
+                "NAVER_LOCAL", "1291626049-351595354", "해운대",
+                "여행,명소", "부산 해운대구",
+                new BigDecimal("129.1626"), new BigDecimal("35.1595"), null));
+
+        assertThat(response.placeId()).isEqualTo(902L);
+        assertThat(response.name()).isEqualTo("해운대");
+    }
+
+    @Test
+    @DisplayName("기존 이름이 요청 이름을 포함해도 완전히 같지 않으면 연결하지 않는다")
+    void doesNotLinkWhenTheIngestedNameOnlyContainsTheRequestedOne() {
+        Place rodeo = new Place(
+                "TOUR_API", "354", "12", "해운대 로데오거리", "A04010200",
+                "부산광역시 해운대구", new BigDecimal("129.16964308"), new BigDecimal("35.16341293"), null);
+        ReflectionTestUtils.setField(rodeo, "id", 354L);
+        when(placeRepository.findBySourceAndExternalContentId("NAVER_LOCAL", "1291696430-351634129"))
+                .thenReturn(Optional.empty());
+        when(placeRepository.findAll()).thenReturn(List.of(rodeo));
+        when(placeRepository.save(any(Place.class))).thenAnswer(invocation -> {
+            Place place = invocation.getArgument(0);
+            ReflectionTestUtils.setField(place, "id", 903L);
+            return place;
+        });
+
+        PlaceResolveResponse response = service.resolve(new PlaceResolveRequest(
+                "NAVER_LOCAL", "1291696430-351634129", "로데오거리",
+                "여행,명소", "부산 해운대구",
+                new BigDecimal("129.16964"), new BigDecimal("35.16341"), null));
+
+        assertThat(response.placeId()).isEqualTo(903L);
+    }
+
+    @Test
     @DisplayName("멀리 떨어진 동명 장소는 다른 장소로 보고 새로 등록한다")
     void doesNotLinkPlacesThatOnlyShareAName() {
         when(placeRepository.findBySourceAndExternalContentId("NAVER_LOCAL", "1270000000-375000000"))
