@@ -4,6 +4,9 @@ import com.server.schedule.dto.SchedulePreviewCreateRequest;
 import com.server.schedule.dto.SchedulePreviewResponse;
 import com.server.schedule.service.SchedulePreviewService;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.media.ExampleObject;
+import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import java.util.UUID;
@@ -29,8 +32,33 @@ public class SchedulePreviewController {
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    @Operation(summary = "일정 미리보기 생성")
-    public SchedulePreviewResponse create(@Valid @RequestBody SchedulePreviewCreateRequest request) {
+    @Operation(
+            summary = "일정 미리보기 생성",
+            description = "입력을 정규화하고 일차별 가용시간을 계산해 Preview를 만든다. "
+                    + "수정 가능한 충돌은 201 응답의 conflicts[]로 반환하고, 형식 오류만 400으로 반환한다. "
+                    + "유효시간은 30분이며 Preview 하나로 일정 하나만 생성할 수 있다."
+    )
+    public SchedulePreviewResponse create(
+            @io.swagger.v3.oas.annotations.parameters.RequestBody(
+                    required = true,
+                    content = @Content(
+                            mediaType = "application/json",
+                            schema = @Schema(implementation = SchedulePreviewCreateRequest.class),
+                            examples = {
+                                    @ExampleObject(
+                                            name = "undecidedLodging",
+                                            summary = "숙소 미정 1박 2일 (기본 생성 화면)",
+                                            value = SchedulePreviewOpenApiExamples.UNDECIDED_LODGING
+                                    ),
+                                    @ExampleObject(
+                                            name = "fixedLodging",
+                                            summary = "고정 숙소 2박 3일, 종료 제약과 자유 요청 포함",
+                                            value = SchedulePreviewOpenApiExamples.FIXED_LODGING
+                                    )
+                            }
+                    )
+            )
+            @Valid @RequestBody SchedulePreviewCreateRequest request) {
         return previewService.create(request);
     }
 
