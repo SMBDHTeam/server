@@ -10,6 +10,9 @@ public enum ErrorCode {
     PER_NIGHT_LOCATION_MISSING(400, "숙박일별 숙소 위치가 필요합니다."),
     MUST_VISIT_PLACE_LIMIT_EXCEEDED(400, "필수 방문 장소 수가 허용 범위를 초과했습니다."),
     INVALID_EXTERNAL_PLACE(400, "외부 장소 정보가 올바르지 않습니다."),
+    INVALID_PLACE_SEARCH_REQUEST(400, "장소 검색 조건이 올바르지 않습니다."),
+    MALFORMED_REQUEST(400, "요청 형식이 올바르지 않습니다."),
+    RESOURCE_NOT_FOUND(404, "요청한 경로를 찾을 수 없습니다."),
     IDEMPOTENCY_KEY_REQUIRED(400, "Idempotency-Key 헤더가 필요합니다."),
     IDEMPOTENCY_KEY_REUSED(409, "같은 멱등성 키를 다른 요청에 사용할 수 없습니다."),
     PREVIEW_ALREADY_CONSUMED(409, "이미 일정 생성에 사용된 미리보기입니다."),
@@ -23,7 +26,8 @@ public enum ErrorCode {
     SHARE_LINK_NOT_FOUND(404, "공유 링크를 찾을 수 없습니다."),
     TRANSIT_ROUTE_NOT_FOUND(422, "장소 사이 대중교통 경로를 찾지 못했습니다."),
     FACILITY_TYPE_NOT_SUPPORTED(501, "지원하지 않는 편의시설 유형입니다."),
-    EXTERNAL_PROVIDER_UNAVAILABLE(503, "외부 서비스가 응답하지 않습니다.");
+    EXTERNAL_PROVIDER_UNAVAILABLE(503, "외부 서비스가 응답하지 않습니다."),
+    INTERNAL_ERROR(500, "서버에서 요청을 처리하지 못했습니다.");
 
     private final HttpStatusCode status;
     private final String message;
