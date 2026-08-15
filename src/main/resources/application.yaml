@@ -40,6 +40,13 @@ app:
     base-url: ${SCHEDULE_FASTAPI_BASE_URL:http://127.0.0.1:8010}
     connect-timeout: ${SCHEDULE_FASTAPI_CONNECT_TIMEOUT:3s}
     read-timeout: ${SCHEDULE_FASTAPI_READ_TIMEOUT:15s}
+    # -----------
+  spontaneous-fastapi:
+    enabled: ${SPONTANEOUS_FASTAPI_ENABLED:false}
+    base-url: ${SPONTANEOUS_FASTAPI_BASE_URL:http://127.0.0.1:8010}
+    connect-timeout: ${SPONTANEOUS_FASTAPI_CONNECT_TIMEOUT:3s}
+    read-timeout: ${SPONTANEOUS_FASTAPI_READ_TIMEOUT:30s}
+    #---------------
   place-ingestion:
     tour-api:
       enabled: ${TOUR_API_PLACE_INGESTION_ENABLED:false}

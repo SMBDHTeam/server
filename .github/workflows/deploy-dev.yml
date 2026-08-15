@@ -189,6 +189,9 @@ jobs:
             # base-url은 끝에 슬래시를 붙이지 않는다. 붙이면 //api/v1/... 로 요청이 나가 404가 된다.
             printf 'SCHEDULE_FASTAPI_ENABLED=true\n'
             printf 'SCHEDULE_FASTAPI_BASE_URL=http://data-ai:8010\n'
+          
+            printf 'SPONTANEOUS_FASTAPI_ENABLED=true\n'
+            printf 'SPONTANEOUS_FASTAPI_BASE_URL=http://data-ai:8010\n'
 
             printf 'PLACE_THEME_AI_ENABLED=true\n'
             printf 'PLACE_THEME_AI_BASE_URL=http://data-ai:8010/\n'
