@@ -2,6 +2,7 @@ package com.server.post.controller;
 
 import com.server.post.dto.PostCreateRequest;
 import com.server.post.dto.PostDetailResponse;
+import com.server.post.dto.PostLikeResponse;
 import com.server.post.dto.PostSummaryListResponse;
 import com.server.post.service.PostService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -11,6 +12,7 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.Min;
 import org.springframework.http.HttpStatus;
 import org.springframework.validation.annotation.Validated;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -69,5 +71,33 @@ public class PostController {
             @Parameter(example = "7") @PathVariable Long postId
     ) {
         return postService.get(postId);
+    }
+
+    @PostMapping("/{postId}/likes")
+    @Operation(
+            summary = "좋아요",
+            description = "이미 누른 상태에서 다시 요청해도 개수가 늘지 않는다."
+    )
+    public PostLikeResponse like(
+            // TODO: 인증 도입 시 제거하고 인증 주체에서 사용자 ID 를 받는다. 임시 식별 수단이다.
+            @Parameter(description = "요청자 ID. 인증 도입 전까지 쓰는 임시 헤더다.", example = "1")
+            @RequestHeader("X-User-Id") Long userId,
+            @Parameter(example = "7") @PathVariable Long postId
+    ) {
+        return postService.like(postId, userId);
+    }
+
+    @DeleteMapping("/{postId}/likes")
+    @Operation(
+            summary = "좋아요 취소",
+            description = "누른 적 없는 상태에서 요청해도 개수가 줄지 않는다."
+    )
+    public PostLikeResponse unlike(
+            // TODO: 인증 도입 시 제거하고 인증 주체에서 사용자 ID 를 받는다. 임시 식별 수단이다.
+            @Parameter(description = "요청자 ID. 인증 도입 전까지 쓰는 임시 헤더다.", example = "1")
+            @RequestHeader("X-User-Id") Long userId,
+            @Parameter(example = "7") @PathVariable Long postId
+    ) {
+        return postService.unlike(postId, userId);
     }
 }

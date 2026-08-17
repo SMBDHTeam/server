@@ -5,13 +5,16 @@ import com.server.common.error.ErrorCode;
 import com.server.place.domain.Place;
 import com.server.place.repository.PlaceRepository;
 import com.server.post.domain.Post;
+import com.server.post.domain.PostLike;
 import com.server.post.domain.PostMedia;
 import com.server.post.domain.PostPlaceTag;
 import com.server.post.dto.PostCreateRequest;
 import com.server.post.dto.PostDetailResponse;
+import com.server.post.dto.PostLikeResponse;
 import com.server.post.dto.PostPlaceTagView;
 import com.server.post.dto.PostSummaryListResponse;
 import com.server.post.dto.PostSummaryResponse;
+import com.server.post.repository.PostLikeRepository;
 import com.server.post.repository.PostMediaRepository;
 import com.server.post.repository.PostPlaceTagRepository;
 import com.server.post.repository.PostRepository;
@@ -36,6 +39,7 @@ public class PostService {
     private final PostRepository postRepository;
     private final PostMediaRepository postMediaRepository;
     private final PostPlaceTagRepository postPlaceTagRepository;
+    private final PostLikeRepository postLikeRepository;
     private final UserRepository userRepository;
     private final PlaceRepository placeRepository;
 
@@ -43,12 +47,14 @@ public class PostService {
             PostRepository postRepository,
             PostMediaRepository postMediaRepository,
             PostPlaceTagRepository postPlaceTagRepository,
+            PostLikeRepository postLikeRepository,
             UserRepository userRepository,
             PlaceRepository placeRepository
     ) {
         this.postRepository = postRepository;
         this.postMediaRepository = postMediaRepository;
         this.postPlaceTagRepository = postPlaceTagRepository;
+        this.postLikeRepository = postLikeRepository;
         this.userRepository = userRepository;
         this.placeRepository = placeRepository;
     }
@@ -106,6 +112,33 @@ public class PostService {
         // 요청한 개수를 못 채웠으면 더 가져올 게시물이 없다.
         Long nextCursor = posts.size() < limit ? null : posts.get(posts.size() - 1).getId();
         return new PostSummaryListResponse(items, nextCursor);
+    }
+
+    /** 이미 눌린 좋아요를 다시 눌러도 개수가 늘지 않는다. */
+    @Transactional
+    public PostLikeResponse like(Long postId, Long userId) {
+        Post post = postRepository.findByIdAndDeletedAtIsNull(postId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.POST_NOT_FOUND));
+        User user = userRepository.findByIdAndDeletedAtIsNull(userId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
+
+        if (!postLikeRepository.existsByPostIdAndUserId(postId, userId)) {
+            postLikeRepository.save(new PostLike(post, user));
+            postRepository.increaseLikeCount(postId);
+        }
+        return new PostLikeResponse(postRepository.findLikeCountById(postId), true);
+    }
+
+    /** 누른 적 없는 좋아요를 취소해도 개수가 줄지 않는다. */
+    @Transactional
+    public PostLikeResponse unlike(Long postId, Long userId) {
+        if (!postRepository.existsByIdAndDeletedAtIsNull(postId)) {
+            throw new BusinessException(ErrorCode.POST_NOT_FOUND);
+        }
+        if (postLikeRepository.deleteByPostIdAndUserId(postId, userId) > 0) {
+            postRepository.decreaseLikeCount(postId);
+        }
+        return new PostLikeResponse(postRepository.findLikeCountById(postId), false);
     }
 
     private List<PostMedia> saveMedia(Post post, List<PostCreateRequest.Media> requests) {
