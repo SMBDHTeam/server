@@ -4,6 +4,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
 
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import java.math.BigDecimal;
 import java.util.List;
@@ -13,8 +14,8 @@ public record PostCreateRequest(
         @Schema(description = "본문", example = "광안리 야경 보러 갔는데 날씨가 좋았어요")
         @NotBlank String content,
 
-        @Schema(description = "첨부한 사진·영상. 표시 순서는 sortOrder를 따른다.")
-        @Valid List<Media> mediaList,
+        @Schema(description = "첨부한 사진·영상. 최소 한 건이 필요하다. 표시 순서는 sortOrder를 따른다.")
+        @NotEmpty @Valid List<Media> mediaList,
 
         @Schema(description = "게시물에 태그한 장소. 내부 places에 등록된 장소만 태그할 수 있다.")
         @Valid List<PlaceTag> placeTags

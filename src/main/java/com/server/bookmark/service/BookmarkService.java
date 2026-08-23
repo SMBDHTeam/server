@@ -73,7 +73,7 @@ public class BookmarkService {
                 .stream()
                 .map(Bookmark::getPost)
                 .toList();
-        return new BookmarkListResponse(postSummaryAssembler.assemble(posts));
+        return new BookmarkListResponse(postSummaryAssembler.assemble(posts, userId));
     }
 
     private PageRequest pageRequest(Integer page, Integer size) {

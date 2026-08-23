@@ -27,9 +27,28 @@ public interface PostRepository extends JpaRepository<Post, Long> {
     /**
      * 최신순 피드 한 페이지. 첫 페이지는 {@code Long.MAX_VALUE}를 커서로 넘긴다.
      * 작성자는 응답에 항상 필요하므로 함께 조회한다.
+     *
+     * @param followerId 값이 있으면 이 사용자가 팔로우한 사람들의 게시물만 남긴다.
+     * @param placeId    값이 있으면 이 장소를 태그한 게시물만 남긴다.
      */
     @EntityGraph(attributePaths = "user")
-    List<Post> findByDeletedAtIsNullAndIdLessThanOrderByIdDesc(Long cursor, Pageable pageable);
+    @Query("""
+            select post from Post post
+            where post.deletedAt is null
+              and post.id < :cursor
+              and (:followerId is null or post.user.id in (
+                    select follow.following.id from Follow follow
+                    where follow.follower.id = :followerId))
+              and (:placeId is null or exists (
+                    select 1 from PostPlaceTag tag
+                    where tag.post = post and tag.place.id = :placeId))
+            order by post.id desc
+            """)
+    List<Post> findFeed(
+            @Param("followerId") Long followerId,
+            @Param("placeId") Long placeId,
+            @Param("cursor") Long cursor,
+            Pageable pageable);
 
     @Query("select post.likeCount from Post post where post.id = :postId")
     int findLikeCountById(@Param("postId") Long postId);
@@ -50,4 +69,9 @@ public interface PostRepository extends JpaRepository<Post, Long> {
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("update Post post set post.commentCount = post.commentCount + 1 where post.id = :postId")
     void increaseCommentCount(@Param("postId") Long postId);
+
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("update Post post set post.commentCount = post.commentCount - 1 "
+            + "where post.id = :postId and post.commentCount > 0")
+    void decreaseCommentCount(@Param("postId") Long postId);
 }

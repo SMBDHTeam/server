@@ -61,11 +61,10 @@ public class CommentService {
         }
 
         int limit = resolvePageSize(size);
-        List<Comment> parents = commentRepository
-                .findByPostIdAndParentIsNullAndDeletedAtIsNullAndIdGreaterThanOrderByIdAsc(
-                        postId,
-                        cursor == null ? FIRST_PAGE_CURSOR : cursor,
-                        PageRequest.of(0, limit));
+        List<Comment> parents = commentRepository.findTopLevelComments(
+                postId,
+                cursor == null ? FIRST_PAGE_CURSOR : cursor,
+                PageRequest.of(0, limit));
 
         if (parents.isEmpty()) {
             return new CommentListResponse(List.of(), null);
@@ -86,6 +85,25 @@ public class CommentService {
 
         Long nextCursor = parents.size() < limit ? null : parents.get(parents.size() - 1).getId();
         return new CommentListResponse(items, nextCursor);
+    }
+
+    /**
+     * 물리 삭제하지 않는다. 답글이 달린 댓글이어도 답글은 그대로 두고,
+     * 목록에서는 작성자와 내용을 감춘 자리만 남는다.
+     */
+    @Transactional
+    public void delete(Long postId, Long commentId, Long userId) {
+        Comment comment = commentRepository.findByIdAndDeletedAtIsNull(commentId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.COMMENT_NOT_FOUND));
+        if (!comment.getPost().getId().equals(postId)) {
+            throw new BusinessException(ErrorCode.COMMENT_NOT_FOUND);
+        }
+        if (!comment.isWrittenBy(userId)) {
+            throw new BusinessException(ErrorCode.COMMENT_ACCESS_DENIED);
+        }
+
+        comment.delete();
+        postRepository.decreaseCommentCount(postId);
     }
 
     /**

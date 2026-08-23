@@ -2,14 +2,25 @@ package com.server.bookmark.repository;
 
 import com.server.bookmark.domain.Bookmark;
 import com.server.bookmark.domain.BookmarkId;
+import java.util.Collection;
 import java.util.List;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 public interface BookmarkRepository extends JpaRepository<Bookmark, BookmarkId> {
 
     boolean existsByUserIdAndPostId(Long userId, Long postId);
+
+    /** 목록에 저장 여부를 표시할 때, 게시물 수와 무관하게 한 번만 조회한다. */
+    @Query("""
+            select bookmark.post.id from Bookmark bookmark
+            where bookmark.user.id = :userId and bookmark.post.id in :postIds
+            """)
+    List<Long> findBookmarkedPostIds(
+            @Param("userId") Long userId, @Param("postIds") Collection<Long> postIds);
 
     long deleteByUserIdAndPostId(Long userId, Long postId);
 

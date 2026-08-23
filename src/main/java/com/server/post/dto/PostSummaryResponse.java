@@ -26,13 +26,20 @@ public record PostSummaryResponse(
         String placeName,
         @Schema(example = "12") int likeCount,
         @Schema(example = "3") int commentCount,
+        @Schema(description = "요청자가 좋아요를 누른 상태인지. 요청자를 알 수 없으면 false 다.",
+                example = "true")
+        boolean liked,
+        @Schema(description = "요청자가 저장한 상태인지. 요청자를 알 수 없으면 false 다.", example = "false")
+        boolean bookmarked,
         @Schema(example = "2026-08-11T17:30:00") LocalDateTime createdAt
 ) {
 
     public static PostSummaryResponse from(
             Post post,
             List<PostMedia> mediaList,
-            List<PostPlaceTagView> placeTags
+            List<PostPlaceTagView> placeTags,
+            boolean liked,
+            boolean bookmarked
     ) {
         String thumbnailUrl = mediaList.stream()
                 .min(Comparator.comparingInt(PostMedia::getSortOrder))
@@ -55,6 +62,8 @@ public record PostSummaryResponse(
                 placeName,
                 post.getLikeCount(),
                 post.getCommentCount(),
+                liked,
+                bookmarked,
                 post.getCreatedAt());
     }
 }

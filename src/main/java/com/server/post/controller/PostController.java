@@ -31,6 +31,9 @@ import org.springframework.web.bind.annotation.RestController;
 @Tag(name = "커뮤니티 게시물", description = "여행 후기 게시물 작성과 조회")
 public class PostController {
 
+    /** 팔로우한 사람들의 게시물만 볼 때 feed 파라미터에 넣는 값. */
+    private static final String FOLLOWING_FEED = "following";
+
     private final PostService postService;
 
     public PostController(PostService postService) {
@@ -41,7 +44,8 @@ public class PostController {
     @ResponseStatus(HttpStatus.CREATED)
     @Operation(
             summary = "게시물 작성",
-            description = "미디어는 이미 업로드된 URL 을 전달한다. 장소 태그는 내부 places 에 등록된 장소만 지정할 수 있다."
+            description = "사진 또는 영상을 최소 한 건 첨부해야 한다. 미디어는 이미 업로드된 URL 을 전달한다. "
+                    + "장소 태그는 내부 places 에 등록된 장소만 지정할 수 있다."
     )
     public PostDetailResponse create(
             // TODO: 인증 도입 시 제거하고 인증 주체에서 사용자 ID 를 받는다. 임시 식별 수단이다.
@@ -56,23 +60,35 @@ public class PostController {
     @Operation(
             summary = "피드 조회",
             description = "최신순으로 한 페이지를 반환한다. 응답의 nextCursor 를 다음 요청의 cursor 로 그대로 넘긴다. "
-                    + "nextCursor 가 null 이면 더 가져올 게시물이 없다."
+                    + "nextCursor 가 null 이면 더 가져올 게시물이 없다. "
+                    + "feed 와 placeId 는 함께 쓸 수 있다."
     )
     public PostSummaryListResponse getFeed(
             @Parameter(description = "이전 응답의 nextCursor. 첫 페이지는 생략한다.", example = "81")
             @RequestParam(required = false) Long cursor,
             @Parameter(description = "한 번에 가져올 게시물 수. 1 이상 50 이하", example = "20")
-            @RequestParam(defaultValue = "20") @Min(1) Integer size
+            @RequestParam(defaultValue = "20") @Min(1) Integer size,
+            @Parameter(description = "following 이면 팔로우한 사람들의 게시물만 반환한다. "
+                    + "이때 X-User-Id 가 필요하다.", example = "following")
+            @RequestParam(required = false) String feed,
+            @Parameter(description = "이 장소를 태그한 게시물만 반환한다.", example = "1")
+            @RequestParam(required = false) Long placeId,
+            // TODO: 인증 도입 시 제거하고 인증 주체에서 사용자 ID 를 받는다. 임시 식별 수단이다.
+            @Parameter(description = "요청자 ID. 팔로잉 피드에만 필요하다.", example = "1")
+            @RequestHeader(value = "X-User-Id", required = false) Long requesterId
     ) {
-        return postService.getFeed(cursor, size);
+        return postService.getFeed(cursor, size, FOLLOWING_FEED.equals(feed), placeId, requesterId);
     }
 
     @GetMapping("/{postId}")
     @Operation(summary = "게시물 상세", description = "첨부 미디어와 장소 태그를 모두 포함한다.")
     public PostDetailResponse get(
-            @Parameter(example = "7") @PathVariable Long postId
+            @Parameter(example = "7") @PathVariable Long postId,
+            // TODO: 인증 도입 시 제거하고 인증 주체에서 사용자 ID 를 받는다. 임시 식별 수단이다.
+            @Parameter(description = "요청자 ID. 없으면 좋아요·저장 여부가 false 로 나간다.", example = "1")
+            @RequestHeader(value = "X-User-Id", required = false) Long requesterId
     ) {
-        return postService.get(postId);
+        return postService.get(postId, requesterId);
     }
 
     @PatchMapping("/{postId}")

@@ -11,6 +11,7 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.Min;
 import org.springframework.http.HttpStatus;
 import org.springframework.validation.annotation.Validated;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -47,6 +48,23 @@ public class CommentController {
             @Valid @RequestBody CommentCreateRequest request
     ) {
         return commentService.create(postId, userId, request);
+    }
+
+    @DeleteMapping("/{commentId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    @Operation(
+            summary = "댓글 삭제",
+            description = "바로 지우지 않고 삭제 표시만 남긴다. 답글이 달려 있으면 답글은 그대로 보이고 "
+                    + "이 댓글은 작성자와 내용이 감춰진 자리로 남는다. 작성자 본인이 아니면 403 을 반환한다."
+    )
+    public void delete(
+            // TODO: 인증 도입 시 제거하고 인증 주체에서 사용자 ID 를 받는다. 임시 식별 수단이다.
+            @Parameter(description = "요청자 ID. 인증 도입 전까지 쓰는 임시 헤더다.", example = "1")
+            @RequestHeader("X-User-Id") Long userId,
+            @Parameter(example = "1") @PathVariable Long postId,
+            @Parameter(example = "3") @PathVariable Long commentId
+    ) {
+        commentService.delete(postId, commentId, userId);
     }
 
     @GetMapping

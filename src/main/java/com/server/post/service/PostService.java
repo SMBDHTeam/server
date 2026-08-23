@@ -2,6 +2,7 @@ package com.server.post.service;
 
 import com.server.common.error.BusinessException;
 import com.server.common.error.ErrorCode;
+import com.server.common.error.FieldViolation;
 import com.server.place.domain.Place;
 import com.server.place.repository.PlaceRepository;
 import com.server.post.domain.Post;
@@ -72,35 +73,60 @@ public class PostService {
         List<PostMedia> mediaList = saveMedia(post, request.mediaList());
         List<PostPlaceTag> placeTags = savePlaceTags(post, request.placeTags());
 
+        // 방금 만든 게시물이라 좋아요·저장이 있을 수 없다.
         return PostDetailResponse.from(
                 post,
                 mediaList,
-                placeTags.stream().map(PostPlaceTagView::from).toList());
+                placeTags.stream().map(PostPlaceTagView::from).toList(),
+                false,
+                false);
     }
 
     @Transactional(readOnly = true)
-    public PostDetailResponse get(Long postId) {
+    public PostDetailResponse get(Long postId, Long requesterId) {
         Post post = postRepository.findByIdAndDeletedAtIsNull(postId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.POST_NOT_FOUND));
 
+        List<Long> postIds = List.of(postId);
         return PostDetailResponse.from(
                 post,
                 postMediaRepository.findByPostId(postId),
-                postPlaceTagRepository.findViewsByPostId(postId));
+                postPlaceTagRepository.findViewsByPostId(postId),
+                !postSummaryAssembler.likedPostIds(requesterId, postIds).isEmpty(),
+                !postSummaryAssembler.bookmarkedPostIds(requesterId, postIds).isEmpty());
     }
 
+    /**
+     * @param following   true 면 요청자가 팔로우한 사람들의 게시물만 반환한다.
+     * @param placeId     값이 있으면 이 장소를 태그한 게시물만 반환한다.
+     * @param requesterId 팔로잉 피드에만 필요하다.
+     */
     @Transactional(readOnly = true)
-    public PostSummaryListResponse getFeed(Long cursor, Integer size) {
+    public PostSummaryListResponse getFeed(
+            Long cursor,
+            Integer size,
+            boolean following,
+            Long placeId,
+            Long requesterId
+    ) {
+        if (following && requesterId == null) {
+            throw new BusinessException(ErrorCode.INVALID_FEED_REQUEST, List.of(new FieldViolation(
+                    "X-User-Id", "팔로잉 피드를 보려면 요청자를 알 수 있어야 합니다.")));
+        }
         int limit = resolveFeedSize(size);
         return toSummaryList(
-                postRepository.findByDeletedAtIsNullAndIdLessThanOrderByIdDesc(
+                postRepository.findFeed(
+                        following ? requesterId : null,
+                        placeId,
                         cursor == null ? FIRST_PAGE_CURSOR : cursor,
                         PageRequest.of(0, limit)),
-                limit);
+                limit,
+                requesterId);
     }
 
     @Transactional(readOnly = true)
-    public PostSummaryListResponse getUserPosts(Long userId, Long cursor, Integer size) {
+    public PostSummaryListResponse getUserPosts(
+            Long userId, Long cursor, Integer size, Long requesterId) {
         if (!userRepository.existsById(userId)) {
             throw new BusinessException(ErrorCode.USER_NOT_FOUND);
         }
@@ -110,13 +136,15 @@ public class PostService {
                         userId,
                         cursor == null ? FIRST_PAGE_CURSOR : cursor,
                         PageRequest.of(0, limit)),
-                limit);
+                limit,
+                requesterId);
     }
 
-    private PostSummaryListResponse toSummaryList(List<Post> posts, int limit) {
+    private PostSummaryListResponse toSummaryList(List<Post> posts, int limit, Long requesterId) {
         // 요청한 개수를 못 채웠으면 더 가져올 게시물이 없다.
         Long nextCursor = posts.size() < limit ? null : posts.get(posts.size() - 1).getId();
-        return new PostSummaryListResponse(postSummaryAssembler.assemble(posts), nextCursor);
+        return new PostSummaryListResponse(
+                postSummaryAssembler.assemble(posts, requesterId), nextCursor);
     }
 
     @Transactional
@@ -124,10 +152,13 @@ public class PostService {
         Post post = findWritablePost(postId, userId);
         post.updateContent(request.content());
 
+        List<Long> postIds = List.of(postId);
         return PostDetailResponse.from(
                 post,
                 postMediaRepository.findByPostId(postId),
-                postPlaceTagRepository.findViewsByPostId(postId));
+                postPlaceTagRepository.findViewsByPostId(postId),
+                !postSummaryAssembler.likedPostIds(userId, postIds).isEmpty(),
+                !postSummaryAssembler.bookmarkedPostIds(userId, postIds).isEmpty());
     }
 
     /**

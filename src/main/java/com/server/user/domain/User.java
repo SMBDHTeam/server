@@ -61,9 +61,8 @@ public class User {
         return deletedAt;
     }
 
-    public void updateProfile(String nickname, String profileImageUrl) {
+    public void changeNickname(String nickname) {
         this.nickname = nickname;
-        this.profileImageUrl = profileImageUrl;
     }
 
     public void delete(LocalDateTime deletedAt) {

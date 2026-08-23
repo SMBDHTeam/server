@@ -96,4 +96,14 @@ public class Comment {
     public LocalDateTime getDeletedAt() {
         return deletedAt;
     }
+
+    public boolean isWrittenBy(Long userId) {
+        return user.getId().equals(userId);
+    }
+
+    /** 게시물과 마찬가지로 물리 삭제하지 않는다. */
+    public void delete() {
+        this.deletedAt = LocalDateTime.now();
+        this.updatedAt = this.deletedAt;
+    }
 }
