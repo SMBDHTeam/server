@@ -1,6 +1,7 @@
 package com.server.post.repository;
 
 import com.server.post.domain.Post;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.data.domain.Pageable;
@@ -42,12 +43,41 @@ public interface PostRepository extends JpaRepository<Post, Long> {
               and (:placeId is null or exists (
                     select 1 from PostPlaceTag tag
                     where tag.post = post and tag.place.id = :placeId))
+              and (:hashtag is null or exists (
+                    select 1 from PostHashtag link
+                    where link.post = post and link.hashtag.name = :hashtag))
+              and (:blockerId is null or not exists (
+                    select 1 from Block block
+                    where block.blocker.id = :blockerId and block.blocked = post.user))
             order by post.id desc
             """)
     List<Post> findFeed(
             @Param("followerId") Long followerId,
             @Param("placeId") Long placeId,
+            @Param("hashtag") String hashtag,
+            @Param("blockerId") Long blockerId,
             @Param("cursor") Long cursor,
+            Pageable pageable);
+
+    /**
+     * 탐색 탭용 인기 게시물. 점수는 좋아요 + 댓글×2 이며, 오래된 인기글이 상단을 계속
+     * 차지하지 않도록 최근 게시물만 대상으로 한다.
+     *
+     * <p>점수 기준 정렬이라 커서로 삼을 단조 증가 값이 없어 오프셋 페이징을 쓴다.
+     */
+    @EntityGraph(attributePaths = "user")
+    @Query("""
+            select post from Post post
+            where post.deletedAt is null
+              and post.createdAt >= :since
+              and (:blockerId is null or not exists (
+                    select 1 from Block block
+                    where block.blocker.id = :blockerId and block.blocked = post.user))
+            order by (post.likeCount + post.commentCount * 2) desc, post.id desc
+            """)
+    List<Post> findPopularFeed(
+            @Param("since") LocalDateTime since,
+            @Param("blockerId") Long blockerId,
             Pageable pageable);
 
     @Query("select post.likeCount from Post post where post.id = :postId")

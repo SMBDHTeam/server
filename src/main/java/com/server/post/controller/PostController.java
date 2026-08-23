@@ -73,11 +73,33 @@ public class PostController {
             @RequestParam(required = false) String feed,
             @Parameter(description = "이 장소를 태그한 게시물만 반환한다.", example = "1")
             @RequestParam(required = false) Long placeId,
+            @Parameter(description = "이 해시태그가 달린 게시물만 반환한다. # 은 빼고 보낸다.",
+                    example = "광안리맛집")
+            @RequestParam(required = false) String hashtag,
             // TODO: 인증 도입 시 제거하고 인증 주체에서 사용자 ID 를 받는다. 임시 식별 수단이다.
             @Parameter(description = "요청자 ID. 팔로잉 피드에만 필요하다.", example = "1")
             @RequestHeader(value = "X-User-Id", required = false) Long requesterId
     ) {
-        return postService.getFeed(cursor, size, FOLLOWING_FEED.equals(feed), placeId, requesterId);
+        return postService.getFeed(
+                cursor, size, FOLLOWING_FEED.equals(feed), placeId, hashtag, requesterId);
+    }
+
+    @GetMapping("/popular")
+    @Operation(
+            summary = "인기 피드",
+            description = "탐색 탭용이다. 최근 7일 게시물을 좋아요 + 댓글×2 점수 순으로 반환한다. "
+                    + "점수 기준 정렬이라 커서를 쓸 수 없어 page 로 넘긴다."
+    )
+    public PostSummaryListResponse getPopularFeed(
+            @Parameter(description = "0부터 시작하는 페이지 번호", example = "0")
+            @RequestParam(defaultValue = "0") Integer page,
+            @Parameter(description = "한 번에 가져올 게시물 수. 1 이상 50 이하", example = "20")
+            @RequestParam(defaultValue = "20") @Min(1) Integer size,
+            // TODO: 인증 도입 시 제거하고 인증 주체에서 사용자 ID 를 받는다. 임시 식별 수단이다.
+            @Parameter(description = "요청자 ID. 차단한 사용자를 걸러내는 데 쓴다.", example = "1")
+            @RequestHeader(value = "X-User-Id", required = false) Long requesterId
+    ) {
+        return postService.getPopularFeed(page, size, requesterId);
     }
 
     @GetMapping("/{postId}")

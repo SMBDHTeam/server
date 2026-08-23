@@ -33,6 +33,8 @@ public enum ErrorCode {
     POST_ACCESS_DENIED(403, "본인의 게시물만 수정하거나 삭제할 수 있습니다."),
     COMMENT_ACCESS_DENIED(403, "본인의 댓글만 삭제할 수 있습니다."),
     NICKNAME_ALREADY_USED(409, "이미 사용 중인 닉네임입니다."),
+    ALREADY_REPORTED(409, "이미 신고한 대상입니다."),
+    INVALID_BLOCK_REQUEST(400, "차단 요청이 올바르지 않습니다."),
     TRANSIT_ROUTE_NOT_FOUND(422, "장소 사이 대중교통 경로를 찾지 못했습니다."),
     FACILITY_TYPE_NOT_SUPPORTED(501, "지원하지 않는 편의시설 유형입니다."),
     EXTERNAL_PROVIDER_UNAVAILABLE(503, "외부 서비스가 응답하지 않습니다."),
