@@ -14,6 +14,7 @@ import com.server.post.dto.PostLikeResponse;
 import com.server.post.dto.PostPlaceTagView;
 import com.server.post.dto.PostSummaryListResponse;
 import com.server.post.dto.PostSummaryResponse;
+import com.server.post.dto.PostUpdateRequest;
 import com.server.post.repository.PostLikeRepository;
 import com.server.post.repository.PostMediaRepository;
 import com.server.post.repository.PostPlaceTagRepository;
@@ -42,6 +43,7 @@ public class PostService {
     private final PostLikeRepository postLikeRepository;
     private final UserRepository userRepository;
     private final PlaceRepository placeRepository;
+    private final PostSummaryAssembler postSummaryAssembler;
 
     public PostService(
             PostRepository postRepository,
@@ -49,7 +51,8 @@ public class PostService {
             PostPlaceTagRepository postPlaceTagRepository,
             PostLikeRepository postLikeRepository,
             UserRepository userRepository,
-            PlaceRepository placeRepository
+            PlaceRepository placeRepository,
+            PostSummaryAssembler postSummaryAssembler
     ) {
         this.postRepository = postRepository;
         this.postMediaRepository = postMediaRepository;
@@ -57,6 +60,7 @@ public class PostService {
         this.postLikeRepository = postLikeRepository;
         this.userRepository = userRepository;
         this.placeRepository = placeRepository;
+        this.postSummaryAssembler = postSummaryAssembler;
     }
 
     @Transactional
@@ -88,30 +92,60 @@ public class PostService {
     @Transactional(readOnly = true)
     public PostSummaryListResponse getFeed(Long cursor, Integer size) {
         int limit = resolveFeedSize(size);
-        List<Post> posts = postRepository.findByDeletedAtIsNullAndIdLessThanOrderByIdDesc(
-                cursor == null ? FIRST_PAGE_CURSOR : cursor,
-                PageRequest.of(0, limit));
+        return toSummaryList(
+                postRepository.findByDeletedAtIsNullAndIdLessThanOrderByIdDesc(
+                        cursor == null ? FIRST_PAGE_CURSOR : cursor,
+                        PageRequest.of(0, limit)),
+                limit);
+    }
 
-        if (posts.isEmpty()) {
-            return new PostSummaryListResponse(List.of(), null);
+    @Transactional(readOnly = true)
+    public PostSummaryListResponse getUserPosts(Long userId, Long cursor, Integer size) {
+        if (!userRepository.existsById(userId)) {
+            throw new BusinessException(ErrorCode.USER_NOT_FOUND);
         }
+        int limit = resolveFeedSize(size);
+        return toSummaryList(
+                postRepository.findByUserIdAndDeletedAtIsNullAndIdLessThanOrderByIdDesc(
+                        userId,
+                        cursor == null ? FIRST_PAGE_CURSOR : cursor,
+                        PageRequest.of(0, limit)),
+                limit);
+    }
 
-        List<Long> postIds = posts.stream().map(Post::getId).toList();
-        Map<Long, List<PostMedia>> mediaByPost = postMediaRepository.findByPostIdIn(postIds).stream()
-                .collect(Collectors.groupingBy(media -> media.getPost().getId()));
-        Map<Long, List<PostPlaceTagView>> placeTagsByPost = postPlaceTagRepository.findViewsByPostIdIn(postIds).stream()
-                .collect(Collectors.groupingBy(PostPlaceTagView::postId));
-
-        List<PostSummaryResponse> items = posts.stream()
-                .map(post -> PostSummaryResponse.from(
-                        post,
-                        mediaByPost.getOrDefault(post.getId(), List.of()),
-                        placeTagsByPost.getOrDefault(post.getId(), List.of())))
-                .toList();
-
+    private PostSummaryListResponse toSummaryList(List<Post> posts, int limit) {
         // 요청한 개수를 못 채웠으면 더 가져올 게시물이 없다.
         Long nextCursor = posts.size() < limit ? null : posts.get(posts.size() - 1).getId();
-        return new PostSummaryListResponse(items, nextCursor);
+        return new PostSummaryListResponse(postSummaryAssembler.assemble(posts), nextCursor);
+    }
+
+    @Transactional
+    public PostDetailResponse update(Long postId, Long userId, PostUpdateRequest request) {
+        Post post = findWritablePost(postId, userId);
+        post.updateContent(request.content());
+
+        return PostDetailResponse.from(
+                post,
+                postMediaRepository.findByPostId(postId),
+                postPlaceTagRepository.findViewsByPostId(postId));
+    }
+
+    /**
+     * 물리 삭제하지 않고 {@code deletedAt}만 남긴다. 조회 경로가 모두
+     * {@code deletedAt IS NULL} 조건을 쓰므로 삭제된 게시물은 응답에 나오지 않는다.
+     */
+    @Transactional
+    public void delete(Long postId, Long userId) {
+        findWritablePost(postId, userId).delete();
+    }
+
+    private Post findWritablePost(Long postId, Long userId) {
+        Post post = postRepository.findByIdAndDeletedAtIsNull(postId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.POST_NOT_FOUND));
+        if (!post.isWrittenBy(userId)) {
+            throw new BusinessException(ErrorCode.POST_ACCESS_DENIED);
+        }
+        return post;
     }
 
     /** 이미 눌린 좋아요를 다시 눌러도 개수가 늘지 않는다. */

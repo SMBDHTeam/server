@@ -4,6 +4,7 @@ import com.server.post.dto.PostCreateRequest;
 import com.server.post.dto.PostDetailResponse;
 import com.server.post.dto.PostLikeResponse;
 import com.server.post.dto.PostSummaryListResponse;
+import com.server.post.dto.PostUpdateRequest;
 import com.server.post.service.PostService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -14,6 +15,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -71,6 +73,36 @@ public class PostController {
             @Parameter(example = "7") @PathVariable Long postId
     ) {
         return postService.get(postId);
+    }
+
+    @PatchMapping("/{postId}")
+    @Operation(
+            summary = "게시물 수정",
+            description = "본문만 수정한다. 작성자 본인이 아니면 403 을 반환한다."
+    )
+    public PostDetailResponse update(
+            // TODO: 인증 도입 시 제거하고 인증 주체에서 사용자 ID 를 받는다. 임시 식별 수단이다.
+            @Parameter(description = "요청자 ID. 인증 도입 전까지 쓰는 임시 헤더다.", example = "1")
+            @RequestHeader("X-User-Id") Long userId,
+            @Parameter(example = "7") @PathVariable Long postId,
+            @Valid @RequestBody PostUpdateRequest request
+    ) {
+        return postService.update(postId, userId, request);
+    }
+
+    @DeleteMapping("/{postId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    @Operation(
+            summary = "게시물 삭제",
+            description = "바로 지우지 않고 삭제 표시만 남긴다. 작성자 본인이 아니면 403 을 반환한다."
+    )
+    public void delete(
+            // TODO: 인증 도입 시 제거하고 인증 주체에서 사용자 ID 를 받는다. 임시 식별 수단이다.
+            @Parameter(description = "요청자 ID. 인증 도입 전까지 쓰는 임시 헤더다.", example = "1")
+            @RequestHeader("X-User-Id") Long userId,
+            @Parameter(example = "7") @PathVariable Long postId
+    ) {
+        postService.delete(postId, userId);
     }
 
     @PostMapping("/{postId}/likes")

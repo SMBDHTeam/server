@@ -76,4 +76,19 @@ public class Post {
     public LocalDateTime getDeletedAt() {
         return deletedAt;
     }
+
+    public boolean isWrittenBy(Long userId) {
+        return user.getId().equals(userId);
+    }
+
+    public void updateContent(String content) {
+        this.content = content;
+        this.updatedAt = LocalDateTime.now();
+    }
+
+    /** 물리 삭제하지 않는다. 기획상 삭제 후 30일간 복구할 수 있어야 한다. */
+    public void delete() {
+        this.deletedAt = LocalDateTime.now();
+        this.updatedAt = this.deletedAt;
+    }
 }

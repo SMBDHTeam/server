@@ -17,6 +17,13 @@ public interface PostRepository extends JpaRepository<Post, Long> {
 
     boolean existsByIdAndDeletedAtIsNull(Long id);
 
+    long countByUserIdAndDeletedAtIsNull(Long userId);
+
+    /** 특정 사용자가 쓴 게시물 한 페이지. 피드와 같은 커서 방식을 쓴다. */
+    @EntityGraph(attributePaths = "user")
+    List<Post> findByUserIdAndDeletedAtIsNullAndIdLessThanOrderByIdDesc(
+            Long userId, Long cursor, Pageable pageable);
+
     /**
      * 최신순 피드 한 페이지. 첫 페이지는 {@code Long.MAX_VALUE}를 커서로 넘긴다.
      * 작성자는 응답에 항상 필요하므로 함께 조회한다.
