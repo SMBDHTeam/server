@@ -2,8 +2,9 @@
 
 > 구현 상태 안내
 >
-> - 1~13번 테이블과 `일정 생성 V2 변경`은 현재 구현 기준이다.
+> - 1~26번 테이블과 `일정 생성 V2 변경`은 현재 구현 기준이다.
 > - V2 컬럼과 테이블은 `V4__schedule_generation_v2.sql`, 질문 화면 단계는 `V5__add_question_ui_step.sql`에서 추가한다.
+> - 사용자(14번)는 `V6__create_users_table.sql`, 커뮤니티(15~26번)는 `V8__create_community_tables.sql`에서 추가한다.
 
 ## 표기
 
@@ -303,6 +304,231 @@ TourAPI의 일일 요청 제한을 서버 재시작과 중복 실행 이후에�
 | `revoked_at` | datetime | X | 폐기시각 |
 | `created_at` | datetime | O | 생성시각 |
 
+## 14. users
+
+서비스 사용자다. 인증 도입 전이므로 로그인에 필요한 컬럼은 아직 없다.
+
+| 컬럼 | 자료형 | 키·필수 | 의미 |
+| --- | --- | --- | --- |
+| `id` | bigint | PK, O | 서비스 내부 사용자 ID |
+| `nickname` | varchar | O | 표시용 닉네임. 최대 10자는 요청 DTO에서 검증한다 |
+| `profile_image_url` | text | X | 프로필 사진 URL |
+| `created_at` | datetime | O | 가입시각 |
+| `deleted_at` | datetime | X | 탈퇴 처리시각 |
+
+닉네임 고유 조건은 일반 unique 제약이 아니라 부분 고유 인덱스
+`uk_users_nickname_active(nickname) WHERE deleted_at IS NULL`이다. 탈퇴한 사용자가 쓰던 닉네임을
+다른 사용자가 다시 쓸 수 있어야 하기 때문이다. 부분 인덱스는 JPA로 표현할 수 없어 엔티티에는
+제약을 두지 않고 migration에서만 관리한다.
+
+탈퇴해도 행을 지우지 않는다. 댓글을 남기고 작성자만 감추는 정책이라 참조가 남아 있어야 한다.
+인증 도입 시 추가될 개인정보 컬럼은 탈퇴 시 비우는 처리가 필요하다.
+
+## 15. posts
+
+커뮤니티 게시물이다.
+
+| 컬럼 | 자료형 | 키·필수 | 의미 |
+| --- | --- | --- | --- |
+| `id` | bigint | PK, O | 게시물 ID |
+| `user_id` | bigint | FK, O | 작성자 `users.id` |
+| `content` | text | O | 본문. 해시태그를 본문 안에 함께 적는다 |
+| `like_count` | integer | O | 좋아요 수. 조회 성능용 집계 컬럼 |
+| `comment_count` | integer | O | 댓글 수. 조회 성능용 집계 컬럼 |
+| `created_at` | datetime | O | 작성시각 |
+| `updated_at` | datetime | O | 마지막 수정시각 |
+| `deleted_at` | datetime | X | 삭제 표시시각 |
+
+`id`는 증가하는 정수다. 피드는 `id`를 커서로 쓰는 방식이라 순서가 있는 식별자가 필요하다.
+
+집계 컬럼은 엔티티를 읽어 고쳐 쓰지 않고 `UPDATE ... SET like_count = like_count + 1`처럼
+DB에서 직접 증감시킨다. 동시에 들어온 요청이 같은 값을 읽어 하나가 사라지는 것을 막기 위함이다.
+
+삭제는 `deleted_at`만 남긴다. 기획상 삭제 후 30일간 복구할 수 있어야 하므로 조회에서 제외하되
+행은 보존한다. **만료된 게시물을 정리하는 배치는 아직 없다.**
+
+인덱스: `idx_posts_created_at`, `idx_posts_user_id`
+
+## 16. post_media
+
+게시물에 첨부한 사진·영상이다. 게시물당 최소 한 건이 필요하며 요청 DTO에서 검증한다.
+
+| 컬럼 | 자료형 | 키·필수 | 의미 |
+| --- | --- | --- | --- |
+| `id` | bigint | PK, O | 미디어 ID |
+| `post_id` | bigint | FK, O | 소속 `posts.id` |
+| `media_type` | varchar | O | `IMAGE`, `VIDEO` |
+| `url` | text | O | 업로드된 파일 URL |
+| `sort_order` | integer | O | 게시물 안의 표시 순서 |
+
+파일 업로드는 서버가 하지 않는다. 클라이언트가 저장소에 올린 뒤 URL만 전달한다.
+**저장소 선정과 업로드 API는 미정이다.**
+
+인덱스: `idx_post_media_post_id`
+
+## 17. post_place_tags
+
+게시물에 태그한 장소다.
+
+| 컬럼 | 자료형 | 키·필수 | 의미 |
+| --- | --- | --- | --- |
+| `id` | bigint | PK, O | 태그 ID |
+| `post_id` | bigint | FK, O | 소속 `posts.id` |
+| `place_id` | bigint | FK, O | 태그한 `places.id` |
+| `latitude` | decimal | X | 사진이 실제로 촬영된 위도 |
+| `longitude` | decimal | X | 사진이 실제로 촬영된 경도 |
+
+좌표는 장소 대표 좌표가 아니라 **사진 EXIF에서 얻은 촬영 지점**이다. `places`의 좌표를 복사하지
+않으며, EXIF가 없으면 `null`로 둔다. 값의 유무로 촬영 위치를 아는지가 구분된다. 화면에 표시할
+좌표가 없으면 `place_id`로 `places`에서 읽는다.
+
+인덱스: `idx_post_place_tags_post_id`, `idx_post_place_tags_place_id`
+
+## 18. comments
+
+게시물 댓글이다. 최상위 댓글과 답글 두 단계만 표현한다.
+
+| 컬럼 | 자료형 | 키·필수 | 의미 |
+| --- | --- | --- | --- |
+| `id` | bigint | PK, O | 댓글 ID |
+| `post_id` | bigint | FK, O | 소속 `posts.id` |
+| `user_id` | bigint | FK, O | 작성자 `users.id` |
+| `parent_id` | bigint | FK, X | 답글이면 부모 `comments.id`, 일반 댓글이면 `null` |
+| `content` | text | O | 내용 |
+| `like_count` | integer | O | 좋아요 수. 조회 성능용 집계 컬럼 |
+| `created_at` | datetime | O | 작성시각 |
+| `updated_at` | datetime | O | 마지막 수정시각 |
+| `deleted_at` | datetime | X | 삭제 표시시각 |
+
+`parent_id`는 같은 테이블을 참조한다. 답글에 다시 답글을 다는 요청은 거절한다.
+
+삭제된 댓글에 살아 있는 답글이 있으면 목록에서 자리를 유지하고 작성자와 내용만 감춘다.
+부모가 사라지면 답글이 화면에서 함께 없어지기 때문이다. 답글이 없으면 목록에서 제외한다.
+
+인덱스: `idx_comments_post_id`, `idx_comments_parent_id`
+
+## 19. post_likes
+
+게시물 좋아요다.
+
+| 컬럼 | 자료형 | 키·필수 | 의미 |
+| --- | --- | --- | --- |
+| `post_id` | bigint | PK 일부, FK, O | `posts.id` |
+| `user_id` | bigint | PK 일부, FK, O | `users.id` |
+| `created_at` | datetime | O | 누른 시각 |
+
+대리키 없이 `(post_id, user_id)`가 기본키다. 같은 사람이 같은 게시물에 두 번 누르는 것을 DB가
+막는다. 애플리케이션에서 확인하는 방식은 동시 요청에서 뚫린다.
+
+키 순서는 게시물 기준 조회가 많아 `post_id`가 앞이다.
+
+## 20. comment_likes
+
+댓글 좋아요다. 구조와 이유는 `post_likes`와 같다.
+
+| 컬럼 | 자료형 | 키·필수 | 의미 |
+| --- | --- | --- | --- |
+| `comment_id` | bigint | PK 일부, FK, O | `comments.id` |
+| `user_id` | bigint | PK 일부, FK, O | `users.id` |
+| `created_at` | datetime | O | 누른 시각 |
+
+## 21. bookmarks
+
+게시물 저장이다.
+
+| 컬럼 | 자료형 | 키·필수 | 의미 |
+| --- | --- | --- | --- |
+| `user_id` | bigint | PK 일부, FK, O | `users.id` |
+| `post_id` | bigint | PK 일부, FK, O | `posts.id` |
+| `created_at` | datetime | O | 저장한 시각 |
+
+`post_likes`와 달리 `user_id`가 키 앞에 온다. 주 용도가 "내 북마크 목록" 조회라 사용자 기준으로
+읽는 일이 많기 때문이다. 이 순서 덕분에 별도 인덱스가 필요 없다.
+
+몇 명이 저장했는지는 응답에 담지 않는다.
+
+## 22. follows
+
+팔로우 관계다. 방향이 있어 서로 팔로우하려면 두 행이 필요하다.
+
+| 컬럼 | 자료형 | 키·필수 | 의미 |
+| --- | --- | --- | --- |
+| `follower_id` | bigint | PK 일부, FK, O | 팔로우하는 `users.id` |
+| `following_id` | bigint | PK 일부, FK, O | 팔로우당하는 `users.id` |
+| `created_at` | datetime | O | 맺은 시각 |
+
+한 테이블이 `users`를 두 번 참조한다. 팔로워 목록과 팔로잉 목록이 모두 필요해 역방향 인덱스를
+둔다. 대리키가 없어 커서로 삼을 값이 없으므로 목록은 오프셋 페이징을 쓴다.
+
+팔로워 수는 집계 컬럼 없이 매번 센다. 현재 규모에서는 충분하며, 느려지면 `users`에 컬럼을 추가한다.
+
+인덱스: `idx_follows_following_id`
+
+## 23. blocks
+
+차단 관계다.
+
+| 컬럼 | 자료형 | 키·필수 | 의미 |
+| --- | --- | --- | --- |
+| `blocker_id` | bigint | PK 일부, FK, O | 차단한 `users.id` |
+| `blocked_id` | bigint | PK 일부, FK, O | 차단당한 `users.id` |
+| `created_at` | datetime | O | 차단한 시각 |
+
+차단하면 모든 피드에서 상대 게시물을 제외하고 서로의 팔로우를 끊는다. 차단을 풀어도 팔로우는
+되살리지 않는다.
+
+**상대가 내 게시물을 보는 것은 막지 않는다.** 역방향까지 막으려면 모든 조회에서 "상대가 나를
+차단했는지"를 확인해야 해 비용이 크다.
+
+## 24. hashtags
+
+해시태그다. 본문에서 뽑아 저장한다.
+
+| 컬럼 | 자료형 | 키·필수 | 의미 |
+| --- | --- | --- | --- |
+| `id` | bigint | PK, O | 태그 ID |
+| `name` | varchar | UK, O | `#`을 뺀 이름. 소문자로 정규화해 저장한다 |
+| `post_count` | integer | O | 이 태그가 달린 게시물 수. 자동완성 정렬 기준 |
+
+`#` 뒤의 한글·영문·숫자·밑줄만 태그로 인정하고 공백이나 그 밖의 문자에서 끊는다. 여러 단어를
+담으려면 붙여 써야 한다. 게시물당 20개, 태그당 50자를 넘지 않는다.
+
+`post_count`는 게시물 작성·수정·삭제에 맞춰 증감시킨다. 자주 쓰일 태그는
+`HashtagSeedInitializer`가 미리 만들어 둔다. 처음 쓰는 태그를 동시에 저장하면 이름 고유 제약에
+걸려 요청 하나가 실패할 수 있는데, 미리 만들어 두면 그 상황을 줄일 수 있다.
+
+## 25. post_hashtags
+
+게시물과 해시태그의 연결이다.
+
+| 컬럼 | 자료형 | 키·필수 | 의미 |
+| --- | --- | --- | --- |
+| `post_id` | bigint | PK 일부, FK, O | `posts.id` |
+| `hashtag_id` | bigint | PK 일부, FK, O | `hashtags.id` |
+
+게시물의 태그 조회와 태그별 게시물 조회가 모두 필요해 역방향 인덱스를 둔다.
+
+인덱스: `idx_post_hashtags_hashtag_id`
+
+## 26. reports
+
+신고다. 접수만 하며 **처리 상태를 바꾸는 관리자 기능은 아직 없다.**
+
+| 컬럼 | 자료형 | 키·필수 | 의미 |
+| --- | --- | --- | --- |
+| `id` | bigint | PK, O | 신고 ID |
+| `reporter_id` | bigint | FK, O | 신고자 `users.id` |
+| `target_type` | varchar | O | `POST`, `COMMENT`, `USER` |
+| `target_id` | bigint | O | 신고 대상 ID |
+| `reason` | text | O | 신고 사유 |
+| `status` | varchar | O | `PENDING`, `RESOLVED` |
+| `created_at` | datetime | O | 접수시각 |
+
+**`target_id`에는 외래키가 없다.** 대상이 게시물·댓글·사용자로 달라져 한 테이블을 가리킬 수
+없기 때문이다. 대상이 실제로 있는지는 애플리케이션에서 확인한다.
+
+같은 사용자가 같은 대상을 다시 신고하면 거절한다.
+
 ## 일정 생성 V2 변경
 
 ### V2-1. 기존 테이블 변경
@@ -475,6 +701,19 @@ Preview의 고정 행사 제약이 실제 일정의 방문지로 배치된 결�
 | `schedule_previews` 1 : N `schedule_creation_requests` | 한 Preview의 생성 시도와 멱등성 상태를 기록한다 |
 | `schedules` 1 : N `schedule_fixed_events` | 일정은 여러 고정 행사를 포함할 수 있다 |
 | `schedule_stops` 1 : 0..1 `schedule_fixed_events` | 방문 계획은 고정 행사와 최대 하나 연결된다 |
+| `users` 1 : N `posts` | 사용자는 여러 게시물을 쓴다 |
+| `posts` 1 : N `post_media` | 게시물은 사진·영상을 여러 개 가진다 |
+| `posts` 1 : N `post_place_tags` | 게시물은 장소를 여러 개 태그할 수 있다 |
+| `places` 1 : N `post_place_tags` | 장소는 여러 게시물에 태그된다 |
+| `posts` 1 : N `comments` | 게시물은 여러 댓글을 가진다 |
+| `comments` 1 : N `comments` | 댓글은 답글을 여러 개 가진다. 답글에는 답글이 없다 |
+| `users` N : M `posts` (`post_likes`) | 좋아요. 같은 조합은 한 번만 |
+| `users` N : M `comments` (`comment_likes`) | 댓글 좋아요. 같은 조합은 한 번만 |
+| `users` N : M `posts` (`bookmarks`) | 저장. 같은 조합은 한 번만 |
+| `users` N : M `users` (`follows`) | 팔로우. 방향이 있다 |
+| `users` N : M `users` (`blocks`) | 차단. 방향이 있다 |
+| `posts` N : M `hashtags` (`post_hashtags`) | 게시물의 해시태그 |
+| `users` 1 : N `reports` | 사용자는 여러 건을 신고할 수 있다. 신고 대상은 FK로 연결하지 않는다 |
 
 ## DB에 저장하지 않는 데이터
 
