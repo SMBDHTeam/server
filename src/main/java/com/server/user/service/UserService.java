@@ -7,6 +7,7 @@ import com.server.follow.repository.FollowRepository;
 import com.server.post.repository.PostRepository;
 import com.server.user.domain.User;
 import com.server.user.dto.NicknameUpdateRequest;
+import com.server.user.dto.ProfileImageUpdateRequest;
 import com.server.user.dto.UserProfileResponse;
 import com.server.user.dto.UserSearchListResponse;
 import com.server.user.repository.UserRepository;
@@ -50,11 +51,22 @@ public class UserService {
         return new UserSearchListResponse(items);
     }
 
+    @Transactional
+    public UserProfileResponse changeProfileImage(Long userId, ProfileImageUpdateRequest request) {
+        findActiveUser(userId).changeProfileImage(request.profileImageUrl());
+        return getProfile(userId, userId);
+    }
+
+    @Transactional
+    public UserProfileResponse removeProfileImage(Long userId) {
+        findActiveUser(userId).removeProfileImage();
+        return getProfile(userId, userId);
+    }
+
     /** 이미 쓰는 사람이 있는 닉네임이면 거절한다. 자기 닉네임을 그대로 보내는 건 허용한다. */
     @Transactional
     public UserProfileResponse changeNickname(Long userId, NicknameUpdateRequest request) {
-        User user = userRepository.findByIdAndDeletedAtIsNull(userId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
+        User user = findActiveUser(userId);
 
         if (!user.getNickname().equals(request.nickname())
                 && userRepository.existsByNicknameAndDeletedAtIsNull(request.nickname())) {
@@ -85,6 +97,11 @@ public class UserService {
                 followRepository.countByFollowerId(userId),
                 following,
                 userId.equals(requesterId));
+    }
+
+    private User findActiveUser(Long userId) {
+        return userRepository.findByIdAndDeletedAtIsNull(userId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
     }
 
     private PageRequest pageRequest(Integer page, Integer size) {

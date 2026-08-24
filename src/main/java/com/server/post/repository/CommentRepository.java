@@ -7,6 +7,7 @@ import java.util.Optional;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -38,4 +39,18 @@ public interface CommentRepository extends JpaRepository<Comment, Long> {
     /** 부모 댓글 여러 건의 대댓글을 한 번에 읽는다. */
     @EntityGraph(attributePaths = "user")
     List<Comment> findByParentIdInAndDeletedAtIsNullOrderByIdAsc(Collection<Long> parentIds);
+
+    /** 게시물 좋아요와 같은 이유로 DB 에서 직접 증감시킨다. */
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("update Comment comment set comment.likeCount = comment.likeCount + 1 "
+            + "where comment.id = :commentId")
+    void increaseLikeCount(@Param("commentId") Long commentId);
+
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("update Comment comment set comment.likeCount = comment.likeCount - 1 "
+            + "where comment.id = :commentId and comment.likeCount > 0")
+    void decreaseLikeCount(@Param("commentId") Long commentId);
+
+    @Query("select comment.likeCount from Comment comment where comment.id = :commentId")
+    int findLikeCountById(@Param("commentId") Long commentId);
 }

@@ -65,6 +65,14 @@ public class User {
         this.nickname = nickname;
     }
 
+    public void changeProfileImage(String profileImageUrl) {
+        this.profileImageUrl = profileImageUrl;
+    }
+
+    public void removeProfileImage() {
+        this.profileImageUrl = null;
+    }
+
     public void delete(LocalDateTime deletedAt) {
         this.deletedAt = deletedAt;
     }

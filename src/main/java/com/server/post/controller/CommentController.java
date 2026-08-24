@@ -1,6 +1,7 @@
 package com.server.post.controller;
 
 import com.server.post.dto.CommentCreateRequest;
+import com.server.post.dto.CommentLikeResponse;
 import com.server.post.dto.CommentListResponse;
 import com.server.post.dto.CommentResponse;
 import com.server.post.service.CommentService;
@@ -78,8 +79,35 @@ public class CommentController {
             @Parameter(description = "이전 응답의 nextCursor. 첫 페이지는 생략한다.", example = "12")
             @RequestParam(required = false) Long cursor,
             @Parameter(description = "한 번에 가져올 댓글 수. 1 이상 50 이하", example = "20")
-            @RequestParam(defaultValue = "20") @Min(1) Integer size
+            @RequestParam(defaultValue = "20") @Min(1) Integer size,
+            // TODO: 인증 도입 시 제거하고 인증 주체에서 사용자 ID 를 받는다. 임시 식별 수단이다.
+            @Parameter(description = "요청자 ID. 없으면 좋아요 여부가 false 로 나간다.", example = "1")
+            @RequestHeader(value = "X-User-Id", required = false) Long requesterId
     ) {
-        return commentService.getComments(postId, cursor, size);
+        return commentService.getComments(postId, cursor, size, requesterId);
+    }
+
+    @PostMapping("/{commentId}/likes")
+    @Operation(summary = "댓글 좋아요", description = "이미 누른 상태에서 다시 요청해도 개수가 늘지 않는다.")
+    public CommentLikeResponse like(
+            // TODO: 인증 도입 시 제거하고 인증 주체에서 사용자 ID 를 받는다. 임시 식별 수단이다.
+            @Parameter(description = "요청자 ID. 인증 도입 전까지 쓰는 임시 헤더다.", example = "1")
+            @RequestHeader("X-User-Id") Long userId,
+            @Parameter(example = "1") @PathVariable Long postId,
+            @Parameter(example = "3") @PathVariable Long commentId
+    ) {
+        return commentService.like(postId, commentId, userId);
+    }
+
+    @DeleteMapping("/{commentId}/likes")
+    @Operation(summary = "댓글 좋아요 취소", description = "누른 적 없는 상태에서 요청해도 개수가 줄지 않는다.")
+    public CommentLikeResponse unlike(
+            // TODO: 인증 도입 시 제거하고 인증 주체에서 사용자 ID 를 받는다. 임시 식별 수단이다.
+            @Parameter(description = "요청자 ID. 인증 도입 전까지 쓰는 임시 헤더다.", example = "1")
+            @RequestHeader("X-User-Id") Long userId,
+            @Parameter(example = "1") @PathVariable Long postId,
+            @Parameter(example = "3") @PathVariable Long commentId
+    ) {
+        return commentService.unlike(postId, commentId, userId);
     }
 }
