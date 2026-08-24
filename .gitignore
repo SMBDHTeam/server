@@ -56,3 +56,9 @@ docs/examples/kakao-map-local-config.js
 docs/examples/generated-*
 docs/examples/schedule-map-example*
 docs/examples/schedule-map-route-example.md
+
+### macOS ###
+.DS_Store
+
+### 사람이 확인한 산출물 (서버 소스와 함께 커밋하지 않는다) ###
+output/
