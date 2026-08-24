@@ -2,6 +2,31 @@
 
 API 계약이 변경될 때마다 최신 항목을 위에 추가한다.
 
+## 2026-08-15 (즉흥 여행 목적지 추천 신설)
+
+- API: `POST /api/v1/spontaneous-trips/destinations`
+- 구분: 엔드포인트 신설
+- 이전: 없음
+- 이후: 요청 본문을 FastAPI(`app.spontaneous-fastapi.*`)의 같은 경로로 그대로 위임하고 응답을 그대로 반환한다.
+- 이유: 즉흥 여행 목적지 추천 기능 추가
+- 호환성 파괴: 아니오. 신규 경로다.
+- DB/ERD: 변경 없음
+- 미비점: 요청·응답이 `Map<String, Object>`라 스키마와 검증이 없고 Swagger에도 형태가 뜨지 않는다. 비활성 시 `IllegalStateException`이라 다른 위임의 `503 EXTERNAL_PROVIDER_UNAVAILABLE`과 달리 500이 나가고, FastAPI 오류를 도메인 코드로 매핑하지 않는다. `docs/API_SPEC.md` 항목과 테스트도 없다. 프론트 연동 전에 정리해야 한다.
+- 관련 PR 또는 이슈: #79
+
+## 2026-08-11 (일정 수정이 항상 503이던 문제 복구)
+
+- API: `PATCH /api/v1/schedules/{scheduleId}`
+- 구분: 버그 수정 (계약 변경 없음)
+- 이전: 요청 형태가 올바라도 **항상** `503 EXTERNAL_PROVIDER_UNAVAILABLE`을 반환했다. 간헐적 장애가 아니라 구조적으로 성공할 수 없는 상태였고, 일정 수정 기능 전체가 동작하지 않았다.
+- 이후: 정상 동작한다. 방문지 순서와 체류시간 변경이 반영되는 것을 개발 서버에서 확인했다.
+- 원인: FastAPI 위임 RestClient가 `SimpleClientHttpRequestFactory`를 썼다. 내부가 `HttpURLConnection`이라 PATCH를 보내지 못하고 `Invalid HTTP method: PATCH`로 즉시 실패했으며, 이 실패가 `ResourceAccessException`이라 `EXTERNAL_PROVIDER_UNAVAILABLE`로 매핑됐다. 요청이 FastAPI에 닿지도 못한 채 503이 나가고 있었다.
+- 함께 수정: 요청 팩토리를 `JdkClientHttpRequestFactory`로 바꾼 뒤에는 본문 있는 POST·PATCH가 전부 422로 떨어졌다. `HttpClient` 기본 프로토콜이 HTTP/2라 평문 연결에서 h2c 업그레이드를 시도하는데 uvicorn이 이를 거부하며 요청 본문이 유실됐다. `HTTP_1_1`로 고정해 해결했다. 이 사이 일정 미리보기·일정 생성이 개발 서버에서 일시적으로 실패했다.
+- 호환성 파괴: 아니오. 요청·응답 스키마는 그대로다. 503을 받던 클라이언트가 이제 정상 응답을 받는다.
+- DB/ERD: 변경 없음
+- 비고: 두 결함 모두 Mock RestClient 테스트로는 잡히지 않았다. 요청 팩토리를 타지 않기 때문이다. 스텁 서버가 받은 HTTP 메서드·프로토콜·본문을 직접 확인하는 `FastApiScheduleConfigTest`를 추가했다.
+- 관련 PR 또는 이슈: #76, #77
+
 ## 2026-08-11 (장소 상세에 출처와 외부 링크 추가)
 
 - API: `GET /api/v1/places/{placeId}`
