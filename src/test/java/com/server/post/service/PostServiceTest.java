@@ -21,6 +21,7 @@ import com.server.post.repository.PostPlaceTagRepository;
 import com.server.post.repository.PostRepository;
 import com.server.user.domain.User;
 import com.server.user.repository.UserRepository;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.DisplayName;
@@ -36,6 +37,7 @@ class PostServiceTest {
     private static final long AUTHOR_ID = 1L;
     private static final long OTHER_USER_ID = 2L;
     private static final long POST_ID = 7L;
+    private static final int RESTORE_WINDOW_DAYS = 30;
 
     private final PostRepository postRepository = Mockito.mock(PostRepository.class);
     private final PostMediaRepository postMediaRepository = Mockito.mock(PostMediaRepository.class);
@@ -56,7 +58,8 @@ class PostServiceTest {
             userRepository,
             placeRepository,
             postSummaryAssembler,
-            hashtagService);
+            hashtagService,
+            RESTORE_WINDOW_DAYS);
 
     @Test
     @DisplayName("이미 누른 좋아요를 다시 눌러도 개수를 올리지 않는다")
@@ -156,6 +159,53 @@ class PostServiceTest {
     }
 
     @Test
+    @DisplayName("복구하면 삭제 표시가 지워지고 해시태그를 다시 연결한다")
+    void restoreClearsDeletionAndReattachesHashtags() {
+        Post post = givenDeletedPost(AUTHOR_ID, LocalDateTime.now().minusDays(3));
+        when(postMediaRepository.findByPostId(POST_ID)).thenReturn(List.of());
+        when(postPlaceTagRepository.findViewsByPostId(POST_ID)).thenReturn(List.of());
+
+        postService.restore(POST_ID, AUTHOR_ID);
+
+        assertThat(post.getDeletedAt()).isNull();
+        // 삭제할 때 연결을 지웠으므로 본문에서 다시 뽑지 않으면 태그 필터 피드에서 빠진다.
+        verify(hashtagService).attachFromContent(post, "본문");
+    }
+
+    @Test
+    @DisplayName("삭제한 지 30일이 지나면 복구할 수 없다")
+    void restoreRejectsExpiredPost() {
+        Post post = givenDeletedPost(AUTHOR_ID, LocalDateTime.now().minusDays(31));
+
+        assertThatThrownBy(() -> postService.restore(POST_ID, AUTHOR_ID))
+                .isInstanceOfSatisfying(BusinessException.class, exception ->
+                        assertThat(exception.getErrorCode())
+                                .isEqualTo(ErrorCode.POST_RESTORE_WINDOW_EXPIRED));
+        assertThat(post.getDeletedAt()).isNotNull();
+    }
+
+    @Test
+    @DisplayName("남의 게시물은 복구할 수 없다")
+    void restoreRejectsOtherUsersPost() {
+        Post post = givenDeletedPost(AUTHOR_ID, LocalDateTime.now().minusDays(1));
+
+        assertThatThrownBy(() -> postService.restore(POST_ID, OTHER_USER_ID))
+                .isInstanceOfSatisfying(BusinessException.class, exception ->
+                        assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.POST_ACCESS_DENIED));
+        assertThat(post.getDeletedAt()).isNotNull();
+    }
+
+    @Test
+    @DisplayName("삭제하지 않은 게시물에는 복구가 걸리지 않는다")
+    void restoreRejectsLivePost() {
+        when(postRepository.findDeletedById(POST_ID)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> postService.restore(POST_ID, AUTHOR_ID))
+                .isInstanceOfSatisfying(BusinessException.class, exception ->
+                        assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.POST_NOT_FOUND));
+    }
+
+    @Test
     @DisplayName("인기 피드는 한 번에 50건까지만 준다")
     void popularFeedCapsPageSize() {
         when(postRepository.findPopularFeed(any(), any(), any())).thenReturn(List.of());
@@ -175,6 +225,14 @@ class PostServiceTest {
         when(postSummaryAssembler.assemble(List.of(), null)).thenReturn(List.of());
 
         assertThat(postService.getPopularFeed(0, 20, null).nextCursor()).isNull();
+    }
+
+    private Post givenDeletedPost(long userId, LocalDateTime deletedAt) {
+        Post post = new Post(givenActiveUser(userId), "본문");
+        ReflectionTestUtils.setField(post, "id", POST_ID);
+        ReflectionTestUtils.setField(post, "deletedAt", deletedAt);
+        when(postRepository.findDeletedById(POST_ID)).thenReturn(Optional.of(post));
+        return post;
     }
 
     private Post givenPostWrittenBy(long userId) {
