@@ -28,4 +28,7 @@ public interface PostPlaceTagRepository extends JpaRepository<PostPlaceTag, Long
             where tag.post.id in :postIds
             """)
     List<PostPlaceTagView> findViewsByPostIdIn(@Param("postIds") Collection<Long> postIds);
+
+    /** 게시물을 완전히 지울 때 함께 지운다. */
+    long deleteByPostId(Long postId);
 }

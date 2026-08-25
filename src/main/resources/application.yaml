@@ -62,3 +62,11 @@ app:
       scheduler:
         enabled: ${TOUR_API_INGESTION_SCHEDULER_ENABLED:false}
         cron: "${TOUR_API_INGESTION_CRON:0 0 4 * * *}"
+    #---------------
+  community:
+    # 지운 게시물은 retention-days 동안 복구할 수 있고, 그 뒤 이 스케줄러가 실제로 지운다.
+    # 끄면 지운 게시물이 영원히 쌓이고 본문과 사진 URL 이 DB 에 남는다.
+    post-purge:
+      enabled: ${COMMUNITY_POST_PURGE_ENABLED:false}
+      retention-days: ${COMMUNITY_POST_RETENTION_DAYS:30}
+      cron: "${COMMUNITY_POST_PURGE_CRON:0 30 4 * * *}"

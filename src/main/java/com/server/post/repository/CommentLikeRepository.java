@@ -36,4 +36,16 @@ public interface CommentLikeRepository extends JpaRepository<CommentLike, Commen
             on conflict do nothing
             """, nativeQuery = true)
     int insertIfAbsent(@Param("commentId") Long commentId, @Param("userId") Long userId);
+
+    /**
+     * 게시물을 완전히 지울 때 그 게시물 댓글에 달린 좋아요를 먼저 지운다.
+     * 댓글을 참조하고 있어 댓글보다 먼저 지우지 않으면 외래키에 걸린다.
+     */
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("""
+            delete from CommentLike commentLike
+            where commentLike.comment.id in (
+                select comment.id from Comment comment where comment.post.id = :postId)
+            """)
+    void deleteByPostId(@Param("postId") Long postId);
 }

@@ -143,6 +143,37 @@ public class PostController {
         postService.delete(postId, userId);
     }
 
+    @GetMapping("/me/deleted")
+    @Operation(
+            summary = "내가 지운 게시물 목록",
+            description = "복구 기한 30일이 남은 것만 반환한다. 삭제한 시각이 최근인 순이며 "
+                    + "점수·시각 정렬이라 커서가 없다. 다음 페이지는 page 를 올려 요청한다."
+    )
+    public PostSummaryListResponse getMyDeletedPosts(
+            // TODO: 인증 도입 시 제거하고 인증 주체에서 사용자 ID 를 받는다. 임시 식별 수단이다.
+            @Parameter(description = "요청자 ID. 인증 도입 전까지 쓰는 임시 헤더다.", example = "1")
+            @RequestHeader("X-User-Id") Long userId,
+            @Parameter(example = "0") @RequestParam(required = false) Integer page,
+            @Parameter(example = "20") @RequestParam(required = false) Integer size
+    ) {
+        return postService.getMyDeletedPosts(userId, page, size);
+    }
+
+    @PostMapping("/{postId}/restore")
+    @Operation(
+            summary = "게시물 복구",
+            description = "삭제한 지 30일이 지나지 않은 본인 게시물을 되살린다. 기간이 지났으면 "
+                    + "410, 본인 게시물이 아니면 403 을 반환한다."
+    )
+    public PostDetailResponse restore(
+            // TODO: 인증 도입 시 제거하고 인증 주체에서 사용자 ID 를 받는다. 임시 식별 수단이다.
+            @Parameter(description = "요청자 ID. 인증 도입 전까지 쓰는 임시 헤더다.", example = "1")
+            @RequestHeader("X-User-Id") Long userId,
+            @Parameter(example = "7") @PathVariable Long postId
+    ) {
+        return postService.restore(postId, userId);
+    }
+
     @PostMapping("/{postId}/likes")
     @Operation(
             summary = "좋아요",

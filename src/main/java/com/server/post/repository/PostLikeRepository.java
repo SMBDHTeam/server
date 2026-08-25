@@ -36,4 +36,7 @@ public interface PostLikeRepository extends JpaRepository<PostLike, PostLikeId> 
             on conflict do nothing
             """, nativeQuery = true)
     int insertIfAbsent(@Param("postId") Long postId, @Param("userId") Long userId);
+
+    /** 게시물을 완전히 지울 때 함께 지운다. */
+    long deleteByPostId(Long postId);
 }

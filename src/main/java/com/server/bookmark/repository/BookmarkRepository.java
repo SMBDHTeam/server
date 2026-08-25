@@ -53,4 +53,7 @@ public interface BookmarkRepository extends JpaRepository<Bookmark, BookmarkId> 
             on conflict do nothing
             """, nativeQuery = true)
     int insertIfAbsent(@Param("userId") Long userId, @Param("postId") Long postId);
+
+    /** 게시물을 완전히 지울 때 함께 지운다. */
+    long deleteByPostId(Long postId);
 }

@@ -26,6 +26,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -48,6 +49,11 @@ public class PostService {
     private final PlaceRepository placeRepository;
     private final PostSummaryAssembler postSummaryAssembler;
     private final HashtagService hashtagService;
+    /**
+     * 삭제한 게시물을 되돌릴 수 있는 기간. 정리 스케줄러의 보관 기간과 같은 값을 써야
+     * 한다. 복구 기한이 보관 기간보다 길면 아직 되돌릴 수 있는 글이 먼저 지워진다.
+     */
+    private final int restoreWindowDays;
 
     public PostService(
             PostRepository postRepository,
@@ -57,7 +63,8 @@ public class PostService {
             UserRepository userRepository,
             PlaceRepository placeRepository,
             PostSummaryAssembler postSummaryAssembler,
-            HashtagService hashtagService
+            HashtagService hashtagService,
+            @Value("${app.community.post-purge.retention-days}") int restoreWindowDays
     ) {
         this.postRepository = postRepository;
         this.postMediaRepository = postMediaRepository;
@@ -67,6 +74,7 @@ public class PostService {
         this.placeRepository = placeRepository;
         this.postSummaryAssembler = postSummaryAssembler;
         this.hashtagService = hashtagService;
+        this.restoreWindowDays = restoreWindowDays;
     }
 
     @Transactional
@@ -193,11 +201,56 @@ public class PostService {
     /**
      * 물리 삭제하지 않고 {@code deletedAt}만 남긴다. 조회 경로가 모두
      * {@code deletedAt IS NULL} 조건을 쓰므로 삭제된 게시물은 응답에 나오지 않는다.
+     * 복구 기한 안에는 {@link #restore(Long, Long)} 로 되살릴 수 있다.
      */
     @Transactional
     public void delete(Long postId, Long userId) {
         findWritablePost(postId, userId).delete();
         hashtagService.detachFromPost(postId);
+    }
+
+    /** 내가 지운 게시물 목록. 복구 기한이 남은 것만 준다. */
+    @Transactional(readOnly = true)
+    public PostSummaryListResponse getMyDeletedPosts(Long userId, Integer page, Integer size) {
+        if (!userRepository.existsByIdAndDeletedAtIsNull(userId)) {
+            throw new BusinessException(ErrorCode.USER_NOT_FOUND);
+        }
+        int resolvedPage = page == null || page < 0 ? 0 : page;
+        List<Post> posts = postRepository.findDeletedByUserId(
+                userId,
+                LocalDateTime.now().minusDays(restoreWindowDays),
+                PageRequest.of(resolvedPage, resolveFeedSize(size)));
+
+        // 삭제 시각 기준 정렬이라 이어받을 커서가 없다. 다음 페이지는 page 를 올려 요청한다.
+        return new PostSummaryListResponse(postSummaryAssembler.assemble(posts, userId), null);
+    }
+
+    /**
+     * 삭제를 되돌린다. 삭제할 때 해시태그 연결을 실제로 지웠으므로 본문에서 다시 뽑아
+     * 연결한다. 그러지 않으면 복구한 글이 태그 필터 피드에서 영영 빠진다.
+     */
+    @Transactional
+    public PostDetailResponse restore(Long postId, Long userId) {
+        Post post = postRepository.findDeletedById(postId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.POST_NOT_FOUND));
+        if (!post.isWrittenBy(userId)) {
+            throw new BusinessException(ErrorCode.POST_ACCESS_DENIED);
+        }
+        if (!post.isRestorableWithin(restoreWindowDays)) {
+            throw new BusinessException(ErrorCode.POST_RESTORE_WINDOW_EXPIRED);
+        }
+
+        post.restore();
+        List<String> hashtags = hashtagService.attachFromContent(post, post.getContent());
+
+        List<Long> postIds = List.of(postId);
+        return PostDetailResponse.from(
+                post,
+                postMediaRepository.findByPostId(postId),
+                postPlaceTagRepository.findViewsByPostId(postId),
+                hashtags,
+                !postSummaryAssembler.likedPostIds(userId, postIds).isEmpty(),
+                !postSummaryAssembler.bookmarkedPostIds(userId, postIds).isEmpty());
     }
 
     private Post findWritablePost(Long postId, Long userId) {

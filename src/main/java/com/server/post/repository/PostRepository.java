@@ -33,6 +33,38 @@ public interface PostRepository extends JpaRepository<Post, Long> {
             """)
     Optional<Post> findReadableById(@Param("id") Long id);
 
+    /**
+     * 내가 지운 게시물 한 페이지. 휴지통 화면에서 쓰며 복구 기한이 남은 것만 준다.
+     * 삭제 시각 기준 정렬이라 커서로 삼을 단조 증가 값이 없어 오프셋 페이징을 쓴다.
+     */
+    @EntityGraph(attributePaths = "user")
+    @Query("""
+            select post from Post post
+            where post.user.id = :userId
+              and post.deletedAt is not null
+              and post.deletedAt >= :restorableFrom
+            order by post.deletedAt desc
+            """)
+    List<Post> findDeletedByUserId(
+            @Param("userId") Long userId,
+            @Param("restorableFrom") LocalDateTime restorableFrom,
+            Pageable pageable);
+
+    /** 복구 기한이 지나 완전히 지울 게시물. 한 번에 지나치게 많이 잡지 않도록 나눠 읽는다. */
+    @Query("""
+            select post from Post post
+            where post.deletedAt is not null
+              and post.deletedAt < :deadline
+            order by post.deletedAt asc
+            """)
+    List<Post> findDeletedBefore(
+            @Param("deadline") LocalDateTime deadline, Pageable pageable);
+
+    /** 복구 대상 단건. 삭제된 것만 찾으므로 살아 있는 글에는 복구가 걸리지 않는다. */
+    @EntityGraph(attributePaths = "user")
+    @Query("select post from Post post where post.id = :id and post.deletedAt is not null")
+    Optional<Post> findDeletedById(@Param("id") Long id);
+
     /** 특정 사용자가 쓴 게시물 한 페이지. 피드와 같은 커서 방식을 쓴다. */
     @EntityGraph(attributePaths = "user")
     List<Post> findByUserIdAndDeletedAtIsNullAndIdLessThanOrderByIdDesc(

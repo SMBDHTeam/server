@@ -91,4 +91,18 @@ public class Post {
         this.deletedAt = LocalDateTime.now();
         this.updatedAt = this.deletedAt;
     }
+
+    /**
+     * 삭제 표시를 지운다. 해시태그 연결은 삭제할 때 실제로 지웠으므로 본문에서 다시
+     * 뽑아 연결해야 한다. {@code PostService.restore} 가 함께 처리한다.
+     */
+    public void restore() {
+        this.deletedAt = null;
+        this.updatedAt = LocalDateTime.now();
+    }
+
+    /** 삭제한 지 {@code days} 일이 지났는지. 지난 글은 복구할 수 없다. */
+    public boolean isRestorableWithin(int days) {
+        return deletedAt != null && deletedAt.isAfter(LocalDateTime.now().minusDays(days));
+    }
 }

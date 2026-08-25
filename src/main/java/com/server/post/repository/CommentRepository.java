@@ -63,4 +63,7 @@ public interface CommentRepository extends JpaRepository<Comment, Long> {
 
     @Query("select comment.likeCount from Comment comment where comment.id = :commentId")
     int findLikeCountById(@Param("commentId") Long commentId);
+
+    /** 게시물을 완전히 지울 때 함께 지운다. */
+    long deleteByPostId(Long postId);
 }
