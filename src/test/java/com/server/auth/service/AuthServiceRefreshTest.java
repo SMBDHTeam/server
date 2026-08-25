@@ -149,6 +149,22 @@ class AuthServiceRefreshTest {
 
         assertThatThrownBy(() -> authService.refresh(token))
                 .isInstanceOf(BusinessException.class)
-                .hasFieldOrPropertyWithValue("errorCode", ErrorCode.USER_NOT_FOUND);
+                .hasFieldOrPropertyWithValue("errorCode", ErrorCode.INVALID_TOKEN);
+    }
+
+    @Test
+    @DisplayName("사용자를 읽지 못하면 토큰을 소비하지 않는다")
+    void keepsTokenWhenUserLookupFails() {
+        // 소비를 먼저 하면 DB 가 잠시 실패했을 때 Redis 삭제만 남는다. 그 뒤 클라이언트가
+        // 재시도하면 소비된 토큰으로 보여 탈취로 판정되고 모든 기기가 끊긴다.
+        // 여기서는 사용자를 못 찾는 상황으로 같은 순서를 검증한다.
+        String otherUsersToken = RefreshTokenStore.format(9999L, refreshTokenStore.issue(9999L));
+
+        assertThatThrownBy(() -> authService.refresh(otherUsersToken))
+                .isInstanceOf(BusinessException.class);
+
+        assertThat(refreshTokenStore.consume(9999L, otherUsersToken.split("\\.", 2)[1]))
+                .as("사용자 조회에 실패했으면 토큰이 그대로 남아 있어야 한다")
+                .isTrue();
     }
 }

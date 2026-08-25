@@ -35,7 +35,11 @@ public class AuthService {
         this.userRepository = userRepository;
     }
 
-    @Transactional
+    /**
+     * 트랜잭션을 걸지 않는다. 토큰 검증은 구글 JWKS 로 나가는 네트워크 호출이라,
+     * 트랜잭션 안에 두면 구글이 느릴 때 DB 커넥션을 쥔 채 대기한다. 사용자 저장만
+     * {@link OAuthUserRegistrar#register} 가 자기 트랜잭션으로 처리한다.
+     */
     public AuthTokenResponse loginWithGoogle(String idToken) {
         GoogleIdentity identity = googleIdTokenVerifier.verify(idToken);
         User user = oAuthUserRegistrar.register(identity);
@@ -49,9 +53,15 @@ public class AuthService {
      * 사용자의 리프레시를 전부 폐기한다. 훔친 쪽과 원래 사용자가 번갈아 갱신하면 반드시
      * 한쪽이 지워진 토큰을 내밀게 되므로 탈취가 드러난다.
      */
-    @Transactional
+    @Transactional(readOnly = true)
     public AuthTokenResponse refresh(String refreshToken) {
         RefreshTokenStore.RefreshTokenRef ref = RefreshTokenStore.parse(refreshToken)
+                .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_TOKEN));
+
+        // 사용자를 먼저 읽는다. 토큰을 소비한 뒤에 DB 를 읽으면, DB 가 잠시 실패했을 때
+        // Redis 삭제만 남는다. 그 상태에서 클라이언트가 재시도하면 소비된 토큰으로 보여
+        // 탈취로 판정되고 모든 기기가 끊긴다. 순간 장애가 전체 로그아웃이 되면 안 된다.
+        User user = userRepository.findByIdAndDeletedAtIsNull(ref.userId())
                 .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_TOKEN));
 
         if (!refreshTokenStore.consume(ref.userId(), ref.token())) {
@@ -67,9 +77,6 @@ public class AuthService {
             }
             throw new BusinessException(ErrorCode.INVALID_TOKEN);
         }
-
-        User user = userRepository.findByIdAndDeletedAtIsNull(ref.userId())
-                .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
 
         return issueFor(user);
     }

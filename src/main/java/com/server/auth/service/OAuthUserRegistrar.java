@@ -1,5 +1,7 @@
 package com.server.auth.service;
 
+import com.server.common.error.BusinessException;
+import com.server.common.error.ErrorCode;
 import com.server.user.domain.AuthProvider;
 import com.server.user.domain.User;
 import com.server.user.domain.UserRole;
@@ -7,6 +9,7 @@ import com.server.user.repository.UserRepository;
 import java.util.concurrent.ThreadLocalRandom;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -27,6 +30,7 @@ public class OAuthUserRegistrar {
 
     private static final int NICKNAME_MAX_LENGTH = 20;
     private static final String FALLBACK_NICKNAME = "여행자";
+    private static final int NICKNAME_RETRY_LIMIT = 5;
 
     private final UserRepository userRepository;
 
@@ -48,15 +52,26 @@ public class OAuthUserRegistrar {
         return user;
     }
 
+    /**
+     * 닉네임 확보는 확인 후 저장이라 같은 이름이 동시에 들어오면 한쪽이 고유 인덱스에
+     * 걸린다. 흔한 이름이면 실제로 일어난다. 사용자에게는 구글 로그인이 그냥 실패한
+     * 것으로 보이므로, 충돌하면 다른 이름으로 다시 시도한다.
+     */
     private User createNew(GoogleIdentity identity) {
-        User user = User.ofOAuth(
-                AuthProvider.GOOGLE,
-                identity.subject(),
-                identity.email(),
-                uniqueNickname(identity.name()),
-                identity.pictureUrl(),
-                UserRole.USER);
-        return userRepository.save(user);
+        for (int attempt = 0; attempt < NICKNAME_RETRY_LIMIT; attempt++) {
+            try {
+                return userRepository.saveAndFlush(User.ofOAuth(
+                        AuthProvider.GOOGLE,
+                        identity.subject(),
+                        identity.email(),
+                        uniqueNickname(identity.name()),
+                        identity.pictureUrl(),
+                        UserRole.USER));
+            } catch (DataIntegrityViolationException exception) {
+                log.info("Nickname taken while creating user. retrying. attempt={}", attempt + 1);
+            }
+        }
+        throw new BusinessException(ErrorCode.INTERNAL_ERROR);
     }
 
     /**

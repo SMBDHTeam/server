@@ -7,10 +7,13 @@ import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.time.Duration;
 import java.util.Base64;
+import java.util.HashSet;
 import java.util.Optional;
 import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.data.redis.core.Cursor;
+import org.springframework.data.redis.core.ScanOptions;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 
@@ -49,6 +52,9 @@ public class RefreshTokenStore {
     private static final Duration USED_MARK_TTL = Duration.ofMinutes(10);
 
     private static final int TOKEN_BYTES = 32;
+
+    /** SCAN 한 번에 훑을 키 수. 작을수록 다른 요청을 덜 막고, 클수록 왕복이 준다. */
+    private static final int SCAN_BATCH = 100;
 
     private final StringRedisTemplate redisTemplate;
     private final Duration refreshTtl;
@@ -108,10 +114,24 @@ public class RefreshTokenStore {
         return Boolean.TRUE.equals(redisTemplate.hasKey(usedKey(userId, token)));
     }
 
-    /** 정지·탈퇴·탈취 의심 때 해당 사용자의 모든 기기를 끊는다. */
+    /**
+     * 정지·탈퇴·탈취 의심 때 해당 사용자의 모든 기기를 끊는다.
+     *
+     * <p>KEYS 가 아니라 SCAN 으로 훑는다. KEYS 는 전체 키공간을 한 번에 훑으며 그동안
+     * Redis 싱글 스레드를 점유해, 진행되는 내내 다른 모든 명령이 대기한다. 이 Redis 는
+     * 모든 로그인 갱신이 쓰므로 정지 한 번에 갱신 전체가 멈춘다. SCAN 은 조금씩 나눠
+     * 훑어 다른 요청을 막지 않는다.
+     */
     public long revokeAll(Long userId) {
-        Set<String> keys = redisTemplate.keys(KEY_PREFIX + userId + ":*");
-        if (keys == null || keys.isEmpty()) {
+        Set<String> keys = new HashSet<>();
+        ScanOptions options = ScanOptions.scanOptions()
+                .match(KEY_PREFIX + userId + ":*")
+                .count(SCAN_BATCH)
+                .build();
+        try (Cursor<String> cursor = redisTemplate.scan(options)) {
+            cursor.forEachRemaining(keys::add);
+        }
+        if (keys.isEmpty()) {
             return 0;
         }
         Long removed = redisTemplate.delete(keys);

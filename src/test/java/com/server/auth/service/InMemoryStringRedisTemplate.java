@@ -2,11 +2,14 @@ package com.server.auth.service;
 
 import java.lang.reflect.Proxy;
 import java.util.Collection;
+import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
+import org.springframework.data.redis.core.Cursor;
+import org.springframework.data.redis.core.ScanOptions;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
 
@@ -55,6 +58,52 @@ class InMemoryStringRedisTemplate extends StringRedisTemplate {
     @Override
     public Long delete(Collection<String> keys) {
         return keys.stream().filter(key -> store.remove(key) != null).count();
+    }
+
+    /**
+     * {@code revokeAll} 이 KEYS 대신 SCAN 을 쓰므로 대역도 지원해야 한다.
+     * 커서 의미는 흉내내지 않고 일치하는 키를 한 번에 돌려준다. 검증하려는 것은
+     * 폐기 대상 선정이지 Redis 의 커서 동작이 아니다.
+     */
+    @Override
+    public Cursor<String> scan(ScanOptions options) {
+        String pattern = options.getPattern();
+        Iterator<String> matched = (pattern == null ? keys() : keys(pattern)).iterator();
+        return new Cursor<>() {
+            @Override
+            public boolean hasNext() {
+                return matched.hasNext();
+            }
+
+            @Override
+            public String next() {
+                return matched.next();
+            }
+
+            @Override
+            public Cursor.CursorId getId() {
+                return Cursor.CursorId.initial();
+            }
+
+            @Override
+            public long getCursorId() {
+                return 0;
+            }
+
+            @Override
+            public boolean isClosed() {
+                return false;
+            }
+
+            @Override
+            public long getPosition() {
+                return 0;
+            }
+
+            @Override
+            public void close() {
+            }
+        };
     }
 
     @Override
