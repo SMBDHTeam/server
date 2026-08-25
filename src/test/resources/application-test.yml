@@ -25,3 +25,9 @@ app:
       enabled: false
       scheduler:
         enabled: false
+  auth:
+    jwt:
+      # 테스트 전용 고정값. 운영 비밀값과 무관하다.
+      secret: test-only-secret-key-not-used-anywhere-else-0123456789
+    google:
+      client-ids: test-client-id

@@ -26,6 +26,10 @@ spring:
     enabled: true
     baseline-on-migrate: true
     baseline-version: 0
+    # 두 갈래 작업이 동시에 migration 을 추가한다. 커뮤니티(V8)와 인증(V9)처럼 서로
+    # 독립적인 변경이 다른 순서로 머지되면, 낮은 버전이 나중에 도착해 기동이 깨진다.
+    # 두 순서 모두 안전하도록 허용한다. 같은 테이블을 건드리는 migration 을 나눠 만들지 않는 것이 전제다.
+    out-of-order: true
 
 app:
   seed:
