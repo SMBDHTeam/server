@@ -2,14 +2,13 @@ package com.server.question.controller;
 
 import com.server.question.dto.QuestionResponse;
 import com.server.question.dto.TripQuestionsResponse;
-import com.server.auth.service.AccessTokenProvider;
 import com.server.question.service.QuestionService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import com.server.answer.dto.AnswerResponse;
 
@@ -20,8 +19,10 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 
-@WebMvcTest(QuestionController.class)
-@AutoConfigureMockMvc(addFilters = false)
+// 슬라이스(@WebMvcTest) 대신 전체 컨텍스트를 쓴다. 보안 필터가 늘 때마다 필터가 의존하는
+// 빈을 하나씩 목으로 채워야 해서, 이 저장소의 다른 컨트롤러 테스트와 방식을 맞춘다.
+@SpringBootTest
+@AutoConfigureMockMvc
 @ActiveProfiles("test")
 class QuestionControllerTest {
 
@@ -32,9 +33,6 @@ class QuestionControllerTest {
      * 슬라이스 테스트는 서비스 계층을 싣지 않는다. SecurityConfig 가 인증 필터를 거치면서
      * 필터가 의존하는 토큰 제공자가 필요해진다. addFilters = false 여도 빈은 만들어진다.
      */
-    @MockitoBean
-    private AccessTokenProvider accessTokenProvider;
-
     @Autowired
     private MockMvc mockMvc;
 

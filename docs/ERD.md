@@ -539,6 +539,8 @@ DB에서 직접 증감시킨다. 동시에 들어온 요청이 같은 값을 읽
 | `target_id` | bigint | O | 신고 대상 ID |
 | `reason` | text | O | 신고 사유 |
 | `status` | varchar | O | `PENDING`, `RESOLVED` |
+| `handled_by` | bigint | FK, X | 처리한 관리자 `users.id`. 처리 전이면 NULL |
+| `handled_at` | datetime | X | 처리 시각 |
 | `created_at` | datetime | O | 접수시각 |
 
 **`target_id`에는 외래키가 없다.** 대상이 게시물·댓글·사용자로 달라져 한 테이블을 가리킬 수
@@ -547,6 +549,13 @@ DB에서 직접 증감시킨다. 동시에 들어온 요청이 같은 값을 읽
 같은 사용자가 같은 대상을 다시 신고하면 거절한다. `V9__add_reports_unique_constraint.sql`에서
 `uk_reports_reporter_target(reporter_id, target_type, target_id)` 고유 제약을 추가했다.
 코드로만 막으면 같은 요청이 동시에 들어올 때 중복 행이 남는다.
+
+`status` 는 `PENDING`·`REVIEWING`·`RESOLVED`·`REJECTED` 다. `REVIEWING` 은 관리자가 여럿일 때
+같은 신고를 두 사람이 동시에 들여다보는 것을 줄이기 위한 값이다. 확인만 하고 조치하지 않은 것과
+아직 아무도 보지 않은 것을 구분하지 못하면 대기 목록이 같은 항목으로 계속 채워진다.
+
+`uk_reports_reporter_target(reporter_id, target_type, target_id)` 로 같은 대상을 여러 번 신고하지
+못하게 한다. `idx_reports_status_created_at` 은 관리자 화면이 대기 중인 신고부터 보기 위한 것이다.
 
 ## 일정 생성 V2 변경
 
