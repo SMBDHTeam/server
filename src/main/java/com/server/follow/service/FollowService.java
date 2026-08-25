@@ -7,6 +7,9 @@ import com.server.follow.dto.FollowResponse;
 import com.server.follow.dto.FollowUserListResponse;
 import com.server.follow.dto.FollowUserResponse;
 import com.server.follow.repository.FollowRepository;
+import com.server.notification.domain.NotificationTargetType;
+import com.server.notification.domain.NotificationType;
+import com.server.notification.service.NotificationService;
 import com.server.user.domain.User;
 import com.server.user.repository.UserRepository;
 import java.util.List;
@@ -23,15 +26,18 @@ public class FollowService {
     private final FollowRepository followRepository;
     private final BlockRepository blockRepository;
     private final UserRepository userRepository;
+    private final NotificationService notificationService;
 
     public FollowService(
             FollowRepository followRepository,
             BlockRepository blockRepository,
-            UserRepository userRepository
+            UserRepository userRepository,
+            NotificationService notificationService
     ) {
         this.followRepository = followRepository;
         this.blockRepository = blockRepository;
         this.userRepository = userRepository;
+        this.notificationService = notificationService;
     }
 
     /**
@@ -53,8 +59,15 @@ public class FollowService {
             throw new BusinessException(ErrorCode.FOLLOW_BLOCKED_USER);
         }
         // 상대가 나를 차단한 경우에는 관계만 만들지 않고 응답은 성공과 똑같이 준다.
-        if (!blockRepository.existsByBlockerIdAndBlockedId(targetUserId, userId)) {
-            followRepository.insertIfAbsent(userId, targetUserId);
+        // 새로 맺어진 경우에만 알린다. 취소 후 다시 팔로우해도 알림이 또 가지 않도록 한다.
+        if (!blockRepository.existsByBlockerIdAndBlockedId(targetUserId, userId)
+                && followRepository.insertIfAbsent(userId, targetUserId) > 0) {
+            notificationService.notify(
+                    targetUserId,
+                    userId,
+                    NotificationType.FOLLOW,
+                    NotificationTargetType.USER,
+                    userId);
         }
         return new FollowResponse(followRepository.countByFollowingId(targetUserId), true);
     }

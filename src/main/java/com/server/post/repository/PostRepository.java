@@ -127,6 +127,10 @@ public interface PostRepository extends JpaRepository<Post, Long> {
             @Param("blockerId") Long blockerId,
             Pageable pageable);
 
+    /** 알림 받을 작성자. 게시물 전체를 읽지 않으려고 ID 만 가져온다. */
+    @Query("select post.user.id from Post post where post.id = :postId")
+    Long findAuthorIdById(@Param("postId") Long postId);
+
     @Query("select post.likeCount from Post post where post.id = :postId")
     int findLikeCountById(@Param("postId") Long postId);
 

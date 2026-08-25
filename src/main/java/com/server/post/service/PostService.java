@@ -4,6 +4,9 @@ import com.server.common.error.BusinessException;
 import com.server.common.error.ErrorCode;
 import com.server.common.error.FieldViolation;
 import com.server.hashtag.service.HashtagService;
+import com.server.notification.domain.NotificationTargetType;
+import com.server.notification.domain.NotificationType;
+import com.server.notification.service.NotificationService;
 import com.server.place.domain.Place;
 import com.server.place.repository.PlaceRepository;
 import com.server.post.domain.Post;
@@ -49,6 +52,7 @@ public class PostService {
     private final PlaceRepository placeRepository;
     private final PostSummaryAssembler postSummaryAssembler;
     private final HashtagService hashtagService;
+    private final NotificationService notificationService;
     /**
      * 삭제한 게시물을 되돌릴 수 있는 기간. 정리 스케줄러의 보관 기간과 같은 값을 써야
      * 한다. 복구 기한이 보관 기간보다 길면 아직 되돌릴 수 있는 글이 먼저 지워진다.
@@ -64,6 +68,7 @@ public class PostService {
             PlaceRepository placeRepository,
             PostSummaryAssembler postSummaryAssembler,
             HashtagService hashtagService,
+            NotificationService notificationService,
             @Value("${app.community.post-purge.retention-days}") int restoreWindowDays
     ) {
         this.postRepository = postRepository;
@@ -74,6 +79,7 @@ public class PostService {
         this.placeRepository = placeRepository;
         this.postSummaryAssembler = postSummaryAssembler;
         this.hashtagService = hashtagService;
+        this.notificationService = notificationService;
         this.restoreWindowDays = restoreWindowDays;
     }
 
@@ -182,11 +188,42 @@ public class PostService {
                 postSummaryAssembler.assemble(posts, requesterId), nextCursor);
     }
 
+    /**
+     * 보낸 항목만 바꾼다. 배열을 보내면 통째로 교체하므로, 사진 한 장을 빼려면 남길
+     * 사진들을 보낸다.
+     *
+     * <p>교체로 빠진 사진의 실제 파일은 지우지 않는다. 저장소가 아직 정해지지 않아 지울
+     * 수단이 없다. 저장소를 붙일 때 남은 파일을 정리하는 작업이 함께 필요하다.
+     */
     @Transactional
     public PostDetailResponse update(Long postId, Long userId, PostUpdateRequest request) {
+        if (request.isEmpty()) {
+            throw new BusinessException(ErrorCode.INVALID_POST_REQUEST, List.of(new FieldViolation(
+                    "content", "본문, 사진, 장소 태그 중 하나는 보내야 합니다.")));
+        }
         Post post = findWritablePost(postId, userId);
-        post.updateContent(request.content());
-        List<String> hashtags = hashtagService.reattachFromContent(post, request.content());
+
+        List<String> hashtags;
+        if (request.content() == null) {
+            hashtags = hashtagService.findNamesByPostIds(List.of(postId))
+                    .getOrDefault(postId, List.of());
+        } else {
+            if (request.content().isBlank()) {
+                throw new BusinessException(ErrorCode.INVALID_POST_REQUEST, List.of(
+                        new FieldViolation("content", "본문은 공백일 수 없습니다.")));
+            }
+            post.updateContent(request.content());
+            hashtags = hashtagService.reattachFromContent(post, request.content());
+        }
+
+        if (request.mediaList() != null) {
+            postMediaRepository.deleteByPostId(postId);
+            saveMedia(post, request.mediaList());
+        }
+        if (request.placeTags() != null) {
+            postPlaceTagRepository.deleteByPostId(postId);
+            savePlaceTags(post, request.placeTags());
+        }
 
         List<Long> postIds = List.of(postId);
         return PostDetailResponse.from(
@@ -275,8 +312,15 @@ public class PostService {
             throw new BusinessException(ErrorCode.USER_NOT_FOUND);
         }
 
+        // 처음 누른 경우에만 알린다. 취소 후 다시 눌러도 알림이 또 가지 않도록 한다.
         if (postLikeRepository.insertIfAbsent(postId, userId) > 0) {
             postRepository.increaseLikeCount(postId);
+            notificationService.notify(
+                    postRepository.findAuthorIdById(postId),
+                    userId,
+                    NotificationType.POST_LIKE,
+                    NotificationTargetType.POST,
+                    postId);
         }
         return new PostLikeResponse(postRepository.findLikeCountById(postId), true);
     }

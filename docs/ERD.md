@@ -531,6 +531,34 @@ DB에서 직접 증감시킨다. 동시에 들어온 요청이 같은 값을 읽
 `uk_reports_reporter_target(reporter_id, target_type, target_id)` 고유 제약을 추가했다.
 코드로만 막으면 같은 요청이 동시에 들어올 때 중복 행이 남는다.
 
+## 27. notifications
+
+알림이다. **커뮤니티 전용이 아니다.** 알림을 만드는 쪽이 받는 사람·종류·대상을 넘기면 쌓이고,
+읽는 쪽은 알림 종류를 몰라도 목록을 보여줄 수 있다. 다른 도메인에서 알림이 필요해지면 같은
+방식으로 부르면 된다.
+
+| 컬럼 | 자료형 | 키·필수 | 의미 |
+| --- | --- | --- | --- |
+| `id` | bigint | PK, O | 알림 ID |
+| `recipient_id` | bigint | FK, O | 알림 받을 `users.id` |
+| `actor_id` | bigint | FK, X | 행동한 `users.id`. 시스템 알림에는 없다 |
+| `type` | varchar | O | `POST_LIKE`, `COMMENT`, `COMMENT_REPLY`, `COMMENT_LIKE`, `FOLLOW` |
+| `target_type` | varchar | O | `POST`, `COMMENT`, `USER` |
+| `target_id` | bigint | O | 눌렀을 때 이동할 대상 ID |
+| `read_at` | datetime | X | 읽은 시각. 비어 있으면 안 읽은 알림 |
+| `created_at` | datetime | O | 생성시각 |
+
+**`type`을 문자열로 둔다.** 새 알림 종류를 추가할 때 마이그레이션이 필요 없다.
+
+**`target_id`에는 외래키가 없다.** 종류마다 가리키는 테이블이 달라 `reports`와 같은 이유다.
+대상이 지워졌을 수 있으므로 이동한 화면에서 못 찾을 수 있다.
+
+인덱스는 둘이다. `idx_notifications_recipient_id(recipient_id, id DESC)`는 "내 알림을 최신순으로"
+조회에 쓴다. `idx_notifications_unread`는 안 읽은 행만 담는 부분 인덱스로, 읽은 알림이 쌓여도
+안 읽은 수 조회 비용이 늘지 않게 한다.
+
+`V10__create_notifications_table.sql`에서 추가한다.
+
 ## 일정 생성 V2 변경
 
 ### V2-1. 기존 테이블 변경
@@ -716,6 +744,7 @@ Preview의 고정 행사 제약이 실제 일정의 방문지로 배치된 결�
 | `users` N : M `users` (`blocks`) | 차단. 방향이 있다 |
 | `posts` N : M `hashtags` (`post_hashtags`) | 게시물의 해시태그 |
 | `users` 1 : N `reports` | 사용자는 여러 건을 신고할 수 있다. 신고 대상은 FK로 연결하지 않는다 |
+| `users` 1 : N `notifications` | 사용자는 여러 알림을 받는다. `recipient_id`와 `actor_id`로 두 번 연결된다. 알림 대상은 FK로 연결하지 않는다 |
 
 ## DB에 저장하지 않는 데이터
 

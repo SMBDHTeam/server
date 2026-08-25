@@ -71,6 +71,7 @@
 | 내 저장 목록 | GET | `/users/me/bookmarks` | `200 OK` | 필수 |
 | 댓글 작성 | POST | `/posts/{postId}/comments` | `201 Created` | 필수 |
 | 댓글 목록 | GET | `/posts/{postId}/comments` | `200 OK` | 선택 |
+| 댓글 수정 | PATCH | `/posts/{postId}/comments/{commentId}` | `200 OK` | 필수 |
 | 댓글 삭제 | DELETE | `/posts/{postId}/comments/{commentId}` | `204 No Content` | 필수 |
 | 댓글 좋아요 | POST | `/posts/{postId}/comments/{commentId}/likes` | `200 OK` | 필수 |
 | 댓글 좋아요 취소 | DELETE | `/posts/{postId}/comments/{commentId}/likes` | `200 OK` | 필수 |
@@ -88,6 +89,10 @@
 | 프로필 사진 제거 | DELETE | `/users/me/profile-image` | `200 OK` | 필수 |
 | 사용자 검색 | GET | `/users/search` | `200 OK` | 불필요 |
 | 해시태그 자동완성 | GET | `/hashtags/search` | `200 OK` | 불필요 |
+| 내 알림 목록 | GET | `/notifications` | `200 OK` | 필수 |
+| 안 읽은 알림 수 | GET | `/notifications/unread-count` | `200 OK` | 필수 |
+| 알림 읽음 | PATCH | `/notifications/{notificationId}/read` | `200 OK` | 필수 |
+| 알림 모두 읽음 | PATCH | `/notifications/read-all` | `200 OK` | 필수 |
 | 신고 | POST | `/reports` | `201 Created` | 필수 |
 
 ## 1. 사전 질문 조회
@@ -1324,7 +1329,7 @@ Provider 응답의 `distanceMeters`가 누락되거나 0 이하이면 서버는 
 
 **삭제한 게시물의 해시태그 연결은 물리 삭제한다.** 삭제된 글이 태그 사용 수와 태그 필터
 피드에 잡히면 안 되기 때문이다. 본문은 그대로 남으므로 복구할 때 본문에서 다시 뽑아
-연결해야 한다. 복구 API는 아직 없다.
+연결한다. `POST /posts/{postId}/restore` 가 함께 처리한다.
 
 ### C-2. 게시물 작성
 
@@ -1449,11 +1454,34 @@ Provider 응답의 `distanceMeters`가 누락되거나 0 이하이면 서버는 
 `PATCH /api/v1/posts/{postId}`
 
 ```json
-{ "content": "광안리 야경 진짜 좋았어요 #부산" }
+{
+  "content": "광안리 야경 진짜 좋았어요 #부산",
+  "mediaList": [
+    { "url": "https://example.com/media/1.jpg", "mediaType": "IMAGE", "sortOrder": 0 }
+  ],
+  "placeTags": [{ "placeId": 42 }]
+}
 ```
 
-**본문만 수정한다.** 첨부 미디어와 장소 태그 교체는 저장소에 올라간 파일 정리까지 함께 정해야
-하므로 후속 작업이다. 본문이 바뀌면 해시태그를 다시 계산한다.
+**보낸 항목만 바뀐다.** 생략한 항목은 그대로 둔다. 본문만 고치려면 `content`만 보내면 되고,
+사진 열 장짜리 글이라도 다시 보낼 필요가 없다.
+
+| 보낸 값 | 결과 |
+| --- | --- |
+| 항목 생략 | 그대로 둔다 |
+| `mediaList` 배열 | 기존 사진을 전부 지우고 보낸 것으로 교체한다. 한 건 이상 열 건 이하 |
+| `placeTags` 배열 | 기존 태그를 전부 지우고 보낸 것으로 교체한다 |
+| `placeTags: []` | 장소 태그를 모두 없앤다 |
+| 세 항목 모두 생략 | `400 INVALID_POST_REQUEST` |
+
+**배열은 통째로 교체한다.** 사진 세 장 중 하나를 빼려면 남길 두 장을 보낸다. 추가·삭제·순서
+변경이 모두 같은 방식이라 별도 파라미터를 두지 않았다. `mediaList`는 빈 배열로 보낼 수 없다.
+사진 없는 게시물을 허용하지 않기 때문이다.
+
+`content`를 보내면 해시태그를 다시 계산한다. 보내지 않으면 기존 태그를 그대로 둔다.
+
+**교체로 빠진 사진의 실제 파일은 지우지 않는다.** 저장소가 아직 정해지지 않아 지울 수단이
+없다. 저장소를 붙일 때 남은 파일을 정리하는 작업이 함께 필요하다.
 
 `DELETE /api/v1/posts/{postId}` — `204 No Content`
 
@@ -1595,6 +1623,14 @@ Provider 응답의 `distanceMeters`가 누락되거나 0 이하이면 서버는 
 **화면 문구는 클라이언트가 정한다.** 서버가 "탈퇴한 사용자입니다" 같은 문구를 들고 있으면
 문구를 고칠 때마다 서버를 배포해야 한다.
 
+`PATCH /api/v1/posts/{postId}/comments/{commentId}`
+
+```json
+{ "content": "저도 여기 가봤는데 좋았어요" }
+```
+
+내용만 바꾼다. 좋아요 수와 답글 관계는 그대로 둔다. 응답은 댓글 한 건이다.
+
 `DELETE /api/v1/posts/{postId}/comments/{commentId}` — `204 No Content`.
 작성자 본인이 아니면 `403 COMMENT_ACCESS_DENIED`다. 경로의 `postId`와 댓글의 소속이 다르면
 `404 COMMENT_NOT_FOUND`를 반환한다.
@@ -1731,16 +1767,95 @@ Provider 응답의 `distanceMeters`가 누락되거나 0 이하이면 서버는 
 
 **접수만 한다. 신고를 확인하거나 처리 상태를 바꾸는 관리자 API는 아직 없다.**
 
-### C-13. 커뮤니티 오류 코드
+### C-13. 게시물 공유
+
+**공유 API 를 두지 않는다.** 게시물은 누구나 볼 수 있으므로 주소만 있으면 되고, 주소는
+클라이언트가 `{서비스 주소}/posts/{postId}` 로 만들 수 있다.
+
+일정 공유(`/schedules/{id}/shares`)와 다른 점은 접근 범위다. 일정은 기본이 비공개라 토큰을
+발급하고 폐기하는 절차가 필요하지만, 게시물은 이미 공개라 그 절차가 아무것도 막지 않는다.
+
+공유 횟수를 세거나 "많이 공유된 글"을 만들게 되면 그때 추가한다.
+
+### C-14. 알림
+
+알림은 커뮤니티 전용이 아니다. 알림 도메인은 누가 부르는지 모르고, 받는 사람·종류·대상만
+받아 쌓는다. 나중에 일정 같은 다른 도메인에서 알림이 필요해지면 같은 방식으로 부르면 된다.
+
+`GET /api/v1/notifications?cursor=&size=20`
+
+```json
+{
+  "items": [
+    {
+      "id": 12,
+      "type": "POST_LIKE",
+      "actor": { "id": 2, "nickname": "고구마", "profileImageUrl": null },
+      "targetType": "POST",
+      "targetId": 7,
+      "read": false,
+      "createdAt": "2026-08-25T11:20:00"
+    }
+  ],
+  "nextCursor": null,
+  "unreadCount": 3
+}
+```
+
+| `type` | 언제 | `targetType` / `targetId` |
+| --- | --- | --- |
+| `POST_LIKE` | 내 게시물에 좋아요 | `POST` / 게시물 |
+| `COMMENT` | 내 게시물에 댓글 | `COMMENT` / 달린 댓글 |
+| `COMMENT_REPLY` | 내 댓글에 답글 | `COMMENT` / 달린 답글 |
+| `COMMENT_LIKE` | 내 댓글에 좋아요 | `COMMENT` / 댓글 |
+| `FOLLOW` | 나를 팔로우 | `USER` / 팔로우한 사람 |
+
+**화면 문구는 클라이언트가 만든다.** 서버는 `type`과 `actor`만 준다. 서버가 "고구마님이
+회원님의 게시물을 좋아합니다"를 들고 있으면 문구를 고칠 때마다 배포해야 한다.
+
+`targetId`는 누르면 이동할 곳이다. **대상이 그 사이 지워졌을 수 있으므로** 이동한 화면에서
+`404`가 날 수 있다.
+
+**알림이 생기지 않는 경우**
+
+- 내가 한 행동 (내 글에 내가 좋아요)
+- 이미 눌러 둔 좋아요를 취소했다가 다시 누름 (실제로 관계가 새로 생길 때만 알린다)
+- 받는 사람이 탈퇴함
+- 차단 관계라 애초에 행동이 막힘
+
+행동한 사람이 나중에 탈퇴하면 그 알림은 목록에서 빠진다. 보여줄 이름이 없기 때문이다.
+
+**읽음 처리**
+
+| 동작 | 요청 |
+| --- | --- |
+| 한 건 읽음 | `PATCH /api/v1/notifications/{notificationId}/read` |
+| 모두 읽음 | `PATCH /api/v1/notifications/read-all` |
+| 안 읽은 수만 조회 | `GET /api/v1/notifications/unread-count` |
+
+한 건 읽음은 알림 전체를, 나머지 둘은 `{ "unreadCount": 3 }`을 반환한다. 이미 읽은 알림을
+다시 읽어도 처음 읽은 시각을 유지한다. 남의 알림을 읽으려 하면 `404`다. `403`을 주면 그
+알림이 있다는 사실이 드러난다.
+
+**새 알림은 클라이언트가 주기적으로 조회해 받는다.** 서버가 밀어 보내지 않는다.
+`GET /notifications/unread-count`를 30초 간격 정도로 부르면 벨 표시가 갱신된다. 목록 응답에도
+`unreadCount`가 함께 담기므로, 목록을 여는 순간에는 따로 부르지 않아도 된다.
+
+서버가 연결을 열어두고 밀어 보내는 방식(SSE)이나 브라우저 알림(Web Push)은 쓰지 않는다.
+전자는 접속자 수만큼 연결을 유지해야 하고, 후자는 서비스 워커·HTTPS·권한 요청이 필요한 데다
+iOS 는 홈 화면 추가가 전제다. 알림이 몇십 초 늦게 뜨는 것은 이 기능에서 문제가 되지 않는다.
+
+### C-15. 커뮤니티 오류 코드
 
 | 코드 | 상태 | 발생 상황 |
 | --- | --- | --- |
 | `POST_NOT_FOUND` | 404 | 게시물이 없거나 삭제됨 |
 | `COMMENT_NOT_FOUND` | 404 | 댓글이 없거나 삭제됨. 경로의 게시물과 소속이 다른 경우 포함 |
 | `USER_NOT_FOUND` | 404 | 사용자가 없거나 탈퇴함 |
+| `NOTIFICATION_NOT_FOUND` | 404 | 알림이 없거나 남의 알림 |
 | `POST_ACCESS_DENIED` | 403 | 남의 게시물을 수정·삭제·복구하려 함 |
 | `POST_RESTORE_WINDOW_EXPIRED` | 410 | 삭제한 지 30일이 지난 게시물을 복구하려 함 |
-| `COMMENT_ACCESS_DENIED` | 403 | 남의 댓글을 삭제하려 함 |
+| `COMMENT_ACCESS_DENIED` | 403 | 남의 댓글을 수정·삭제하려 함 |
 | `INVALID_COMMENT_REQUEST` | 400 | 답글에 답글을 달거나, 부모 댓글이 다른 게시물의 것 |
 | `INVALID_FOLLOW_REQUEST` | 400 | 자기 자신을 팔로우 |
 | `INVALID_BLOCK_REQUEST` | 400 | 자기 자신을 차단 |
@@ -1771,15 +1886,13 @@ Provider 응답의 `distanceMeters`가 누락되거나 0 이하이면 서버는 
 }
 ```
 
-### C-14. 미구현
+### C-16. 미구현
 
 | 항목 | 상태 |
 | --- | --- |
 | 이미지·영상 업로드 | 저장소와 API 미정. 현재는 클라이언트가 올린 URL만 받는다 |
-| 알림 | 테이블부터 없다. 기획서 필수 기능이나 데이터 모델이 정의되지 않았다 |
 | 사진 EXIF 좌표 추출 | 클라이언트가 좌표를 직접 넘긴다 |
 | 신고 처리 관리자 기능 | 없다 |
-| 게시물 미디어·장소 태그 수정 | 본문만 수정 가능 |
 
 ## 공통 오류 응답
 

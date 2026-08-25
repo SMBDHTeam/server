@@ -3,12 +3,16 @@ package com.server.post.service;
 import com.server.block.repository.BlockRepository;
 import com.server.common.error.BusinessException;
 import com.server.common.error.ErrorCode;
+import com.server.notification.domain.NotificationTargetType;
+import com.server.notification.domain.NotificationType;
+import com.server.notification.service.NotificationService;
 import com.server.post.domain.Comment;
 import com.server.post.domain.Post;
 import com.server.post.dto.CommentCreateRequest;
 import com.server.post.dto.CommentLikeResponse;
 import com.server.post.dto.CommentListResponse;
 import com.server.post.dto.CommentResponse;
+import com.server.post.dto.CommentUpdateRequest;
 import com.server.post.repository.CommentLikeRepository;
 import com.server.post.repository.CommentRepository;
 import com.server.post.repository.PostRepository;
@@ -36,19 +40,22 @@ public class CommentService {
     private final PostRepository postRepository;
     private final BlockRepository blockRepository;
     private final UserRepository userRepository;
+    private final NotificationService notificationService;
 
     public CommentService(
             CommentRepository commentRepository,
             CommentLikeRepository commentLikeRepository,
             PostRepository postRepository,
             BlockRepository blockRepository,
-            UserRepository userRepository
+            UserRepository userRepository,
+            NotificationService notificationService
     ) {
         this.commentRepository = commentRepository;
         this.commentLikeRepository = commentLikeRepository;
         this.postRepository = postRepository;
         this.blockRepository = blockRepository;
         this.userRepository = userRepository;
+        this.notificationService = notificationService;
     }
 
     /**
@@ -73,6 +80,22 @@ public class CommentService {
         Comment comment = commentRepository.save(new Comment(post, author, parent, request.content()));
         postRepository.increaseCommentCount(postId);
 
+        // 답글이면 부모 댓글 작성자에게, 일반 댓글이면 게시물 작성자에게 알린다.
+        if (parent == null) {
+            notificationService.notify(
+                    postAuthorId,
+                    userId,
+                    NotificationType.COMMENT,
+                    NotificationTargetType.COMMENT,
+                    comment.getId());
+        } else {
+            notificationService.notify(
+                    parent.getUser().getId(),
+                    userId,
+                    NotificationType.COMMENT_REPLY,
+                    NotificationTargetType.COMMENT,
+                    comment.getId());
+        }
         return CommentResponse.from(comment, false);
     }
 
@@ -127,8 +150,15 @@ public class CommentService {
             throw new BusinessException(ErrorCode.USER_NOT_FOUND);
         }
 
+        // 처음 누른 경우에만 알린다. 취소 후 다시 눌러도 알림이 또 가지 않도록 한다.
         if (commentLikeRepository.insertIfAbsent(commentId, userId) > 0) {
             commentRepository.increaseLikeCount(commentId);
+            notificationService.notify(
+                    commentRepository.findAuthorIdById(commentId),
+                    userId,
+                    NotificationType.COMMENT_LIKE,
+                    NotificationTargetType.COMMENT,
+                    commentId);
         }
         return new CommentLikeResponse(commentRepository.findLikeCountById(commentId), true);
     }
@@ -159,19 +189,34 @@ public class CommentService {
         return Set.copyOf(commentLikeRepository.findLikedCommentIds(requesterId, commentIds));
     }
 
+    /** 내용만 바꾼다. 답글 관계와 좋아요 수는 그대로 둔다. */
+    @Transactional
+    public CommentResponse update(
+            Long postId, Long commentId, Long userId, CommentUpdateRequest request) {
+        Comment comment = findWritableComment(postId, commentId, userId);
+        comment.updateContent(request.content());
+
+        // 좋아요 여부는 본인이 누른 것만 보면 된다.
+        return CommentResponse.from(
+                comment, commentLikeRepository.existsByCommentIdAndUserId(commentId, userId));
+    }
+
     /**
      * 물리 삭제하지 않는다. 답글이 달린 댓글이어도 답글은 그대로 두고,
      * 목록에서는 작성자와 내용을 감춘 자리만 남는다.
      */
     @Transactional
     public void delete(Long postId, Long commentId, Long userId) {
+        findWritableComment(postId, commentId, userId).delete();
+        postRepository.decreaseCommentCount(postId);
+    }
+
+    private Comment findWritableComment(Long postId, Long commentId, Long userId) {
         Comment comment = findComment(postId, commentId);
         if (!comment.isWrittenBy(userId)) {
             throw new BusinessException(ErrorCode.COMMENT_ACCESS_DENIED);
         }
-
-        comment.delete();
-        postRepository.decreaseCommentCount(postId);
+        return comment;
     }
 
     /**

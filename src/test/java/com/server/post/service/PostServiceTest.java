@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -12,8 +13,13 @@ import static org.mockito.Mockito.when;
 import com.server.common.error.BusinessException;
 import com.server.common.error.ErrorCode;
 import com.server.hashtag.service.HashtagService;
+import com.server.notification.domain.NotificationTargetType;
+import com.server.notification.domain.NotificationType;
+import com.server.notification.service.NotificationService;
 import com.server.place.repository.PlaceRepository;
 import com.server.post.domain.Post;
+import com.server.post.domain.MediaType;
+import com.server.post.dto.PostCreateRequest;
 import com.server.post.dto.PostUpdateRequest;
 import com.server.post.repository.PostLikeRepository;
 import com.server.post.repository.PostMediaRepository;
@@ -49,6 +55,8 @@ class PostServiceTest {
     private final PostSummaryAssembler postSummaryAssembler =
             Mockito.mock(PostSummaryAssembler.class);
     private final HashtagService hashtagService = Mockito.mock(HashtagService.class);
+    private final NotificationService notificationService =
+            Mockito.mock(NotificationService.class);
 
     private final PostService postService = new PostService(
             postRepository,
@@ -59,6 +67,7 @@ class PostServiceTest {
             placeRepository,
             postSummaryAssembler,
             hashtagService,
+            notificationService,
             RESTORE_WINDOW_DAYS);
 
     @Test
@@ -73,6 +82,26 @@ class PostServiceTest {
         assertThat(postService.like(POST_ID, OTHER_USER_ID).likeCount()).isEqualTo(1);
 
         verify(postRepository, never()).increaseLikeCount(anyLong());
+    }
+
+    @Test
+    @DisplayName("좋아요를 처음 눌렀을 때만 작성자에게 알린다")
+    void notifiesAuthorOnFirstLikeOnly() {
+        when(postRepository.existsByIdAndDeletedAtIsNull(POST_ID)).thenReturn(true);
+        givenActiveUser(OTHER_USER_ID);
+        when(postRepository.findAuthorIdById(POST_ID)).thenReturn(AUTHOR_ID);
+        when(postLikeRepository.insertIfAbsent(POST_ID, OTHER_USER_ID)).thenReturn(1, 0);
+
+        postService.like(POST_ID, OTHER_USER_ID);
+        postService.like(POST_ID, OTHER_USER_ID);
+
+        // 두 번 눌러도 실제로 행이 들어간 첫 번째만 알린다.
+        verify(notificationService).notify(
+                AUTHOR_ID,
+                OTHER_USER_ID,
+                NotificationType.POST_LIKE,
+                NotificationTargetType.POST,
+                POST_ID);
     }
 
     @Test
@@ -93,7 +122,7 @@ class PostServiceTest {
         givenPostWrittenBy(AUTHOR_ID);
 
         assertThatThrownBy(() ->
-                postService.update(POST_ID, OTHER_USER_ID, new PostUpdateRequest("고쳐볼까")))
+                postService.update(POST_ID, OTHER_USER_ID, new PostUpdateRequest("고쳐볼까", null, null)))
                 .isInstanceOfSatisfying(BusinessException.class, exception ->
                         assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.POST_ACCESS_DENIED));
     }
@@ -128,7 +157,7 @@ class PostServiceTest {
         when(postMediaRepository.findByPostId(POST_ID)).thenReturn(List.of());
         when(postPlaceTagRepository.findViewsByPostId(POST_ID)).thenReturn(List.of());
 
-        postService.update(POST_ID, AUTHOR_ID, new PostUpdateRequest("고친 본문 #부산"));
+        postService.update(POST_ID, AUTHOR_ID, new PostUpdateRequest("고친 본문 #부산", null, null));
 
         assertThat(post.getContent()).isEqualTo("고친 본문 #부산");
         verify(hashtagService).reattachFromContent(post, "고친 본문 #부산");
@@ -156,6 +185,59 @@ class PostServiceTest {
 
         assertThatCode(() -> postService.getFeed(null, 20, false, null, null, null))
                 .doesNotThrowAnyException();
+    }
+
+    @Test
+    @DisplayName("본문만 보내면 사진과 장소 태그는 건드리지 않는다")
+    void updateKeepsMediaWhenNotSent() {
+        givenPostWrittenBy(AUTHOR_ID);
+        when(postMediaRepository.findByPostId(POST_ID)).thenReturn(List.of());
+        when(postPlaceTagRepository.findViewsByPostId(POST_ID)).thenReturn(List.of());
+
+        postService.update(POST_ID, AUTHOR_ID, new PostUpdateRequest("본문만 고침", null, null));
+
+        verify(postMediaRepository, never()).deleteByPostId(anyLong());
+        verify(postPlaceTagRepository, never()).deleteByPostId(anyLong());
+    }
+
+    @Test
+    @DisplayName("사진을 보내면 기존 사진을 지우고 보낸 것으로 교체한다")
+    void updateReplacesMedia() {
+        Post post = givenPostWrittenBy(AUTHOR_ID);
+        when(postMediaRepository.findByPostId(POST_ID)).thenReturn(List.of());
+        when(postPlaceTagRepository.findViewsByPostId(POST_ID)).thenReturn(List.of());
+        List<PostCreateRequest.Media> media = List.of(
+                new PostCreateRequest.Media("https://e.com/b.jpg", MediaType.IMAGE, 0));
+
+        postService.update(POST_ID, AUTHOR_ID, new PostUpdateRequest(null, media, null));
+
+        verify(postMediaRepository).deleteByPostId(POST_ID);
+        verify(postMediaRepository).saveAll(any());
+        // 본문을 안 보냈으므로 해시태그는 다시 계산하지 않는다.
+        verify(hashtagService, never()).reattachFromContent(eq(post), any());
+    }
+
+    @Test
+    @DisplayName("장소 태그를 빈 배열로 보내면 전부 없앤다")
+    void updateClearsPlaceTags() {
+        givenPostWrittenBy(AUTHOR_ID);
+        when(postMediaRepository.findByPostId(POST_ID)).thenReturn(List.of());
+        when(postPlaceTagRepository.findViewsByPostId(POST_ID)).thenReturn(List.of());
+
+        postService.update(POST_ID, AUTHOR_ID, new PostUpdateRequest(null, null, List.of()));
+
+        verify(postPlaceTagRepository).deleteByPostId(POST_ID);
+        verify(postPlaceTagRepository, never()).saveAll(any());
+    }
+
+    @Test
+    @DisplayName("바꿀 항목을 하나도 보내지 않으면 거절한다")
+    void updateRejectsEmptyRequest() {
+        assertThatThrownBy(() ->
+                postService.update(POST_ID, AUTHOR_ID, new PostUpdateRequest(null, null, null)))
+                .isInstanceOfSatisfying(BusinessException.class, exception ->
+                        assertThat(exception.getErrorCode())
+                                .isEqualTo(ErrorCode.INVALID_POST_REQUEST));
     }
 
     @Test
