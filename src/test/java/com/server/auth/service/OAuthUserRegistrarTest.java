@@ -69,7 +69,7 @@ class OAuthUserRegistrarTest {
     @DisplayName("사용자가 바꾼 닉네임을 구글 이름으로 되돌리지 않는다")
     void keepsUserChosenNickname() {
         User user = registrar().register(identity("sub-1", "a@example.com", "구글이름"));
-        user.updateProfile("내가정한닉", user.getProfileImageUrl());
+        user.changeNickname("내가정한닉");
 
         User again = registrar().register(identity("sub-1", "a@example.com", "구글이름"));
 

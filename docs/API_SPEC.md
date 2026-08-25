@@ -12,9 +12,13 @@
 | --- | --- |
 | Base URL | `/api/v1` |
 | Content Type | `application/json; charset=utf-8` |
-| 인증 | 1차 스프린트에서는 인증 없음 |
+| 인증 | 아직 없음. 커뮤니티 API는 `X-User-Id` 헤더로 요청자를 임시 식별한다 |
 | 좌표 | WGS84, `longitude`는 경도, `latitude`는 위도 |
 | 향후 계획 | 사용자 도메인 도입 후 JWT와 사용자별 일정 조회 적용 |
+
+> **`X-User-Id`는 임시 조치다.** 헤더 값을 바꾸면 다른 사용자를 사칭할 수 있으므로 인증 도입 시
+> 반드시 제거해야 한다. 요청 본문이 아니라 헤더로 받는 이유는, 조회 API에는 본문이 없어 방식이
+> 갈라지고, 나중에 `Authorization` 헤더로 교체할 때 요청 DTO를 건드리지 않아도 되기 때문이다.
 
 ## 엔드포인트
 
@@ -44,6 +48,47 @@
 | 외부 장소 내부 ID 확정 | POST | `/places/resolve` | `200 OK` | 구현 |
 | Preview 기반 일정 생성 | POST | `/schedules` | `201 Created` | 구현 |
 | 일정 단건 조회 | GET | `/schedules/{scheduleId}` | `200 OK` | 구현 |
+
+### 커뮤니티 엔드포인트
+
+계약 상세는 `커뮤니티 계약`을 본다. `요청자` 열의 `필수`는 `X-User-Id` 헤더가 없으면 요청이
+실패한다는 뜻이고, `선택`은 없어도 동작하되 좋아요·저장 여부가 `false`로 나간다는 뜻이다.
+
+| 기능 | Method | URI | 성공 상태 | 요청자 |
+| --- | --- | --- | --- | --- |
+| 게시물 작성 | POST | `/posts` | `201 Created` | 필수 |
+| 피드 조회 | GET | `/posts` | `200 OK` | 선택 |
+| 인기 피드 | GET | `/posts/popular` | `200 OK` | 선택 |
+| 게시물 상세 | GET | `/posts/{postId}` | `200 OK` | 선택 |
+| 게시물 수정 | PATCH | `/posts/{postId}` | `200 OK` | 필수 |
+| 게시물 삭제 | DELETE | `/posts/{postId}` | `204 No Content` | 필수 |
+| 내가 지운 게시물 | GET | `/posts/me/deleted` | `200 OK` | 필수 |
+| 게시물 복구 | POST | `/posts/{postId}/restore` | `200 OK` | 필수 |
+| 좋아요 | POST | `/posts/{postId}/likes` | `200 OK` | 필수 |
+| 좋아요 취소 | DELETE | `/posts/{postId}/likes` | `200 OK` | 필수 |
+| 저장 | POST | `/posts/{postId}/bookmarks` | `200 OK` | 필수 |
+| 저장 해제 | DELETE | `/posts/{postId}/bookmarks` | `200 OK` | 필수 |
+| 내 저장 목록 | GET | `/users/me/bookmarks` | `200 OK` | 필수 |
+| 댓글 작성 | POST | `/posts/{postId}/comments` | `201 Created` | 필수 |
+| 댓글 목록 | GET | `/posts/{postId}/comments` | `200 OK` | 선택 |
+| 댓글 삭제 | DELETE | `/posts/{postId}/comments/{commentId}` | `204 No Content` | 필수 |
+| 댓글 좋아요 | POST | `/posts/{postId}/comments/{commentId}/likes` | `200 OK` | 필수 |
+| 댓글 좋아요 취소 | DELETE | `/posts/{postId}/comments/{commentId}/likes` | `200 OK` | 필수 |
+| 팔로우 | POST | `/users/{userId}/follows` | `200 OK` | 필수 |
+| 팔로우 취소 | DELETE | `/users/{userId}/follows` | `200 OK` | 필수 |
+| 팔로워 목록 | GET | `/users/{userId}/followers` | `200 OK` | 불필요 |
+| 팔로잉 목록 | GET | `/users/{userId}/followings` | `200 OK` | 불필요 |
+| 차단 | POST | `/users/{userId}/blocks` | `200 OK` | 필수 |
+| 차단 해제 | DELETE | `/users/{userId}/blocks` | `200 OK` | 필수 |
+| 내 차단 목록 | GET | `/users/me/blocks` | `200 OK` | 필수 |
+| 프로필 조회 | GET | `/users/{userId}/profile` | `200 OK` | 선택 |
+| 사용자 게시물 | GET | `/users/{userId}/posts` | `200 OK` | 선택 |
+| 닉네임 변경 | PATCH | `/users/me/nickname` | `200 OK` | 필수 |
+| 프로필 사진 변경 | PATCH | `/users/me/profile-image` | `200 OK` | 필수 |
+| 프로필 사진 제거 | DELETE | `/users/me/profile-image` | `200 OK` | 필수 |
+| 사용자 검색 | GET | `/users/search` | `200 OK` | 불필요 |
+| 해시태그 자동완성 | GET | `/hashtags/search` | `200 OK` | 불필요 |
+| 신고 | POST | `/reports` | `201 Created` | 필수 |
 
 ## 1. 사전 질문 조회
 
@@ -1230,6 +1275,511 @@ Provider 응답의 `distanceMeters`가 누락되거나 0 이하이면 서버는 
 ## PDF·이미지 저장
 
 별도 백엔드 API를 만들지 않는다. 프론트엔드에서 브라우저 인쇄, `jsPDF`, `html2canvas` 등을 사용해 생성한다.
+
+## 커뮤니티 계약
+
+### C-1. 공통 규칙
+
+**요청자 식별**
+
+인증 도입 전까지 `X-User-Id` 헤더로 요청자를 전달한다. 위 `공통`의 경고를 함께 본다.
+
+**페이징이 두 가지다**
+
+| 방식 | 쓰는 곳 | 파라미터 | 응답 |
+| --- | --- | --- | --- |
+| 커서 | 피드, 사용자 게시물, 댓글 | `cursor`, `size` | `nextCursor` |
+| 오프셋 | 인기 피드, 북마크, 팔로워·팔로잉, 차단, 검색 | `page`, `size` | 없음 |
+
+커서 방식은 응답의 `nextCursor`를 다음 요청의 `cursor`로 그대로 넘긴다. `null`이면 더 없다.
+목록이 밀리지 않아 무한 스크롤에 적합하다.
+
+오프셋 방식은 정렬 기준이 증가하는 식별자가 아니어서 커서를 쓸 수 없는 곳에만 쓴다. 인기 피드는
+점수 기준, 나머지는 관계를 맺은 시각 기준이며 해당 테이블에 대리키가 없다.
+
+`size`는 1 이상 50 이하이며 기본값은 20이다. 해시태그 자동완성만 기본 10, 최대 30이다.
+
+**정렬 방향**
+
+| 대상 | 정렬 |
+| --- | --- |
+| 피드·사용자 게시물 | 최신순 (`id` 내림차순) |
+| 댓글 | 오래된 순 (`id` 오름차순). 대화 흐름을 따라 읽기 위함 |
+| 인기 피드 | 점수 내림차순 |
+| 팔로워·팔로잉·차단·북마크 | 최근 순 |
+| 사용자 검색 | 닉네임 가나다순 |
+
+**삭제 정책**
+
+게시물과 댓글은 `deleted_at`만 남기고 조회에서 제외한다. 삭제됐거나 **작성자가 탈퇴한** 댓글에
+살아 있는 답글이 있으면 목록에서 자리를 유지하되 `author`와 `content`를 `null`로, `deleted`를
+`true`로 반환한다. 자리를 남기지 않으면 답글이 부모를 잃고 함께 사라진다. 화면 문구는
+클라이언트가 정한다.
+
+**탈퇴한 사용자가 쓴 글과 댓글도 모든 조회에서 빠진다.** 프로필은 `404 USER_NOT_FOUND`인데
+글은 계속 보이면 앞뒤가 맞지 않고, 목록에 작성자 정보를 채울 수도 없다. 적용 범위는 피드,
+인기 피드, 게시물 상세, 사용자 게시물 목록, 북마크 목록, 댓글 목록이다.
+
+게시물 본인 수정·삭제 경로는 요청자가 곧 작성자라 이 조건을 보지 않는다.
+
+**삭제한 게시물의 해시태그 연결은 물리 삭제한다.** 삭제된 글이 태그 사용 수와 태그 필터
+피드에 잡히면 안 되기 때문이다. 본문은 그대로 남으므로 복구할 때 본문에서 다시 뽑아
+연결해야 한다. 복구 API는 아직 없다.
+
+### C-2. 게시물 작성
+
+`POST /api/v1/posts`
+
+```json
+{
+  "content": "광안리 야경 보러 갔는데 날씨가 좋았어요 #광안리맛집 #부산",
+  "mediaList": [
+    { "url": "https://example.com/media/1.jpg", "mediaType": "IMAGE", "sortOrder": 0 },
+    { "url": "https://example.com/media/2.jpg", "mediaType": "IMAGE", "sortOrder": 1 }
+  ],
+  "placeTags": [
+    { "placeId": 42, "latitude": 35.15320000, "longitude": 129.11860000 }
+  ]
+}
+```
+
+| 필드 | 필수 | 설명 |
+| --- | --- | --- |
+| `content` | O | 본문. **최대 2000자.** 해시태그를 본문 안에 함께 적는다 |
+| `mediaList` | O | **한 건 이상 열 건 이하.** 사진·영상 기반 서비스라 빈 게시물을 허용하지 않는다 |
+| `mediaList[].url` | O | 최대 2048자 |
+| `mediaList[].mediaType` | O | `IMAGE`, `VIDEO` 둘 중 하나. 다른 값은 `MALFORMED_REQUEST` |
+| `mediaList[].sortOrder` | O | 표시 순서. 0 이상 |
+| `placeTags` | X | 내부 `places`에 등록된 장소만 태그할 수 있다. 최대 열 건 |
+| `placeTags[].latitude`·`longitude` | X | 사진 EXIF의 촬영 지점. 없으면 생략한다 |
+
+본문 상한을 두는 이유는 `content` 컬럼이 `text`라 DB가 길이를 막지 않기 때문이다. 상한이
+없으면 수 MB 본문이 저장되고 그 글이 실린 피드 응답이 전부 부풀어 오른다. 화면에서 긴 본문을
+접는 처리는 클라이언트가 한다. 서버는 항상 본문 전체를 보낸다.
+
+**파일 업로드는 서버가 하지 않는다.** 클라이언트가 저장소에 올린 뒤 URL만 전달한다.
+**저장소와 업로드 API는 아직 정해지지 않았다.**
+
+해시태그는 본문에서 뽑는다. `#` 뒤의 한글·영문·숫자·밑줄만 인정하고 공백이나 그 밖의 문자에서
+끊는다. 여러 단어를 담으려면 붙여 쓴다(`#광안리맛집`). 소문자로 정규화하며 게시물당 20개까지다.
+뽑은 태그는 응답의 `hashtags`에 `#` 없이 이름만 담긴다.
+
+응답은 `C-4`의 게시물 상세와 같은 형태다.
+
+### C-3. 피드 조회
+
+`GET /api/v1/posts`
+
+| 파라미터 | 설명 |
+| --- | --- |
+| `cursor` | 이전 응답의 `nextCursor`. 첫 페이지는 생략 |
+| `size` | 1~50, 기본 20 |
+| `feed` | `following`이면 팔로우한 사람의 게시물만. 이때 `X-User-Id`가 필요하다 |
+| `placeId` | 이 장소를 태그한 게시물만 |
+| `hashtag` | 이 해시태그가 달린 게시물만. `#`은 빼고 보낸다 |
+
+`feed`, `placeId`, `hashtag`는 함께 쓸 수 있으며 모두 만족하는 게시물만 반환한다.
+`X-User-Id`가 있으면 요청자가 차단한 사용자의 게시물을 제외한다.
+
+```json
+{
+  "items": [
+    {
+      "id": 7,
+      "author": { "id": 1, "nickname": "감자", "profileImageUrl": "https://example.com/p/1.jpg" },
+      "content": "광안리 야경 보러 갔는데 날씨가 좋았어요",
+      "thumbnailUrl": "https://example.com/media/1.jpg",
+      "mediaCount": 3,
+      "placeName": "광안리해수욕장",
+      "likeCount": 12,
+      "commentCount": 3,
+      "liked": true,
+      "bookmarked": false,
+      "createdAt": "2026-08-24T18:00:00"
+    }
+  ],
+  "nextCursor": 7
+}
+```
+
+목록은 축약 응답이다. 미디어는 `sortOrder`가 가장 앞선 한 건만 `thumbnailUrl`로 주고 나머지는
+개수만 준다. 장소는 대표 하나의 이름만 준다. 전체가 필요하면 상세를 조회한다.
+
+`liked`·`bookmarked`는 요청자 기준이다. `X-User-Id`가 없으면 둘 다 `false`다. `likeCount`는
+모두에게 같고 `liked`만 사람마다 다르다.
+
+### C-4. 게시물 상세
+
+`GET /api/v1/posts/{postId}`
+
+```json
+{
+  "id": 7,
+  "author": { "id": 1, "nickname": "감자", "profileImageUrl": "https://example.com/p/1.jpg" },
+  "content": "광안리 야경 보러 갔는데 날씨가 좋았어요",
+  "mediaList": [
+    { "id": 3, "url": "https://example.com/media/1.jpg", "mediaType": "IMAGE", "sortOrder": 0 }
+  ],
+  "placeTags": [
+    {
+      "placeId": 42,
+      "placeName": "광안리해수욕장",
+      "latitude": 35.15320000,
+      "longitude": 129.11860000
+    }
+  ],
+  "hashtags": ["광안리맛집", "부산"],
+  "likeCount": 12,
+  "commentCount": 3,
+  "liked": true,
+  "bookmarked": false,
+  "createdAt": "2026-08-24T18:00:00",
+  "updatedAt": "2026-08-24T18:00:00"
+}
+```
+
+`hashtags`는 본문에서 뽑아 저장해 둔 태그다. 본문을 다시 파싱하지 않고 이 값을 쓰면 되고,
+태그를 눌러 `GET /api/v1/posts?hashtag=` 필터 피드로 넘길 때도 그대로 넘긴다.
+
+`mediaList`는 `sortOrder` 오름차순이다. `placeTags[].latitude`는 촬영 지점이며 알 수 없으면
+`null`이다. 지도에 표시할 좌표가 없으면 `placeId`로 장소 상세를 조회한다.
+
+### C-5. 게시물 수정·삭제
+
+`PATCH /api/v1/posts/{postId}`
+
+```json
+{ "content": "광안리 야경 진짜 좋았어요 #부산" }
+```
+
+**본문만 수정한다.** 첨부 미디어와 장소 태그 교체는 저장소에 올라간 파일 정리까지 함께 정해야
+하므로 후속 작업이다. 본문이 바뀌면 해시태그를 다시 계산한다.
+
+`DELETE /api/v1/posts/{postId}` — `204 No Content`
+
+바로 지우지 않고 삭제 표시만 남긴다. **30일 안에는 되돌릴 수 있고, 그 뒤에는 실제로 지워진다.**
+
+정리는 매일 04:30(KST) 스케줄러가 한다. 게시물과 함께 미디어, 장소 태그, 댓글, 댓글 좋아요,
+좋아요, 저장, 해시태그 연결을 지운다. 기간과 실행 여부는 `app.community.post-purge`로 바꾼다.
+스케줄러를 끄면 지운 게시물이 계속 쌓이고 본문과 사진 URL 이 DB 에 남는다.
+
+둘 다 작성자 본인이 아니면 `403 POST_ACCESS_DENIED`를 반환한다.
+
+**내가 지운 게시물** — `GET /api/v1/posts/me/deleted?page=0&size=20`
+
+복구 기한이 남은 것만, 삭제한 시각이 최근인 순으로 준다. 응답 형태는 피드 목록과 같고
+`nextCursor`는 항상 `null`이다. 삭제 시각 기준 정렬이라 커서를 만들 수 없다.
+
+**복구** — `POST /api/v1/posts/{postId}/restore`
+
+응답은 게시물 상세와 같다. 삭제할 때 해시태그 연결을 실제로 지우므로, 복구할 때 본문에서
+다시 뽑아 연결한다. 그러지 않으면 되살린 글이 태그 필터 피드에서 영영 빠진다.
+
+| 상황 | 응답 |
+| --- | --- |
+| 지운 적 없는 게시물 | `404 POST_NOT_FOUND` |
+| 남의 게시물 | `403 POST_ACCESS_DENIED` |
+| 삭제한 지 30일이 지남 | `410 POST_RESTORE_WINDOW_EXPIRED` |
+
+기한이 지난 뒤 정리 스케줄러가 돌기 전까지는 `410`, 정리된 뒤에는 `404`다.
+
+**계정 탈퇴는 되돌릴 수 없다.** 되살릴 수 있는 것은 본인이 지운 게시물뿐이다.
+
+### C-6. 인기 피드
+
+`GET /api/v1/posts/popular?page=0&size=20`
+
+최근 7일 게시물을 `좋아요 + 댓글×2` 점수 내림차순으로 반환한다. 응답 형태는 피드와 같으나
+`nextCursor`는 항상 `null`이다. 다음 페이지는 `page`를 올려 요청한다.
+
+기간을 두는 이유는 예전 인기글이 상단을 계속 차지하는 것을 막기 위함이다.
+
+점수 계산식과 기간은 `PostService`의 `POPULAR_FEED_DAYS` 상수와 `PostRepository.findPopularFeed`의
+`order by` 절에 있다. 정책을 바꾸면 `PopularFeedTest`가 함께 깨지므로 테스트도 같이 고친다.
+
+### C-7. 좋아요·저장
+
+| 동작 | 요청 |
+| --- | --- |
+| 좋아요 | `POST /api/v1/posts/{postId}/likes` |
+| 좋아요 취소 | `DELETE /api/v1/posts/{postId}/likes` |
+| 저장 | `POST /api/v1/posts/{postId}/bookmarks` |
+| 저장 해제 | `DELETE /api/v1/posts/{postId}/bookmarks` |
+
+```json
+{ "likeCount": 13, "liked": true }
+```
+
+```json
+{ "bookmarked": true }
+```
+
+**멱등하다.** 이미 누른 상태에서 다시 요청해도 개수가 늘지 않고, 누른 적 없는 상태에서 취소해도
+줄지 않는다. 클라이언트가 중복 요청을 보내도 안전하다.
+
+저장은 몇 명이 저장했는지 공개하지 않는다. 좋아요를 누른 사용자 목록도 제공하지 않는다.
+
+`GET /api/v1/users/me/bookmarks?page=0&size=20` — 저장한 게시물을 최근 저장 순으로 반환한다.
+응답 항목은 피드와 같은 축약 형태다. 저장한 뒤 삭제된 게시물은 제외한다.
+
+### C-8. 댓글
+
+`POST /api/v1/posts/{postId}/comments`
+
+```json
+{ "content": "저도 여기 가봤는데 좋았어요", "parentId": 3 }
+```
+
+`parentId`를 주면 답글이 된다. **답글에 다시 답글을 달면 `400 INVALID_COMMENT_REQUEST`다.**
+응답이 두 단계만 표현하기 때문이다.
+
+`GET /api/v1/posts/{postId}/comments?cursor=&size=20`
+
+```json
+{
+  "items": [
+    {
+      "id": 3,
+      "author": { "id": 1, "nickname": "감자", "profileImageUrl": null },
+      "content": "저도 여기 가봤는데 좋았어요",
+      "likeCount": 2,
+      "liked": false,
+      "createdAt": "2026-08-24T18:02:00",
+      "deleted": false,
+      "hiddenReason": null,
+      "replies": [
+        {
+          "id": 4,
+          "author": { "id": 2, "nickname": "고구마", "profileImageUrl": null },
+          "content": "언제 가셨어요?",
+          "likeCount": 0,
+          "liked": false,
+          "createdAt": "2026-08-24T18:03:00",
+          "deleted": false,
+          "hiddenReason": null,
+          "replies": []
+        }
+      ]
+    }
+  ],
+  "nextCursor": null
+}
+```
+
+최상위 댓글만 페이징하고 답글은 각 댓글에 모두 담는다. 답글의 `replies`는 항상 비어 있다.
+
+**감춰진 최상위 댓글**은 `author`와 `content`가 `null`이고 `deleted`가 `true`이며, 답글은
+그대로 담긴다. 자리를 없애면 답글이 부모를 잃고 함께 사라지기 때문이다.
+
+```json
+{
+  "id": 3,
+  "author": null,
+  "content": null,
+  "likeCount": 0,
+  "liked": false,
+  "createdAt": "2026-08-24T18:02:00",
+  "deleted": true,
+  "hiddenReason": "WITHDRAWN",
+  "replies": [ { "id": 4, "author": { "id": 2, "nickname": "고구마" }, "content": "언제 가셨어요?" } ]
+}
+```
+
+`hiddenReason`은 감춘 이유이며 `deleted`가 `false`면 `null`이다.
+
+| 값 | 뜻 |
+| --- | --- |
+| `DELETED` | 작성자가 지웠다 |
+| `WITHDRAWN` | 작성자가 탈퇴했다 |
+
+**화면 문구는 클라이언트가 정한다.** 서버가 "탈퇴한 사용자입니다" 같은 문구를 들고 있으면
+문구를 고칠 때마다 서버를 배포해야 한다.
+
+`DELETE /api/v1/posts/{postId}/comments/{commentId}` — `204 No Content`.
+작성자 본인이 아니면 `403 COMMENT_ACCESS_DENIED`다. 경로의 `postId`와 댓글의 소속이 다르면
+`404 COMMENT_NOT_FOUND`를 반환한다.
+
+댓글 좋아요는 게시물 좋아요와 같은 계약이다.
+
+### C-9. 팔로우·차단
+
+| 동작 | 요청 |
+| --- | --- |
+| 팔로우 | `POST /api/v1/users/{userId}/follows` |
+| 팔로우 취소 | `DELETE /api/v1/users/{userId}/follows` |
+| 차단 | `POST /api/v1/users/{userId}/blocks` |
+| 차단 해제 | `DELETE /api/v1/users/{userId}/blocks` |
+
+```json
+{ "followerCount": 152, "following": true }
+```
+
+```json
+{ "blocked": true }
+```
+
+자기 자신을 팔로우하거나 차단하면 `400`이다. 팔로우도 멱등하다.
+
+**차단하면 서로의 팔로우가 끊긴다.** 차단을 풀어도 되살아나지 않으므로 필요하면 다시 팔로우한다.
+
+차단이 실제로 막는 범위는 다음과 같다. 차단은 상대가 내 계정에 접근하지 못하게 하는 것이지
+앱 전체에서 상대를 지우는 것이 아니다.
+
+| 상황 | 동작 |
+| --- | --- |
+| 차단한 사용자의 게시물 | 피드와 인기 피드에서 제외 |
+| 차단한 사용자의 게시물 상세·프로필 | **막지 않는다.** 링크로 직접 열면 보인다 |
+| 제3자 게시물에 달린 차단 상대의 댓글 | **막지 않는다.** 그대로 보인다 |
+| 차단 관계인 사람의 댓글 작성 | `403 COMMENT_NOT_ALLOWED` |
+| 내가 차단한 사람을 내가 팔로우 | `400 FOLLOW_BLOCKED_USER`. 차단을 먼저 풀어야 한다 |
+| 나를 차단한 사람이 나를 팔로우 | `200`을 주지만 관계를 만들지 않는다 |
+
+마지막 줄이 성공처럼 보이는 이유는, 거절하면 상대가 차단당한 사실을 알게 되기 때문이다.
+같은 이유로 댓글 오류 문구에도 차단을 드러내지 않아 누가 차단했는지 알 수 없다.
+
+목록 조회는 오프셋 페이징이다.
+
+| 요청 | 설명 |
+| --- | --- |
+| `GET /users/{userId}/followers` | 이 사용자를 팔로우하는 사람들 |
+| `GET /users/{userId}/followings` | 이 사용자가 팔로우하는 사람들 |
+| `GET /users/me/blocks` | 내가 차단한 사람들 |
+
+```json
+{
+  "items": [ { "id": 1, "nickname": "감자", "profileImageUrl": null } ],
+  "totalCount": 152
+}
+```
+
+차단 목록에는 `totalCount`가 없다.
+
+### C-10. 프로필
+
+`GET /api/v1/users/{userId}/profile`
+
+```json
+{
+  "id": 1,
+  "nickname": "감자",
+  "profileImageUrl": "https://example.com/p/1.jpg",
+  "postCount": 12,
+  "followerCount": 152,
+  "followingCount": 88,
+  "following": true,
+  "me": false
+}
+```
+
+`following`은 요청자가 이 사용자를 팔로우 중인지, `me`는 본인 프로필인지다. `X-User-Id`가 없으면
+둘 다 `false`다. `me`가 `true`면 북마크 탭을 노출한다.
+
+`GET /api/v1/users/{userId}/posts` — 이 사용자의 게시물. 피드와 같은 커서 방식이다.
+
+| 요청 | 본문 | 설명 |
+| --- | --- | --- |
+| `PATCH /users/me/nickname` | `{ "nickname": "감자" }` | 최대 10자. 중복이면 `409` |
+| `PATCH /users/me/profile-image` | `{ "profileImageUrl": "https://..." }` | 이미 업로드된 URL |
+| `DELETE /users/me/profile-image` | — | 사진 제거 |
+
+사진 변경과 제거를 나눈 이유는, 한 요청으로는 "사진을 지운다"와 "사진은 그대로 두고 다른 값만
+바꾼다"를 구분할 수 없기 때문이다. 세 요청 모두 갱신된 프로필을 반환한다.
+
+### C-11. 검색
+
+`GET /api/v1/users/search?keyword=감자&page=0&size=20`
+
+닉네임에 검색어가 포함된 사용자를 가나다순으로 반환한다. 대소문자를 구분하지 않는다.
+**검색어가 비거나 공백뿐이면 빈 목록을 준다.** 전체 사용자 명단이 노출되지 않게 하기 위함이다.
+
+```json
+{ "items": [ { "id": 1, "nickname": "감자", "profileImageUrl": null } ] }
+```
+
+`GET /api/v1/hashtags/search?keyword=광&size=10`
+
+앞글자로 시작하는 태그를 사용 수 내림차순으로 반환한다. `#`은 빼고 보낸다.
+
+```json
+{ "items": [ { "name": "광안리맛집", "postCount": 1203 } ] }
+```
+
+태그에는 띄어쓰기를 넣을 수 없으므로, 사용자가 직접 입력하는 대신 여기서 골라 넣도록 하면
+표기가 갈라지지 않는다. 자주 쓰일 태그는 서버가 미리 등록해 둔다.
+
+### C-12. 신고
+
+`POST /api/v1/reports`
+
+```json
+{ "targetType": "POST", "targetId": 7, "reason": "광고성 게시물입니다" }
+```
+
+`targetType`은 `POST`, `COMMENT`, `USER`다. 대상이 없으면 각각
+`POST_NOT_FOUND`, `COMMENT_NOT_FOUND`, `USER_NOT_FOUND`를 반환한다.
+같은 대상을 다시 신고하면 `409 ALREADY_REPORTED`다.
+
+```json
+{
+  "id": 1,
+  "targetType": "POST",
+  "targetId": 7,
+  "status": "PENDING",
+  "createdAt": "2026-08-24T18:10:00"
+}
+```
+
+**접수만 한다. 신고를 확인하거나 처리 상태를 바꾸는 관리자 API는 아직 없다.**
+
+### C-13. 커뮤니티 오류 코드
+
+| 코드 | 상태 | 발생 상황 |
+| --- | --- | --- |
+| `POST_NOT_FOUND` | 404 | 게시물이 없거나 삭제됨 |
+| `COMMENT_NOT_FOUND` | 404 | 댓글이 없거나 삭제됨. 경로의 게시물과 소속이 다른 경우 포함 |
+| `USER_NOT_FOUND` | 404 | 사용자가 없거나 탈퇴함 |
+| `POST_ACCESS_DENIED` | 403 | 남의 게시물을 수정·삭제·복구하려 함 |
+| `POST_RESTORE_WINDOW_EXPIRED` | 410 | 삭제한 지 30일이 지난 게시물을 복구하려 함 |
+| `COMMENT_ACCESS_DENIED` | 403 | 남의 댓글을 삭제하려 함 |
+| `INVALID_COMMENT_REQUEST` | 400 | 답글에 답글을 달거나, 부모 댓글이 다른 게시물의 것 |
+| `INVALID_FOLLOW_REQUEST` | 400 | 자기 자신을 팔로우 |
+| `INVALID_BLOCK_REQUEST` | 400 | 자기 자신을 차단 |
+| `INVALID_FEED_REQUEST` | 400 | 팔로잉 피드인데 `X-User-Id`가 없음 |
+| `FOLLOW_BLOCKED_USER` | 400 | 내가 차단한 사용자를 팔로우 |
+| `COMMENT_NOT_ALLOWED` | 403 | 차단 관계인 사람의 게시물에 댓글 작성 |
+| `NICKNAME_ALREADY_USED` | 409 | 다른 사용자가 쓰는 닉네임 |
+| `ALREADY_REPORTED` | 409 | 같은 대상을 다시 신고 |
+
+요청 본문 검증에 실패하면 경로에 따라 아래 코드가 나간다. `fieldErrors`에 어느 필드가
+왜 틀렸는지 담긴다.
+
+| 경로 | 코드 |
+| --- | --- |
+| `/api/v1/posts/{postId}/comments` | `INVALID_COMMENT_REQUEST` |
+| `/api/v1/posts` 이하 나머지 | `INVALID_POST_REQUEST` |
+| `/api/v1/users` 이하 | `INVALID_USER_REQUEST` |
+
+열거형에 없는 값을 보내면 `MALFORMED_REQUEST`이며, `fieldErrors`가 해당 필드와 쓸 수 있는
+값을 알려준다.
+
+```json
+{
+  "code": "MALFORMED_REQUEST",
+  "fieldErrors": [
+    { "field": "mediaList.mediaType", "message": "값 \"GIF\" 을(를) 쓸 수 없습니다. 가능한 값: IMAGE, VIDEO" }
+  ]
+}
+```
+
+### C-14. 미구현
+
+| 항목 | 상태 |
+| --- | --- |
+| 이미지·영상 업로드 | 저장소와 API 미정. 현재는 클라이언트가 올린 URL만 받는다 |
+| 알림 | 테이블부터 없다. 기획서 필수 기능이나 데이터 모델이 정의되지 않았다 |
+| 사진 EXIF 좌표 추출 | 클라이언트가 좌표를 직접 넘긴다 |
+| 신고 처리 관리자 기능 | 없다 |
+| 게시물 미디어·장소 태그 수정 | 본문만 수정 가능 |
 
 ## 공통 오류 응답
 
