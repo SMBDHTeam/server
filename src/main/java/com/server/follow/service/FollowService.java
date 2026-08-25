@@ -1,8 +1,8 @@
 package com.server.follow.service;
 
+import com.server.block.repository.BlockRepository;
 import com.server.common.error.BusinessException;
 import com.server.common.error.ErrorCode;
-import com.server.follow.domain.Follow;
 import com.server.follow.dto.FollowResponse;
 import com.server.follow.dto.FollowUserListResponse;
 import com.server.follow.dto.FollowUserResponse;
@@ -21,24 +21,40 @@ public class FollowService {
     private static final int MAX_PAGE_SIZE = 50;
 
     private final FollowRepository followRepository;
+    private final BlockRepository blockRepository;
     private final UserRepository userRepository;
 
-    public FollowService(FollowRepository followRepository, UserRepository userRepository) {
+    public FollowService(
+            FollowRepository followRepository,
+            BlockRepository blockRepository,
+            UserRepository userRepository
+    ) {
         this.followRepository = followRepository;
+        this.blockRepository = blockRepository;
         this.userRepository = userRepository;
     }
 
-    /** 이미 팔로우한 상대를 다시 팔로우해도 관계가 중복 생성되지 않는다. */
+    /**
+     * 이미 팔로우한 상대를 다시 팔로우해도 관계가 중복 생성되지 않는다.
+     *
+     * <p>차단이 있으면 관계를 만들지 않는다. 다만 방향에 따라 응답이 다르다.
+     * 내가 차단한 상대라면 차단을 먼저 풀라고 알려주고, 상대가 나를 차단한 경우에는
+     * 성공한 것처럼 응답한다. 거절하면 차단당했다는 사실이 그대로 드러나기 때문이다.
+     */
     @Transactional
     public FollowResponse follow(Long targetUserId, Long userId) {
         if (targetUserId.equals(userId)) {
             throw new BusinessException(ErrorCode.INVALID_FOLLOW_REQUEST);
         }
-        User target = findActiveUser(targetUserId);
-        User me = findActiveUser(userId);
+        findActiveUser(targetUserId);
+        findActiveUser(userId);
 
-        if (!followRepository.existsByFollowerIdAndFollowingId(userId, targetUserId)) {
-            followRepository.save(new Follow(me, target));
+        if (blockRepository.existsByBlockerIdAndBlockedId(userId, targetUserId)) {
+            throw new BusinessException(ErrorCode.FOLLOW_BLOCKED_USER);
+        }
+        // 상대가 나를 차단한 경우에는 관계만 만들지 않고 응답은 성공과 똑같이 준다.
+        if (!blockRepository.existsByBlockerIdAndBlockedId(targetUserId, userId)) {
+            followRepository.insertIfAbsent(userId, targetUserId);
         }
         return new FollowResponse(followRepository.countByFollowingId(targetUserId), true);
     }

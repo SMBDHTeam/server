@@ -1,6 +1,5 @@
 package com.server.block.service;
 
-import com.server.block.domain.Block;
 import com.server.block.dto.BlockResponse;
 import com.server.block.dto.BlockUserListResponse;
 import com.server.block.repository.BlockRepository;
@@ -44,12 +43,10 @@ public class BlockService {
         if (targetUserId.equals(userId)) {
             throw new BusinessException(ErrorCode.INVALID_BLOCK_REQUEST);
         }
-        User target = findActiveUser(targetUserId);
-        User me = findActiveUser(userId);
+        findActiveUser(targetUserId);
+        findActiveUser(userId);
 
-        if (!blockRepository.existsByBlockerIdAndBlockedId(userId, targetUserId)) {
-            blockRepository.save(new Block(me, target));
-        }
+        blockRepository.insertIfAbsent(userId, targetUserId);
         followRepository.deleteByFollowerIdAndFollowingId(userId, targetUserId);
         followRepository.deleteByFollowerIdAndFollowingId(targetUserId, userId);
 

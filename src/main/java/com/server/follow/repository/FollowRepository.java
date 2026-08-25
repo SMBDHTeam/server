@@ -6,6 +6,9 @@ import java.util.List;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 public interface FollowRepository extends JpaRepository<Follow, FollowId> {
 
@@ -29,4 +32,16 @@ public interface FollowRepository extends JpaRepository<Follow, FollowId> {
     /** 대상이 팔로우하는 사람들. */
     @EntityGraph(attributePaths = "following")
     List<Follow> findByFollowerIdOrderByCreatedAtDesc(Long followerId, Pageable pageable);
+
+    /**
+     * 있으면 그대로 두고 없을 때만 넣는다. 확인 후 저장하면 같은 요청이 동시에 들어올 때
+     * 양쪽 다 없다고 읽어 기본키 충돌로 한쪽이 실패한다.
+     */
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query(value = """
+            insert into follows (follower_id, following_id, created_at)
+            values (:followerId, :followingId, current_timestamp)
+            on conflict do nothing
+            """, nativeQuery = true)
+    int insertIfAbsent(@Param("followerId") Long followerId, @Param("followingId") Long followingId);
 }
