@@ -88,6 +88,7 @@ class GoogleIdTokenVerifierTest {
         private String audience = CLIENT_ID;
         private Object emailVerified = true;
         private Instant expiresAt = Instant.now().plusSeconds(600);
+        private Instant issuedAt = null;
         private RSAPrivateKey signingKey = privateKey;
 
         JWTBuilderFixture issuer(String value) {
@@ -110,6 +111,11 @@ class GoogleIdTokenVerifierTest {
             return this;
         }
 
+        JWTBuilderFixture issuedAt(Instant value) {
+            this.issuedAt = value;
+            return this;
+        }
+
         JWTBuilderFixture signedWith(RSAPrivateKey value) {
             this.signingKey = value;
             return this;
@@ -125,6 +131,9 @@ class GoogleIdTokenVerifierTest {
                     .withClaim("name", "여행자")
                     .withClaim("picture", "https://example.com/p.png")
                     .withExpiresAt(Date.from(expiresAt));
+            if (issuedAt != null) {
+                builder.withIssuedAt(Date.from(issuedAt));
+            }
             if (emailVerified instanceof Boolean value) {
                 builder.withClaim("email_verified", value);
             } else if (emailVerified instanceof String value) {
@@ -182,9 +191,32 @@ class GoogleIdTokenVerifierTest {
 
     @Test
     @DisplayName("만료된 토큰을 거절한다")
+    // 허용 오차 60초 밖으로 확실히 밀어 둔다. 10초 전 만료로 두면 오차 안에 들어와
+    // 통과해 버리고, 만료 검사가 사라져도 이 테스트는 초록으로 남는다.
     void rejectsExpiredToken() {
         assertThatThrownBy(() -> verifier()
-                .verify(token().expiresAt(Instant.now().minusSeconds(10)).build()))
+                .verify(token().expiresAt(Instant.now().minusSeconds(600)).build()))
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("errorCode", ErrorCode.INVALID_GOOGLE_TOKEN);
+    }
+
+    @Test
+    @DisplayName("우리 시계가 몇 초 느려도 방금 발급된 토큰을 받는다")
+    void acceptsTokenIssuedSlightlyInTheFuture() {
+        // 서버 시계가 구글보다 느리면 방금 발급된 토큰의 iat 가 미래로 보인다. 허용 오차가
+        // 없으면 여기서 전부 막혀 그 서버의 로그인이 통째로 죽는다. 실제로 로컬에서
+        // 2초 차이만으로 모든 로그인이 401 이 됐다.
+        String token = token().issuedAt(Instant.now().plusSeconds(30)).build();
+
+        assertThat(verifier().verify(token).subject()).isEqualTo("google-sub-1");
+    }
+
+    @Test
+    @DisplayName("발급 시각이 한참 미래인 토큰은 거절한다")
+    void rejectsTokenIssuedFarInTheFuture() {
+        // 오차를 허용한다고 해서 아무 시각이나 받는 것은 아니다.
+        assertThatThrownBy(() -> verifier()
+                .verify(token().issuedAt(Instant.now().plusSeconds(600)).build()))
                 .isInstanceOf(BusinessException.class)
                 .hasFieldOrPropertyWithValue("errorCode", ErrorCode.INVALID_GOOGLE_TOKEN);
     }

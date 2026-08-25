@@ -40,6 +40,19 @@ public class GoogleIdTokenVerifier {
     /** 구글은 두 형태를 모두 발급한다. 둘 다 정상이다. */
     private static final String ISSUER_WITHOUT_SCHEME = "accounts.google.com";
 
+    /**
+     * 시각 검증에 허용할 시계 오차.
+     *
+     * <p>이 값이 없으면 java-jwt 는 오차를 0초로 본다. 우리 시계가 구글보다 1초만 느려도
+     * 방금 발급된 토큰의 {@code iat} 가 미래로 보여 "아직 쓸 수 없는 토큰"으로 거절되고,
+     * <b>그 서버의 모든 로그인이 죽는다.</b> 시계가 몇 초 미끄러지는 것은 드문 일이 아니다.
+     *
+     * <p>{@code exp} 에도 같은 여유가 붙어 만료된 토큰이 60초 더 통한다. 구글 ID 토큰은
+     * 한 시간을 살고 로그인 순간에 한 번만 쓰이므로, 이 정도는 값을 치를 만하다.
+     * 구글 공식 자바 라이브러리도 같은 이유로 300초를 기본값으로 둔다.
+     */
+    private static final long CLOCK_SKEW_LEEWAY_SECONDS = 60;
+
     private final JwkProvider jwkProvider;
     private final AuthProperties.Google properties;
 
@@ -79,6 +92,7 @@ public class GoogleIdTokenVerifier {
             return JWT.require(algorithm)
                     .withIssuer(properties.issuer(), ISSUER_WITHOUT_SCHEME)
                     .withAnyOfAudience(properties.clientIds().toArray(String[]::new))
+                    .acceptLeeway(CLOCK_SKEW_LEEWAY_SECONDS)
                     .build()
                     .verify(idToken);
         } catch (BusinessException exception) {
