@@ -62,7 +62,7 @@ class FastApiScheduleClientTest {
                         """.formatted(ZERO), MediaType.APPLICATION_JSON));
 
         var response = fixture.client()
-                .createScheduleFromPreview(new SchedulePreviewScheduleRequest(ZERO), "key-1");
+                .createScheduleFromPreview(new SchedulePreviewScheduleRequest(ZERO), "key-1", null);
 
         assertThat(response.status()).isEqualTo("CONFIRMED");
         fixture.server().verify();
@@ -117,7 +117,7 @@ class FastApiScheduleClientTest {
                         .contentType(MediaType.APPLICATION_JSON));
 
         assertThatThrownBy(() -> fixture.client()
-                .createScheduleFromPreview(new SchedulePreviewScheduleRequest(ZERO), "key-1"))
+                .createScheduleFromPreview(new SchedulePreviewScheduleRequest(ZERO), "key-1", null))
                 .isInstanceOf(BusinessException.class)
                 .extracting(this::errorCodeOf)
                 .isEqualTo(expected);

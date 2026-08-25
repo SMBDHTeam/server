@@ -43,6 +43,13 @@ public enum ErrorCode {
     TRANSIT_ROUTE_NOT_FOUND(422, "장소 사이 대중교통 경로를 찾지 못했습니다."),
     FACILITY_TYPE_NOT_SUPPORTED(501, "지원하지 않는 편의시설 유형입니다."),
     EXTERNAL_PROVIDER_UNAVAILABLE(503, "외부 서비스가 응답하지 않습니다."),
+    INVALID_GOOGLE_TOKEN(401, "구글 로그인 정보를 확인하지 못했습니다."),
+    INVALID_TOKEN(401, "인증 정보가 올바르지 않습니다."),
+    UNAUTHORIZED(401, "로그인이 필요합니다."),
+    TOKEN_EXPIRED(401, "인증이 만료되었습니다. 다시 로그인해 주세요."),
+    FORBIDDEN(403, "이 작업을 수행할 권한이 없습니다."),
+    SCHEDULE_ACCESS_DENIED(403, "본인의 일정만 조회하거나 수정할 수 있습니다."),
+    USER_SUSPENDED(403, "정지된 계정입니다."),
     INTERNAL_ERROR(500, "서버에서 요청을 처리하지 못했습니다.");
 
     private final HttpStatusCode status;

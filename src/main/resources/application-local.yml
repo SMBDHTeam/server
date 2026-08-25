@@ -9,6 +9,11 @@ spring:
     username: ${LOCAL_POSTGRES_USER:tour}
     password: ${LOCAL_POSTGRES_PASSWORD:tour}
 
+  data:
+    redis:
+      host: ${LOCAL_REDIS_HOST:localhost}
+      port: ${LOCAL_REDIS_PORT:6380}
+
   h2:
     console:
       enabled: false
@@ -26,11 +31,21 @@ spring:
     enabled: true
     baseline-on-migrate: true
     baseline-version: 0
+    # 두 갈래 작업이 동시에 migration 을 추가한다. 커뮤니티(V8)와 인증(V9)처럼 서로
+    # 독립적인 변경이 다른 순서로 머지되면, 낮은 버전이 나중에 도착해 기동이 깨진다.
+    # 두 순서 모두 안전하도록 허용한다. 같은 테이블을 건드리는 migration 을 나눠 만들지 않는 것이 전제다.
+    out-of-order: true
 
 app:
   seed:
     dummy-place:
       enabled: ${DUMMY_PLACE_SEED_ENABLED:true}
+  auth:
+    jwt:
+      # 로컬 개발 전용 기본값. dev·prod 는 반드시 환경변수로 넣는다.
+      secret: ${JWT_SECRET:local-development-only-secret-key-0123456789abcdef}
+    google:
+      client-ids: ${GOOGLE_CLIENT_ID:}
 
 springdoc:
   api-docs:

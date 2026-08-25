@@ -1,5 +1,6 @@
 package com.server.schedule.service;
 
+import com.server.auth.web.CurrentUser;
 import com.server.common.error.BusinessException;
 import com.server.common.error.ErrorCode;
 import com.server.external.schedule.FastApiScheduleClient;
@@ -24,7 +25,7 @@ public class ScheduleService {
     }
 
     public ScheduleResponse create(ScheduleCreateRequest request) {
-        return requireFastApiScheduleClient().createSchedule(request);
+        return requireFastApiScheduleClient().createSchedule(request, CurrentUser.idOrNull());
     }
 
     /**
