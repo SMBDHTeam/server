@@ -1309,9 +1309,20 @@ Provider 응답의 `distanceMeters`가 누락되거나 0 이하이면 서버는 
 
 **삭제 정책**
 
-게시물과 댓글은 `deleted_at`만 남기고 조회에서 제외한다. 삭제된 댓글에 살아 있는 답글이 있으면
-목록에서 자리를 유지하되 `author`와 `content`를 `null`로, `deleted`를 `true`로 반환한다.
-화면 문구는 클라이언트가 정한다.
+게시물과 댓글은 `deleted_at`만 남기고 조회에서 제외한다. 삭제됐거나 **작성자가 탈퇴한** 댓글에
+살아 있는 답글이 있으면 목록에서 자리를 유지하되 `author`와 `content`를 `null`로, `deleted`를
+`true`로 반환한다. 자리를 남기지 않으면 답글이 부모를 잃고 함께 사라진다. 화면 문구는
+클라이언트가 정한다.
+
+**탈퇴한 사용자가 쓴 글과 댓글도 모든 조회에서 빠진다.** 프로필은 `404 USER_NOT_FOUND`인데
+글은 계속 보이면 앞뒤가 맞지 않고, 목록에 작성자 정보를 채울 수도 없다. 적용 범위는 피드,
+인기 피드, 게시물 상세, 사용자 게시물 목록, 북마크 목록, 댓글 목록이다.
+
+게시물 본인 수정·삭제 경로는 요청자가 곧 작성자라 이 조건을 보지 않는다.
+
+**삭제한 게시물의 해시태그 연결은 물리 삭제한다.** 삭제된 글이 태그 사용 수와 태그 필터
+피드에 잡히면 안 되기 때문이다. 본문은 그대로 남으므로 복구할 때 본문에서 다시 뽑아
+연결해야 한다. 복구 API는 아직 없다.
 
 ### C-2. 게시물 작성
 
@@ -1332,18 +1343,24 @@ Provider 응답의 `distanceMeters`가 누락되거나 0 이하이면 서버는 
 
 | 필드 | 필수 | 설명 |
 | --- | --- | --- |
-| `content` | O | 본문. 해시태그를 본문 안에 함께 적는다 |
-| `mediaList` | O | **최소 한 건.** 사진·영상 기반 서비스라 빈 게시물을 허용하지 않는다 |
-| `mediaList[].mediaType` | O | `IMAGE`, `VIDEO` |
-| `mediaList[].sortOrder` | O | 표시 순서. 0부터 |
-| `placeTags` | X | 내부 `places`에 등록된 장소만 태그할 수 있다 |
+| `content` | O | 본문. **최대 2000자.** 해시태그를 본문 안에 함께 적는다 |
+| `mediaList` | O | **한 건 이상 열 건 이하.** 사진·영상 기반 서비스라 빈 게시물을 허용하지 않는다 |
+| `mediaList[].url` | O | 최대 2048자 |
+| `mediaList[].mediaType` | O | `IMAGE`, `VIDEO` 둘 중 하나. 다른 값은 `MALFORMED_REQUEST` |
+| `mediaList[].sortOrder` | O | 표시 순서. 0 이상 |
+| `placeTags` | X | 내부 `places`에 등록된 장소만 태그할 수 있다. 최대 열 건 |
 | `placeTags[].latitude`·`longitude` | X | 사진 EXIF의 촬영 지점. 없으면 생략한다 |
+
+본문 상한을 두는 이유는 `content` 컬럼이 `text`라 DB가 길이를 막지 않기 때문이다. 상한이
+없으면 수 MB 본문이 저장되고 그 글이 실린 피드 응답이 전부 부풀어 오른다. 화면에서 긴 본문을
+접는 처리는 클라이언트가 한다. 서버는 항상 본문 전체를 보낸다.
 
 **파일 업로드는 서버가 하지 않는다.** 클라이언트가 저장소에 올린 뒤 URL만 전달한다.
 **저장소와 업로드 API는 아직 정해지지 않았다.**
 
 해시태그는 본문에서 뽑는다. `#` 뒤의 한글·영문·숫자·밑줄만 인정하고 공백이나 그 밖의 문자에서
 끊는다. 여러 단어를 담으려면 붙여 쓴다(`#광안리맛집`). 소문자로 정규화하며 게시물당 20개까지다.
+뽑은 태그는 응답의 `hashtags`에 `#` 없이 이름만 담긴다.
 
 응답은 `C-4`의 게시물 상세와 같은 형태다.
 
@@ -1409,6 +1426,7 @@ Provider 응답의 `distanceMeters`가 누락되거나 0 이하이면 서버는 
       "longitude": 129.11860000
     }
   ],
+  "hashtags": ["광안리맛집", "부산"],
   "likeCount": 12,
   "commentCount": 3,
   "liked": true,
@@ -1417,6 +1435,9 @@ Provider 응답의 `distanceMeters`가 누락되거나 0 이하이면 서버는 
   "updatedAt": "2026-08-24T18:00:00"
 }
 ```
+
+`hashtags`는 본문에서 뽑아 저장해 둔 태그다. 본문을 다시 파싱하지 않고 이 값을 쓰면 되고,
+태그를 눌러 `GET /api/v1/posts?hashtag=` 필터 피드로 넘길 때도 그대로 넘긴다.
 
 `mediaList`는 `sortOrder` 오름차순이다. `placeTags[].latitude`는 촬영 지점이며 알 수 없으면
 `null`이다. 지도에 표시할 좌표가 없으면 `placeId`로 장소 상세를 조회한다.
@@ -1446,8 +1467,10 @@ Provider 응답의 `distanceMeters`가 누락되거나 0 이하이면 서버는 
 최근 7일 게시물을 `좋아요 + 댓글×2` 점수 내림차순으로 반환한다. 응답 형태는 피드와 같으나
 `nextCursor`는 항상 `null`이다. 다음 페이지는 `page`를 올려 요청한다.
 
-기간을 두는 이유는 예전 인기글이 상단을 계속 차지하는 것을 막기 위함이다. **점수 계산식과 기간은
-확정된 정책이 아니다.**
+기간을 두는 이유는 예전 인기글이 상단을 계속 차지하는 것을 막기 위함이다.
+
+점수 계산식과 기간은 `PostService`의 `POPULAR_FEED_DAYS` 상수와 `PostRepository.findPopularFeed`의
+`order by` 절에 있다. 정책을 바꾸면 `PopularFeedTest`가 함께 깨지므로 테스트도 같이 고친다.
 
 ### C-7. 좋아요·저장
 
@@ -1498,6 +1521,7 @@ Provider 응답의 `distanceMeters`가 누락되거나 0 이하이면 서버는 
       "liked": false,
       "createdAt": "2026-08-24T18:02:00",
       "deleted": false,
+      "hiddenReason": null,
       "replies": [
         {
           "id": 4,
@@ -1507,6 +1531,7 @@ Provider 응답의 `distanceMeters`가 누락되거나 0 이하이면 서버는 
           "liked": false,
           "createdAt": "2026-08-24T18:03:00",
           "deleted": false,
+          "hiddenReason": null,
           "replies": []
         }
       ]
@@ -1517,6 +1542,33 @@ Provider 응답의 `distanceMeters`가 누락되거나 0 이하이면 서버는 
 ```
 
 최상위 댓글만 페이징하고 답글은 각 댓글에 모두 담는다. 답글의 `replies`는 항상 비어 있다.
+
+**감춰진 최상위 댓글**은 `author`와 `content`가 `null`이고 `deleted`가 `true`이며, 답글은
+그대로 담긴다. 자리를 없애면 답글이 부모를 잃고 함께 사라지기 때문이다.
+
+```json
+{
+  "id": 3,
+  "author": null,
+  "content": null,
+  "likeCount": 0,
+  "liked": false,
+  "createdAt": "2026-08-24T18:02:00",
+  "deleted": true,
+  "hiddenReason": "WITHDRAWN",
+  "replies": [ { "id": 4, "author": { "id": 2, "nickname": "고구마" }, "content": "언제 가셨어요?" } ]
+}
+```
+
+`hiddenReason`은 감춘 이유이며 `deleted`가 `false`면 `null`이다.
+
+| 값 | 뜻 |
+| --- | --- |
+| `DELETED` | 작성자가 지웠다 |
+| `WITHDRAWN` | 작성자가 탈퇴했다 |
+
+**화면 문구는 클라이언트가 정한다.** 서버가 "탈퇴한 사용자입니다" 같은 문구를 들고 있으면
+문구를 고칠 때마다 서버를 배포해야 한다.
 
 `DELETE /api/v1/posts/{postId}/comments/{commentId}` — `204 No Content`.
 작성자 본인이 아니면 `403 COMMENT_ACCESS_DENIED`다. 경로의 `postId`와 댓글의 소속이 다르면
@@ -1544,7 +1596,21 @@ Provider 응답의 `distanceMeters`가 누락되거나 0 이하이면 서버는 
 자기 자신을 팔로우하거나 차단하면 `400`이다. 팔로우도 멱등하다.
 
 **차단하면 서로의 팔로우가 끊긴다.** 차단을 풀어도 되살아나지 않으므로 필요하면 다시 팔로우한다.
-차단한 사용자의 게시물은 모든 피드에서 제외된다. **상대가 내 게시물을 보는 것은 막지 않는다.**
+
+차단이 실제로 막는 범위는 다음과 같다. 차단은 상대가 내 계정에 접근하지 못하게 하는 것이지
+앱 전체에서 상대를 지우는 것이 아니다.
+
+| 상황 | 동작 |
+| --- | --- |
+| 차단한 사용자의 게시물 | 피드와 인기 피드에서 제외 |
+| 차단한 사용자의 게시물 상세·프로필 | **막지 않는다.** 링크로 직접 열면 보인다 |
+| 제3자 게시물에 달린 차단 상대의 댓글 | **막지 않는다.** 그대로 보인다 |
+| 차단 관계인 사람의 댓글 작성 | `403 COMMENT_NOT_ALLOWED` |
+| 내가 차단한 사람을 내가 팔로우 | `400 FOLLOW_BLOCKED_USER`. 차단을 먼저 풀어야 한다 |
+| 나를 차단한 사람이 나를 팔로우 | `200`을 주지만 관계를 만들지 않는다 |
+
+마지막 줄이 성공처럼 보이는 이유는, 거절하면 상대가 차단당한 사실을 알게 되기 때문이다.
+같은 이유로 댓글 오류 문구에도 차단을 드러내지 않아 누가 차단했는지 알 수 없다.
 
 목록 조회는 오프셋 페이징이다.
 
@@ -1653,13 +1719,31 @@ Provider 응답의 `distanceMeters`가 누락되거나 0 이하이면 서버는 
 | `INVALID_FOLLOW_REQUEST` | 400 | 자기 자신을 팔로우 |
 | `INVALID_BLOCK_REQUEST` | 400 | 자기 자신을 차단 |
 | `INVALID_FEED_REQUEST` | 400 | 팔로잉 피드인데 `X-User-Id`가 없음 |
+| `FOLLOW_BLOCKED_USER` | 400 | 내가 차단한 사용자를 팔로우 |
+| `COMMENT_NOT_ALLOWED` | 403 | 차단 관계인 사람의 게시물에 댓글 작성 |
 | `NICKNAME_ALREADY_USED` | 409 | 다른 사용자가 쓰는 닉네임 |
 | `ALREADY_REPORTED` | 409 | 같은 대상을 다시 신고 |
 
-> **알려진 문제.** 요청 본문 검증에 실패하면 `GlobalExceptionHandler`가 URI로 오류 코드를
-> 고르는데 커뮤니티 경로가 없어 `INVALID_SCHEDULE_CONDITION`("일정 조건이 올바르지 않습니다")이
-> 나간다. `fieldErrors`는 정확하므로 클라이언트는 그쪽을 쓴다. 핸들러에 커뮤니티 분기를 추가하면
-> 해결된다.
+요청 본문 검증에 실패하면 경로에 따라 아래 코드가 나간다. `fieldErrors`에 어느 필드가
+왜 틀렸는지 담긴다.
+
+| 경로 | 코드 |
+| --- | --- |
+| `/api/v1/posts/{postId}/comments` | `INVALID_COMMENT_REQUEST` |
+| `/api/v1/posts` 이하 나머지 | `INVALID_POST_REQUEST` |
+| `/api/v1/users` 이하 | `INVALID_USER_REQUEST` |
+
+열거형에 없는 값을 보내면 `MALFORMED_REQUEST`이며, `fieldErrors`가 해당 필드와 쓸 수 있는
+값을 알려준다.
+
+```json
+{
+  "code": "MALFORMED_REQUEST",
+  "fieldErrors": [
+    { "field": "mediaList.mediaType", "message": "값 \"GIF\" 을(를) 쓸 수 없습니다. 가능한 값: IMAGE, VIDEO" }
+  ]
+}
+```
 
 ### C-14. 미구현
 

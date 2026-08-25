@@ -357,7 +357,7 @@ DB에서 직접 증감시킨다. 동시에 들어온 요청이 같은 값을 읽
 | --- | --- | --- | --- |
 | `id` | bigint | PK, O | 미디어 ID |
 | `post_id` | bigint | FK, O | 소속 `posts.id` |
-| `media_type` | varchar | O | `IMAGE`, `VIDEO` |
+| `media_type` | varchar | O | `IMAGE`, `VIDEO` 둘 중 하나. 애플리케이션의 열거형으로 고정한다 |
 | `url` | text | O | 업로드된 파일 URL |
 | `sort_order` | integer | O | 게시물 안의 표시 순서 |
 
@@ -527,7 +527,9 @@ DB에서 직접 증감시킨다. 동시에 들어온 요청이 같은 값을 읽
 **`target_id`에는 외래키가 없다.** 대상이 게시물·댓글·사용자로 달라져 한 테이블을 가리킬 수
 없기 때문이다. 대상이 실제로 있는지는 애플리케이션에서 확인한다.
 
-같은 사용자가 같은 대상을 다시 신고하면 거절한다.
+같은 사용자가 같은 대상을 다시 신고하면 거절한다. `V9__add_reports_unique_constraint.sql`에서
+`uk_reports_reporter_target(reporter_id, target_type, target_id)` 고유 제약을 추가했다.
+코드로만 막으면 같은 요청이 동시에 들어올 때 중복 행이 남는다.
 
 ## 일정 생성 V2 변경
 

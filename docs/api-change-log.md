@@ -24,20 +24,32 @@ API 계약이 변경될 때마다 최신 항목을 위에 추가한다.
 - **페이징이 두 가지다.** 피드·사용자 게시물·댓글은 `cursor`, 인기 피드·북마크·팔로워·팔로잉·차단·검색은 `page`를 쓴다. 후자는 정렬 기준이 증가하는 식별자가 아니거나 대상 테이블에 대리키가 없어 커서를 만들 수 없다.
 - **댓글은 오래된 순, 피드는 최신순이다.** 댓글은 대화 흐름을 따라 읽어야 해 커서 방향이 반대다.
 - **답글에 답글을 달 수 없다.** 응답이 두 단계만 표현하므로 `400 INVALID_COMMENT_REQUEST`를 반환한다.
-- **삭제된 댓글이 목록에 남을 수 있다.** 살아 있는 답글이 있으면 자리를 유지하고 `author`·`content`를 `null`, `deleted`를 `true`로 반환한다. 화면 문구는 클라이언트가 정한다.
+- **감춰진 댓글이 목록에 남을 수 있다.** 작성자가 지웠거나 탈퇴했어도 살아 있는 답글이 있으면 자리를 유지하고 `author`·`content`를 `null`, `deleted`를 `true`로 반환한다. 자리를 없애면 답글이 부모를 잃고 함께 사라진다. 감춘 이유는 `hiddenReason`(`DELETED`, `WITHDRAWN`)으로 구분하며, 화면 문구는 클라이언트가 정한다.
 - **게시물에는 사진 또는 영상이 최소 한 건 필요하다.** 사진 기반 서비스라 빈 게시물을 허용하지 않는다.
 - **좋아요·저장·팔로우·차단은 멱등하다.** 중복 요청에도 개수가 어긋나지 않는다.
-- **차단은 단방향이다.** 차단한 사람의 피드에서 상대 게시물이 사라지고 서로의 팔로우가 끊기지만, 상대가 내 게시물을 보는 것은 막지 않는다. 역방향까지 막으려면 모든 조회에서 역방향 확인이 필요해 비용이 크다.
+- **차단이 막는 범위를 정했다.** 차단한 사람의 게시물은 피드에서 빠지고 서로의 팔로우가 끊긴다. 게시물 상세나 프로필을 링크로 직접 여는 것, 제3자 게시물에 달린 차단 상대의 댓글은 막지 않는다. 차단은 상대가 내 계정에 접근하지 못하게 하는 것이지 앱 전체에서 상대를 지우는 것이 아니다. 인스타그램도 같은 범위다.
+- **차단 관계에서는 댓글을 쓸 수 없다.** `403 COMMENT_NOT_ALLOWED`. 오류 문구에 차단을 드러내지 않아 누가 차단했는지는 알 수 없다.
+- **차단한 사람은 다시 팔로우할 수 없다.** 차단하면 팔로우가 끊기는데 팔로우 API에 확인이 없어 곧바로 되돌릴 수 있었다. 내가 차단한 상대를 팔로우하면 `400 FOLLOW_BLOCKED_USER`이고, 나를 차단한 상대가 나를 팔로우하면 `200`을 주되 관계를 만들지 않는다. 거절하면 차단당한 사실이 그대로 드러나기 때문이다.
+- **탈퇴한 사용자의 글과 댓글은 모든 조회에서 빠진다.** 프로필은 `404`인데 글은 보이는 상태였다. 피드, 인기 피드, 게시물 상세, 사용자 게시물 목록, 북마크 목록, 댓글 목록에 작성자 상태 조건을 넣었다.
+- **입력에 상한을 걸었다.** 본문 2000자, 댓글 1000자, 미디어 10건, 장소 태그 10건, URL 2048자. `content` 컬럼이 `text`라 DB가 막지 않아 수 MB 본문이 저장될 수 있었다. 긴 본문을 접는 처리는 클라이언트가 하며 서버는 항상 전체를 보낸다.
+- **`mediaType`이 열거형이 됐다.** `IMAGE`, `VIDEO`만 받는다. 이전에는 자유 문자열이라 임의의 값이 저장됐다.
+- **응답에 `hashtags`가 생겼다.** 게시물 상세와 피드 목록 모두에 담긴다. 이전에는 태그를 뽑아 저장만 하고 어떤 응답에도 싣지 않아, 상세 화면에 태그를 표시하거나 눌러서 필터 피드로 넘길 수 없었다.
 - **해시태그는 본문에서 뽑는다.** `#` 뒤의 한글·영문·숫자·밑줄만 인정하고 공백에서 끊는다. 소문자로 정규화하며 게시물당 20개까지다.
 - **`liked`·`bookmarked`는 요청자 기준이다.** `likeCount`는 모두에게 같고 `liked`만 사람마다 다르다. `X-User-Id`가 없으면 `false`다.
 
 ### 신설 오류 코드
 
-`POST_NOT_FOUND`, `COMMENT_NOT_FOUND`, `USER_NOT_FOUND`, `POST_ACCESS_DENIED`, `COMMENT_ACCESS_DENIED`, `INVALID_COMMENT_REQUEST`, `INVALID_FOLLOW_REQUEST`, `INVALID_BLOCK_REQUEST`, `INVALID_FEED_REQUEST`, `NICKNAME_ALREADY_USED`, `ALREADY_REPORTED`
+`POST_NOT_FOUND`, `COMMENT_NOT_FOUND`, `USER_NOT_FOUND`, `POST_ACCESS_DENIED`, `COMMENT_ACCESS_DENIED`, `INVALID_POST_REQUEST`, `INVALID_USER_REQUEST`, `INVALID_COMMENT_REQUEST`, `INVALID_FOLLOW_REQUEST`, `INVALID_BLOCK_REQUEST`, `INVALID_FEED_REQUEST`, `FOLLOW_BLOCKED_USER`, `COMMENT_NOT_ALLOWED`, `NICKNAME_ALREADY_USED`, `ALREADY_REPORTED`
 
-### 알려진 문제
+### 검증 실패 응답을 경로별로 나눴다
 
-요청 본문 검증에 실패하면 `GlobalExceptionHandler.validationErrorCode()`가 URI로 오류 코드를 고르는데 커뮤니티 경로 분기가 없어 `INVALID_SCHEDULE_CONDITION`("일정 조건이 올바르지 않습니다")이 나간다. `fieldErrors`는 정확하므로 클라이언트는 그쪽을 쓴다. 핸들러에 `/api/v1/posts`, `/api/v1/users` 분기를 추가하면 해결된다.
+`GlobalExceptionHandler.validationErrorCode()`가 URI로 오류 코드를 고르는데 커뮤니티 경로 분기가 없어, 커뮤니티 API 어디서든 본문 검증에 실패하면 `INVALID_SCHEDULE_CONDITION`("일정 조건이 올바르지 않습니다")이 나갔다. 분기를 추가해 `/api/v1/posts/{postId}/comments`는 `INVALID_COMMENT_REQUEST`, 나머지 `/api/v1/posts`는 `INVALID_POST_REQUEST`, `/api/v1/users`는 `INVALID_USER_REQUEST`를 반환한다.
+
+같은 핸들러에서 본문을 읽지 못한 경우(`MALFORMED_REQUEST`) `fieldErrors`가 항상 `body`였다. 열거형에 없는 값처럼 어느 필드가 잘못됐는지 알 수 있으면 그 필드와 쓸 수 있는 값을 알려주도록 고쳤다.
+
+```json
+{ "field": "mediaList.mediaType", "message": "값 \"GIF\" 을(를) 쓸 수 없습니다. 가능한 값: IMAGE, VIDEO" }
+```
 
 ### 미구현
 
