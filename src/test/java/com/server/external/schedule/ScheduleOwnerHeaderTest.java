@@ -104,6 +104,16 @@ class ScheduleOwnerHeaderTest {
     }
 
     @Test
+    @DisplayName("로그인하지 않으면 목록을 조회하지 않고 빈 결과를 준다")
+    void returnsEmptyListWhenAnonymous() {
+        // 전체를 돌려주면 남의 일정이 그대로 노출된다. FastAPI 를 부르지도 않는다.
+        var list = client().listSchedules(null);
+
+        assertThat(list.items()).isEmpty();
+        assertThat(receivedOwner.get()).as("호출 자체가 없어야 한다").isNull();
+    }
+
+    @Test
     @DisplayName("SecurityContext 의 사용자를 그대로 읽는다")
     void readsUserFromSecurityContext() {
         loginAs(7L);

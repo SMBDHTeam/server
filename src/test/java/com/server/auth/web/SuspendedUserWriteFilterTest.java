@@ -107,6 +107,22 @@ class SuspendedUserWriteFilterTest {
     }
 
     @Test
+    @DisplayName("토큰 없이 X-User-Id 만 보내도 정지된 사용자는 막힌다")
+    void blocksLegacyHeaderWriteWhenSuspended() throws Exception {
+        // 커뮤니티 쓰기는 아직 X-User-Id 로 작성자를 정한다. 토큰만 보면 정지된 사용자가
+        // Authorization 을 빼고 이 헤더만 보내 그대로 글을 쓸 수 있다.
+        suspend();
+
+        mockMvc.perform(post("/api/v1/posts")
+                        .header("X-User-Id", String.valueOf(user.getId()))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"content\":\"우회 시도\",\"mediaList\":"
+                                + "[{\"url\":\"http://x/a.jpg\",\"mediaType\":\"IMAGE\",\"sortOrder\":0}]}"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("USER_SUSPENDED"));
+    }
+
+    @Test
     @DisplayName("정지되지 않은 사용자의 쓰기는 막지 않는다")
     void doesNotBlockActiveUser() throws Exception {
         mockMvc.perform(post("/api/v1/posts")
