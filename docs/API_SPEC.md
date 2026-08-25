@@ -62,6 +62,8 @@
 | 게시물 상세 | GET | `/posts/{postId}` | `200 OK` | 선택 |
 | 게시물 수정 | PATCH | `/posts/{postId}` | `200 OK` | 필수 |
 | 게시물 삭제 | DELETE | `/posts/{postId}` | `204 No Content` | 필수 |
+| 내가 지운 게시물 | GET | `/posts/me/deleted` | `200 OK` | 필수 |
+| 게시물 복구 | POST | `/posts/{postId}/restore` | `200 OK` | 필수 |
 | 좋아요 | POST | `/posts/{postId}/likes` | `200 OK` | 필수 |
 | 좋아요 취소 | DELETE | `/posts/{postId}/likes` | `200 OK` | 필수 |
 | 저장 | POST | `/posts/{postId}/bookmarks` | `200 OK` | 필수 |
@@ -1455,10 +1457,33 @@ Provider 응답의 `distanceMeters`가 누락되거나 0 이하이면 서버는 
 
 `DELETE /api/v1/posts/{postId}` — `204 No Content`
 
-바로 지우지 않고 삭제 표시만 남긴다. 기획상 30일간 복구할 수 있어야 한다.
-**만료된 게시물을 정리하는 배치는 아직 없다.**
+바로 지우지 않고 삭제 표시만 남긴다. **30일 안에는 되돌릴 수 있고, 그 뒤에는 실제로 지워진다.**
+
+정리는 매일 04:30(KST) 스케줄러가 한다. 게시물과 함께 미디어, 장소 태그, 댓글, 댓글 좋아요,
+좋아요, 저장, 해시태그 연결을 지운다. 기간과 실행 여부는 `app.community.post-purge`로 바꾼다.
+스케줄러를 끄면 지운 게시물이 계속 쌓이고 본문과 사진 URL 이 DB 에 남는다.
 
 둘 다 작성자 본인이 아니면 `403 POST_ACCESS_DENIED`를 반환한다.
+
+**내가 지운 게시물** — `GET /api/v1/posts/me/deleted?page=0&size=20`
+
+복구 기한이 남은 것만, 삭제한 시각이 최근인 순으로 준다. 응답 형태는 피드 목록과 같고
+`nextCursor`는 항상 `null`이다. 삭제 시각 기준 정렬이라 커서를 만들 수 없다.
+
+**복구** — `POST /api/v1/posts/{postId}/restore`
+
+응답은 게시물 상세와 같다. 삭제할 때 해시태그 연결을 실제로 지우므로, 복구할 때 본문에서
+다시 뽑아 연결한다. 그러지 않으면 되살린 글이 태그 필터 피드에서 영영 빠진다.
+
+| 상황 | 응답 |
+| --- | --- |
+| 지운 적 없는 게시물 | `404 POST_NOT_FOUND` |
+| 남의 게시물 | `403 POST_ACCESS_DENIED` |
+| 삭제한 지 30일이 지남 | `410 POST_RESTORE_WINDOW_EXPIRED` |
+
+기한이 지난 뒤 정리 스케줄러가 돌기 전까지는 `410`, 정리된 뒤에는 `404`다.
+
+**계정 탈퇴는 되돌릴 수 없다.** 되살릴 수 있는 것은 본인이 지운 게시물뿐이다.
 
 ### C-6. 인기 피드
 
@@ -1713,7 +1738,8 @@ Provider 응답의 `distanceMeters`가 누락되거나 0 이하이면 서버는 
 | `POST_NOT_FOUND` | 404 | 게시물이 없거나 삭제됨 |
 | `COMMENT_NOT_FOUND` | 404 | 댓글이 없거나 삭제됨. 경로의 게시물과 소속이 다른 경우 포함 |
 | `USER_NOT_FOUND` | 404 | 사용자가 없거나 탈퇴함 |
-| `POST_ACCESS_DENIED` | 403 | 남의 게시물을 수정·삭제하려 함 |
+| `POST_ACCESS_DENIED` | 403 | 남의 게시물을 수정·삭제·복구하려 함 |
+| `POST_RESTORE_WINDOW_EXPIRED` | 410 | 삭제한 지 30일이 지난 게시물을 복구하려 함 |
 | `COMMENT_ACCESS_DENIED` | 403 | 남의 댓글을 삭제하려 함 |
 | `INVALID_COMMENT_REQUEST` | 400 | 답글에 답글을 달거나, 부모 댓글이 다른 게시물의 것 |
 | `INVALID_FOLLOW_REQUEST` | 400 | 자기 자신을 팔로우 |
@@ -1752,7 +1778,6 @@ Provider 응답의 `distanceMeters`가 누락되거나 0 이하이면 서버는 
 | 이미지·영상 업로드 | 저장소와 API 미정. 현재는 클라이언트가 올린 URL만 받는다 |
 | 알림 | 테이블부터 없다. 기획서 필수 기능이나 데이터 모델이 정의되지 않았다 |
 | 사진 EXIF 좌표 추출 | 클라이언트가 좌표를 직접 넘긴다 |
-| 게시물 30일 후 완전 삭제 배치 | 없다 |
 | 신고 처리 관리자 기능 | 없다 |
 | 게시물 미디어·장소 태그 수정 | 본문만 수정 가능 |
 

@@ -344,7 +344,7 @@ TourAPI의 일일 요청 제한을 서버 재시작과 중복 실행 이후에�
 집계 컬럼은 엔티티를 읽어 고쳐 쓰지 않고 `UPDATE ... SET like_count = like_count + 1`처럼
 DB에서 직접 증감시킨다. 동시에 들어온 요청이 같은 값을 읽어 하나가 사라지는 것을 막기 위함이다.
 
-삭제는 `deleted_at`만 남긴다. 기획상 삭제 후 30일간 복구할 수 있어야 하므로 조회에서 제외하되
+삭제는 `deleted_at`만 남긴다. 삭제 후 30일간 `POST /posts/{postId}/restore` 로 되돌릴 수 있으므로 조회에서 제외하되
 행은 보존한다. **만료된 게시물을 정리하는 배치는 아직 없다.**
 
 인덱스: `idx_posts_created_at`, `idx_posts_user_id`
