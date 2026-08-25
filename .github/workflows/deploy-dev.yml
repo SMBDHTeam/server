@@ -89,6 +89,10 @@ jobs:
           SPRING_DATASOURCE_USERNAME: ${{ secrets.SPRING_DATASOURCE_USERNAME }}
           SPRING_DATASOURCE_PASSWORD: ${{ secrets.SPRING_DATASOURCE_PASSWORD }}
 
+          # 인증 설정
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+
           # 외부 API 설정
           TOUR_API_KEY: ${{ secrets.TOUR_API_KEY }}
           KAKAO_REST_API_KEY: ${{ secrets.KAKAO_REST_API_KEY }}
@@ -171,6 +175,14 @@ jobs:
           # 그 뒤 상대 컨테이너가 재시작하면 설정을 잃는다. 실제로 8월 11일
           # 08:24~09:00 사이에 서로를 덮어썼고 data-ai가 환경변수 없이 기동했다.
           # 이 레포는 .env.server 만 쓴다. 각자 자기 파일만 쓰면 간섭이 없다.
+          # 값이 없으면 컨테이너가 기동하다 죽는다. 배포를 시작하기 전에 멈추는 편이
+          # 원인을 찾기 쉽다.
+          if [ -z "$JWT_SECRET" ]; then
+            echo "ERROR: JWT_SECRET secret is not set"
+            echo "Register it in GitHub repository secrets (32 bytes or longer)"
+            exit 1
+          fi
+
           echo "[5/8] Create .env.server"
 
           # GitHub Secrets를 기반으로 임시 환경변수 파일을 만든다.
@@ -187,6 +199,14 @@ jobs:
             # 일정 생성/조회를 FastAPI(data-ai)에 위임한다.
             # 이 값이 없으면 기본값 false로 기동해 일정 API 전체가 503을 반환한다.
             # base-url은 끝에 슬래시를 붙이지 않는다. 붙이면 //api/v1/... 로 요청이 나가 404가 된다.
+            # 인증. JWT_SECRET 이 없으면 서버가 기동하지 않는다.
+            # 서명 키 없이 뜨면 누구나 원하는 사용자와 권한으로 토큰을 만들 수 있어,
+            # 조용히 뚫린 채 도는 것보다 뜨지 않는 편이 낫다고 판단했다.
+            printf 'JWT_SECRET=%s\n' "$JWT_SECRET"
+            printf 'GOOGLE_CLIENT_ID=%s\n' "$GOOGLE_CLIENT_ID"
+
+            printf 'REDIS_HOST=redis\n'
+            printf 'REDIS_PORT=6379\n'
             printf 'SCHEDULE_FASTAPI_ENABLED=true\n'
             printf 'SCHEDULE_FASTAPI_BASE_URL=http://data-ai:8010\n'
           
@@ -274,6 +294,20 @@ jobs:
 
               docker pull \
                 "${ECR_REGISTRY}/${ECR_REPOSITORY_NAME}:latest-dev"
+
+              echo "Ensure redis container"
+
+              # 리프레시 토큰 저장소. 이미 떠 있으면 건드리지 않는다.
+              # 재시작해도 로그인 세션이 끊기지 않도록 배포마다 지우지 않는다.
+              if [ -z "$(docker ps -q -f name=^redis$)" ]; then
+                docker rm redis || true
+                docker run -d \
+                  --name redis \
+                  --restart unless-stopped \
+                  --network hackathon-network \
+                  redis:7-alpine \
+                  redis-server --save 60 1 --appendonly no
+              fi
 
               echo "Stop old container"
 

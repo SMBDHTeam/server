@@ -79,6 +79,47 @@ class SecurityConfigTest {
                 ));
     }
 
+    @Test
+    @DisplayName("로그인 요청의 Authorization 헤더를 preflight에서 허용한다")
+    void allowsAuthorizationHeaderInPreflight() throws Exception {
+        // 허용 헤더에 Authorization 이 없으면 브라우저에서 로그인한 요청이 전부 막힌다.
+        mockMvc.perform(options("/api/v1/schedules")
+                        .header("Origin", "https://www.busantour.site")
+                        .header("Access-Control-Request-Method", "GET")
+                        .header("Access-Control-Request-Headers", "Authorization"))
+                .andExpect(status().isOk())
+                .andExpect(header().string(
+                        "Access-Control-Allow-Headers",
+                        org.hamcrest.Matchers.containsString("Authorization")));
+    }
+
+    @Test
+    @DisplayName("커뮤니티가 쓰는 X-User-Id 헤더를 preflight에서 허용한다")
+    void allowsUserIdHeaderInPreflight() throws Exception {
+        mockMvc.perform(options("/api/v1/posts")
+                        .header("Origin", "https://www.busantour.site")
+                        .header("Access-Control-Request-Method", "POST")
+                        .header("Access-Control-Request-Headers", "Content-Type, X-User-Id"))
+                .andExpect(status().isOk())
+                .andExpect(header().string(
+                        "Access-Control-Allow-Headers",
+                        org.hamcrest.Matchers.containsString("X-User-Id")));
+    }
+
+    @Test
+    @DisplayName("브라우저가 응답에서 X-Trace-Id를 읽을 수 있도록 노출한다")
+    void exposesTraceIdHeader() throws Exception {
+        // TraceIdFilter 가 모든 응답에 넣고 오류 응답의 traceId 와 같은 값이라고 문서화하지만,
+        // 노출 헤더로 지정하지 않으면 다른 오리진의 스크립트는 읽을 수 없다.
+        mockMvc.perform(get("/api/v1/locations/search")
+                        .param("keyword", "부산역")
+                        .header("Origin", "https://www.busantour.site"))
+                .andExpect(status().isOk())
+                .andExpect(header().string(
+                        "Access-Control-Expose-Headers",
+                        org.hamcrest.Matchers.containsString("X-Trace-Id")));
+    }
+
     @TestConfiguration
     static class TestConfig {
 

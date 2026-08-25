@@ -214,6 +214,10 @@ public class GlobalExceptionHandler {
         if (uri.startsWith("/api/v1/places") || uri.startsWith("/api/v1/locations")) {
             return ErrorCode.INVALID_PLACE_SEARCH_REQUEST;
         }
+        // 분기가 없으면 로그인 요청 오류가 "일정 조건이 올바르지 않습니다"로 나간다.
+        if (uri.startsWith("/api/v1/auth")) {
+            return ErrorCode.INVALID_TOKEN;
+        }
         return ErrorCode.INVALID_SCHEDULE_CONDITION;
     }
 
