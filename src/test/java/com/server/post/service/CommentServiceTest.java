@@ -8,17 +8,20 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.server.block.repository.BlockRepository;
 import com.server.common.error.BusinessException;
 import com.server.common.error.ErrorCode;
 import com.server.post.domain.Comment;
 import com.server.post.domain.Post;
 import com.server.post.dto.CommentCreateRequest;
+import com.server.post.dto.CommentHiddenReason;
 import com.server.post.dto.CommentResponse;
 import com.server.post.repository.CommentLikeRepository;
 import com.server.post.repository.CommentRepository;
 import com.server.post.repository.PostRepository;
 import com.server.user.domain.User;
 import com.server.user.repository.UserRepository;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.DisplayName;
@@ -38,10 +41,12 @@ class CommentServiceTest {
     private final CommentLikeRepository commentLikeRepository =
             Mockito.mock(CommentLikeRepository.class);
     private final PostRepository postRepository = Mockito.mock(PostRepository.class);
+    private final BlockRepository blockRepository = Mockito.mock(BlockRepository.class);
     private final UserRepository userRepository = Mockito.mock(UserRepository.class);
 
     private final CommentService commentService = new CommentService(
-            commentRepository, commentLikeRepository, postRepository, userRepository);
+            commentRepository, commentLikeRepository, postRepository, blockRepository,
+            userRepository);
 
     @Test
     @DisplayName("답글에 다시 답글을 달 수 없다")
@@ -122,16 +127,69 @@ class CommentServiceTest {
         when(postRepository.existsByIdAndDeletedAtIsNull(POST_ID)).thenReturn(true);
         when(commentRepository.findTopLevelComments(anyLong(), anyLong(), any()))
                 .thenReturn(List.of(parent));
-        when(commentRepository.findByParentIdInAndDeletedAtIsNullOrderByIdAsc(List.of(10L)))
+        when(commentRepository.findRepliesByParentIds(List.of(10L)))
                 .thenReturn(List.of(reply));
 
         CommentResponse item = commentService.getComments(POST_ID, null, 20, null).items().get(0);
 
         assertThat(item.deleted()).isTrue();
+        assertThat(item.hiddenReason()).isEqualTo(CommentHiddenReason.DELETED);
         assertThat(item.author()).isNull();
         assertThat(item.content()).isNull();
         assertThat(item.replies()).singleElement()
                 .satisfies(child -> assertThat(child.content()).isEqualTo("내용"));
+    }
+
+    @Test
+    @DisplayName("작성자가 탈퇴한 댓글도 답글이 남아 있으면 자리를 유지하고 감춘다")
+    void hidesCommentOfWithdrawnAuthor() {
+        Post post = givenPost(POST_ID);
+        User withdrawn = user(AUTHOR_ID);
+        ReflectionTestUtils.setField(withdrawn, "deletedAt", LocalDateTime.now());
+        Comment parent = new Comment(post, withdrawn, null, "탈퇴한 사람의 댓글");
+        ReflectionTestUtils.setField(parent, "id", 10L);
+        Comment reply = comment(11L, post, parent);
+
+        when(postRepository.existsByIdAndDeletedAtIsNull(POST_ID)).thenReturn(true);
+        when(commentRepository.findTopLevelComments(anyLong(), anyLong(), any()))
+                .thenReturn(List.of(parent));
+        when(commentRepository.findRepliesByParentIds(List.of(10L))).thenReturn(List.of(reply));
+
+        CommentResponse item = commentService.getComments(POST_ID, null, 20, null).items().get(0);
+
+        assertThat(item.deleted()).isTrue();
+        assertThat(item.hiddenReason()).isEqualTo(CommentHiddenReason.WITHDRAWN);
+        assertThat(item.author()).isNull();
+        assertThat(item.content()).isNull();
+        assertThat(item.replies()).singleElement()
+                .satisfies(child -> assertThat(child.content()).isEqualTo("내용"));
+    }
+
+    @Test
+    @DisplayName("차단 관계인 사람의 게시물에는 댓글을 쓸 수 없다")
+    void rejectsCommentBetweenBlockedUsers() {
+        givenPost(POST_ID);
+        givenActiveUser(OTHER_USER_ID);
+        when(blockRepository.existsBetween(AUTHOR_ID, OTHER_USER_ID)).thenReturn(true);
+
+        assertThatThrownBy(() -> commentService.create(
+                POST_ID, OTHER_USER_ID, new CommentCreateRequest("댓글", null)))
+                .isInstanceOfSatisfying(BusinessException.class, exception ->
+                        assertThat(exception.getErrorCode())
+                                .isEqualTo(ErrorCode.COMMENT_NOT_ALLOWED));
+    }
+
+    @Test
+    @DisplayName("본인 게시물에는 차단 확인 없이 댓글을 쓸 수 있다")
+    void allowsCommentOnOwnPost() {
+        Post post = givenPost(POST_ID);
+        givenActiveUser(AUTHOR_ID);
+        when(commentRepository.save(any(Comment.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        assertThat(commentService.create(POST_ID, AUTHOR_ID, new CommentCreateRequest("내 글에 댓글", null))
+                .content()).isEqualTo("내 글에 댓글");
+        assertThat(post.getId()).isEqualTo(POST_ID);
     }
 
     @Test
@@ -140,7 +198,7 @@ class CommentServiceTest {
         Comment comment = comment(10L, givenPost(POST_ID), null);
         when(commentRepository.findByIdAndDeletedAtIsNull(10L)).thenReturn(Optional.of(comment));
         givenActiveUser(OTHER_USER_ID);
-        when(commentLikeRepository.existsByCommentIdAndUserId(10L, OTHER_USER_ID)).thenReturn(true);
+        when(commentLikeRepository.insertIfAbsent(10L, OTHER_USER_ID)).thenReturn(0);
         when(commentRepository.findLikeCountById(10L)).thenReturn(1);
 
         assertThat(commentService.like(POST_ID, 10L, OTHER_USER_ID).likeCount()).isEqualTo(1);
@@ -164,6 +222,7 @@ class CommentServiceTest {
     private User givenActiveUser(long userId) {
         User user = user(userId);
         when(userRepository.findByIdAndDeletedAtIsNull(userId)).thenReturn(Optional.of(user));
+        when(userRepository.existsByIdAndDeletedAtIsNull(userId)).thenReturn(true);
         return user;
     }
 

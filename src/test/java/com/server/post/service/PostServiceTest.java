@@ -14,7 +14,6 @@ import com.server.common.error.ErrorCode;
 import com.server.hashtag.service.HashtagService;
 import com.server.place.repository.PlaceRepository;
 import com.server.post.domain.Post;
-import com.server.post.domain.PostLike;
 import com.server.post.dto.PostUpdateRequest;
 import com.server.post.repository.PostLikeRepository;
 import com.server.post.repository.PostMediaRepository;
@@ -26,7 +25,9 @@ import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
+import org.springframework.data.domain.Pageable;
 import org.springframework.test.util.ReflectionTestUtils;
 
 @DisplayName("게시물 서비스")
@@ -60,14 +61,14 @@ class PostServiceTest {
     @Test
     @DisplayName("이미 누른 좋아요를 다시 눌러도 개수를 올리지 않는다")
     void likeIsIdempotent() {
-        givenPostWrittenBy(AUTHOR_ID);
+        when(postRepository.existsByIdAndDeletedAtIsNull(POST_ID)).thenReturn(true);
         givenActiveUser(OTHER_USER_ID);
-        when(postLikeRepository.existsByPostIdAndUserId(POST_ID, OTHER_USER_ID)).thenReturn(true);
+        // 이미 눌린 좋아요라 새로 들어간 행이 없다.
+        when(postLikeRepository.insertIfAbsent(POST_ID, OTHER_USER_ID)).thenReturn(0);
         when(postRepository.findLikeCountById(POST_ID)).thenReturn(1);
 
         assertThat(postService.like(POST_ID, OTHER_USER_ID).likeCount()).isEqualTo(1);
 
-        verify(postLikeRepository, never()).save(any(PostLike.class));
         verify(postRepository, never()).increaseLikeCount(anyLong());
     }
 
@@ -154,6 +155,28 @@ class PostServiceTest {
                 .doesNotThrowAnyException();
     }
 
+    @Test
+    @DisplayName("인기 피드는 한 번에 50건까지만 준다")
+    void popularFeedCapsPageSize() {
+        when(postRepository.findPopularFeed(any(), any(), any())).thenReturn(List.of());
+        when(postSummaryAssembler.assemble(List.of(), null)).thenReturn(List.of());
+
+        postService.getPopularFeed(0, 500, null);
+
+        ArgumentCaptor<Pageable> pageable = ArgumentCaptor.forClass(Pageable.class);
+        verify(postRepository).findPopularFeed(any(), any(), pageable.capture());
+        assertThat(pageable.getValue().getPageSize()).isEqualTo(50);
+    }
+
+    @Test
+    @DisplayName("인기 피드는 점수 순이라 이어받을 커서를 주지 않는다")
+    void popularFeedHasNoCursor() {
+        when(postRepository.findPopularFeed(any(), any(), any())).thenReturn(List.of());
+        when(postSummaryAssembler.assemble(List.of(), null)).thenReturn(List.of());
+
+        assertThat(postService.getPopularFeed(0, 20, null).nextCursor()).isNull();
+    }
+
     private Post givenPostWrittenBy(long userId) {
         Post post = new Post(givenActiveUser(userId), "본문");
         ReflectionTestUtils.setField(post, "id", POST_ID);
@@ -165,6 +188,7 @@ class PostServiceTest {
         User user = new User("사용자" + userId, null);
         ReflectionTestUtils.setField(user, "id", userId);
         when(userRepository.findByIdAndDeletedAtIsNull(userId)).thenReturn(Optional.of(user));
+        when(userRepository.existsByIdAndDeletedAtIsNull(userId)).thenReturn(true);
         return user;
     }
 }
