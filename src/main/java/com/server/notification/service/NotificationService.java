@@ -60,7 +60,8 @@ public class NotificationService {
             NotificationTargetType targetType,
             Long targetId
     ) {
-        if (recipientId.equals(actorId)) {
+        // 받는 사람을 찾는 조회가 비어 돌아올 수 있다. 알림 때문에 원래 작업이 깨지면 안 된다.
+        if (recipientId == null || recipientId.equals(actorId)) {
             return;
         }
         User recipient = userRepository.findByIdAndDeletedAtIsNull(recipientId).orElse(null);

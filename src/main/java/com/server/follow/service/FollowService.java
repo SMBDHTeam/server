@@ -59,7 +59,7 @@ public class FollowService {
             throw new BusinessException(ErrorCode.FOLLOW_BLOCKED_USER);
         }
         // 상대가 나를 차단한 경우에는 관계만 만들지 않고 응답은 성공과 똑같이 준다.
-        // 새로 맺어진 경우에만 알린다. 취소 후 다시 팔로우해도 알림이 또 가지 않도록 한다.
+        // 이미 팔로우 중이면 관계도 알림도 새로 만들지 않는다.
         if (!blockRepository.existsByBlockerIdAndBlockedId(targetUserId, userId)
                 && followRepository.insertIfAbsent(userId, targetUserId) > 0) {
             notificationService.notify(

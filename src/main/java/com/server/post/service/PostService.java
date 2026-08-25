@@ -199,7 +199,7 @@ public class PostService {
     public PostDetailResponse update(Long postId, Long userId, PostUpdateRequest request) {
         if (request.isEmpty()) {
             throw new BusinessException(ErrorCode.INVALID_POST_REQUEST, List.of(new FieldViolation(
-                    "content", "본문, 사진, 장소 태그 중 하나는 보내야 합니다.")));
+                    "request", "본문, 사진, 장소 태그 중 하나는 보내야 합니다.")));
         }
         Post post = findWritablePost(postId, userId);
 
@@ -312,7 +312,7 @@ public class PostService {
             throw new BusinessException(ErrorCode.USER_NOT_FOUND);
         }
 
-        // 처음 누른 경우에만 알린다. 취소 후 다시 눌러도 알림이 또 가지 않도록 한다.
+        // 이미 눌러 둔 상태면 개수도 알림도 건드리지 않는다.
         if (postLikeRepository.insertIfAbsent(postId, userId) > 0) {
             postRepository.increaseLikeCount(postId);
             notificationService.notify(

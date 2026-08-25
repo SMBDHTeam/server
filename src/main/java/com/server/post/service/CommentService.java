@@ -150,7 +150,7 @@ public class CommentService {
             throw new BusinessException(ErrorCode.USER_NOT_FOUND);
         }
 
-        // 처음 누른 경우에만 알린다. 취소 후 다시 눌러도 알림이 또 가지 않도록 한다.
+        // 이미 눌러 둔 상태면 개수도 알림도 건드리지 않는다.
         if (commentLikeRepository.insertIfAbsent(commentId, userId) > 0) {
             commentRepository.increaseLikeCount(commentId);
             notificationService.notify(
@@ -173,24 +173,6 @@ public class CommentService {
         return new CommentLikeResponse(commentRepository.findLikeCountById(commentId), false);
     }
 
-    private Comment findComment(Long postId, Long commentId) {
-        Comment comment = commentRepository.findByIdAndDeletedAtIsNull(commentId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.COMMENT_NOT_FOUND));
-        if (!comment.getPost().getId().equals(postId)) {
-            throw new BusinessException(ErrorCode.COMMENT_NOT_FOUND);
-        }
-        return comment;
-    }
-
-    private Set<Long> likedCommentIds(Long requesterId, List<Long> commentIds) {
-        if (requesterId == null || commentIds.isEmpty()) {
-            return Set.of();
-        }
-        return Set.copyOf(commentLikeRepository.findLikedCommentIds(requesterId, commentIds));
-    }
-
-    /** 내용만 바꾼다. 답글 관계와 좋아요 수는 그대로 둔다. */
-    @Transactional
     public CommentResponse update(
             Long postId, Long commentId, Long userId, CommentUpdateRequest request) {
         Comment comment = findWritableComment(postId, commentId, userId);
@@ -209,6 +191,24 @@ public class CommentService {
     public void delete(Long postId, Long commentId, Long userId) {
         findWritableComment(postId, commentId, userId).delete();
         postRepository.decreaseCommentCount(postId);
+    }
+
+    private Comment findComment(Long postId, Long commentId) {
+        Comment comment = commentRepository.findByIdAndDeletedAtIsNull(commentId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.COMMENT_NOT_FOUND));
+        if (!comment.getPost().getId().equals(postId)) {
+            throw new BusinessException(ErrorCode.COMMENT_NOT_FOUND);
+        }
+        return comment;
+    }
+
+    /** 내용만 바꾼다. 답글 관계와 좋아요 수는 그대로 둔다. */
+    @Transactional
+    private Set<Long> likedCommentIds(Long requesterId, List<Long> commentIds) {
+        if (requesterId == null || commentIds.isEmpty()) {
+            return Set.of();
+        }
+        return Set.copyOf(commentLikeRepository.findLikedCommentIds(requesterId, commentIds));
     }
 
     private Comment findWritableComment(Long postId, Long commentId, Long userId) {
