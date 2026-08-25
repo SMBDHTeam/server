@@ -95,7 +95,8 @@ location/      Kakao Local 출발/도착 위치 검색
 schedule/      일정·Preview 위임 계층, DTO, 엔티티
 facility/      Kakao 기반 주변 편의시설 실시간 조회
 share/         공유 링크 생성, 조회, 폐기
-external/      Kakao, TourAPI, FastAPI 클라이언트
+spontaneous/   즉흥 여행 목적지 추천 위임 (FastAPI)
+external/      Kakao, TourAPI, FastAPI(일정·즉흥) 클라이언트
 common/        CORS, Security, trace ID, 예외 처리, Swagger 설정
 ```
 
@@ -131,6 +132,7 @@ common/        CORS, Security, trace ID, 예외 처리, Swagger 설정
 | 일정 | `PATCH` | `/schedules/{id}` | 방문지 편집 및 경로 재계산 |
 | 지도 | `GET` | `/schedules/{id}/map?dayNo=` | 마커와 경로선 |
 | 공유 | `POST/GET/DELETE` | `/schedules/{id}/shares`, `/shared-schedules/{token}` | 공유 링크 lifecycle |
+| 즉흥 | `POST` | `/spontaneous-trips/destinations` | 즉흥 여행 목적지 추천 (FastAPI 위임) |
 
 ### V2 생성 계약
 
@@ -162,6 +164,8 @@ Spring 쪽에서 알아야 할 것은 다음이다.
 | 항목 | 값 |
 | --- | --- |
 | 설정 | `app.schedule-fastapi.*` (`SCHEDULE_FASTAPI_ENABLED`, `SCHEDULE_FASTAPI_BASE_URL`) |
+| 설정 (즉흥) | `app.spontaneous-fastapi.*` (`SPONTANEOUS_FASTAPI_ENABLED`, `SPONTANEOUS_FASTAPI_BASE_URL`) |
+| 요청 팩토리 | `JdkClientHttpRequestFactory` + `HTTP_1_1` 고정. 8절 표를 먼저 읽는다 |
 | base-url | 끝에 슬래시를 붙이지 않는다. 붙이면 `//api/v1/...`로 나가 404가 된다 |
 | 위임 대상 | Preview 생성·조회, 일정 생성·목록·단건·수정·지도 |
 | 꺼져 있을 때 | `503 EXTERNAL_PROVIDER_UNAVAILABLE` |
@@ -199,26 +203,66 @@ TourAPI 적재는 두 단계다.
 - `TOUR_API_PLACE_INGESTION_ENABLED`는 개발 서버 배포 시 `false`여야 한다. 스케줄러만 켜서 변경분을 동기화한다.
 - 배포 환경변수 파일은 `/opt/hackathon-dev/.env.server`다. FastAPI 저장소는 다른 파일을 쓴다. 예전에 두 저장소가 같은 파일을 써서 서로 덮어쓴 적이 있다.
 
-## 8. 현재 상태와 이어서 할 작업 (2026-08-11)
+## 8. 현재 상태와 이어서 할 작업 (2026-08-24)
 
-`main`이 기준 브랜치이며 별도 진행 중인 장기 브랜치는 없다.
+`main`이 기준 브랜치다. 원격에 브랜치가 20개 넘게 남아 있으나 대부분 병합이 끝난 잔재다.
 
 작업 트리에 사용자의 미커밋 변경이 남아 있을 수 있다. `git status --short`를 먼저 읽고,
 **커밋할 파일을 하나씩 경로로 지정한다.** `git add -A`나 디렉터리 단위 스테이징은
 사용자의 미커밋 파일을 함께 담을 수 있다.
 
-`output/`은 사람이 확인한 PDF/PNG 산출물이다. 서버 소스 변경과 함께 커밋하지 않는다.
+`output/`은 사람이 확인한 PDF/PNG 산출물이다. `.gitignore`에 있으므로 추적되지 않는다.
+
+### FastAPI 위임 RestClient 를 건드릴 때
+
+`FastApiScheduleConfig`와 `FastApiSpontaneousConfig` 두 곳이다. 둘 다 반드시
+**`JdkClientHttpRequestFactory` + `HttpClient.Version.HTTP_1_1`** 조합이어야 한다.
+새 위임 클라이언트를 추가할 때도 같다. 각각 다음 사고가 있었다.
+
+| 잘못 쓰면 | 무슨 일이 나는가 |
+| --- | --- |
+| `SimpleClientHttpRequestFactory` | 내부가 `HttpURLConnection`이라 **PATCH를 못 보낸다.** `Invalid HTTP method: PATCH`가 `ResourceAccessException`으로 잡혀 일정 수정이 **항상 503**이 된다 |
+| `HTTP_1_1` 미지정 | `HttpClient` 기본값이 HTTP/2다. 평문 연결에서 h2c 업그레이드를 시도하는데 uvicorn이 이를 거부하며 **요청 본문이 유실된다.** 본문 있는 POST·PATCH가 전부 422로 떨어져 일정 생성이 죽는다 |
+
+두 번째 증상은 FastAPI 응답이 `{"detail":[{"loc":["body"],"msg":"Field required"}]}`이다.
+`loc`이 특정 필드가 아니라 `["body"]`면 **본문 전체가 안 간 것**이지 계약 불일치가 아니다.
+uvicorn 로그에 `Unsupported upgrade request`와 `Invalid HTTP request received`가 함께 남는다.
+
+**`com.sun.net.httpserver` 스텁은 이 결함을 재현하지 못한다.** 업그레이드 헤더를 관대하게
+처리해서 본문이 정상 도착한다. 그래서 `FastApiScheduleConfigTest`는 결과가 아니라 원인을
+검증한다. 스텁이 받은 프로토콜이 `HTTP/1.1`인지, `Upgrade`/`HTTP2-Settings` 헤더가 없는지,
+본문이 그대로 도착했는지 본다. Mock RestClient 테스트로는 요청 팩토리를 타지 않아 못 잡는다.
 
 ### 최근에 끝난 일
 
-- Planner와 경로 Provider 계층 제거. 소스가 189파일 18,098줄에서 111파일 7,722줄로 줄었다.
-- 모든 오류 응답이 `code`·`fieldErrors`·`traceId`를 갖도록 핸들러 6종 추가. 신설 코드는
-  `INVALID_PLACE_SEARCH_REQUEST`, `MALFORMED_REQUEST`, `RESOURCE_NOT_FOUND`, `INTERNAL_ERROR`.
+- **PATCH 위임 복구** (#76, #77). 위 표의 두 사고를 순서대로 겪고 고쳤다.
+- **Swagger를 프론트 실사용에 맞춤** (#75). `POST /schedules`는 V1과 V2가 같은 경로라
+  OpenAPI가 하나만 표현할 수 있어 V1이 문서를 차지하고 있었다. V1을 `hidden` 처리해
+  프론트가 쓰는 V2가 보이게 했다. Preview 예시에서 프론트가 보내지 않는 `startTime`,
+  `endConstraint`, `customPrompt`를 뺐다. 엔드포인트는 전부 노출된 상태다.
+- **즉흥 여행 추천 위임 추가** (#79, 타 작업자). `POST /api/v1/spontaneous-trips/destinations`.
+- Planner와 경로 Provider 계층 제거.
+- 모든 오류 응답이 `code`·`fieldErrors`·`traceId`를 갖도록 핸들러 6종 추가.
 - PR 테스트 게이트(`.github/workflows/test.yml`)와 배포 헬스체크 확장.
 - dev Swagger 노출. `https://api.busantour.site/swagger-ui.html`
-- 장소 상세에 `source`·`categoryLabel`·`placeUrl`·`primaryImageUrl` 추가.
 - `resolve`의 부분 문자열 이름 매칭 제거. "해운대"가 "해운대 빛축제"에 연결되던 문제.
 - TourAPI 상세 보강 토글 추가 (`TOUR_API_ENRICHMENT_ENABLED`, 기본 `true`).
+
+전체 엔드포인트는 2026-08-24 dev에서 17/17 통과를 확인했다.
+
+### 즉흥 여행 추천이 프로젝트 규약에서 벗어나 있다
+
+`SpontaneousTripController`와 `FastApiSpontaneousClient`는 다른 위임 계층과 다르게 동작한다.
+프론트 연동 전에 정리해야 한다.
+
+- 요청·응답이 **`Map<String, Object>`**다. DTO가 없어 `@Valid`가 걸리지 않고 Swagger에
+  스키마가 뜨지 않는다.
+- 비활성 시 `IllegalStateException`을 던진다. 다른 위임은 전부
+  `BusinessException(EXTERNAL_PROVIDER_UNAVAILABLE)`으로 **503**을 준다. 지금은 500이 나간다.
+- FastAPI 오류를 도메인 코드로 매핑하지 않는다. `FastApiScheduleClient`의 `mapScheduleError`에
+  해당하는 것이 없어 400/404/422가 그대로 500으로 나간다.
+- `ErrorResponseOpenApiConfig.delegatesToFastApi()`가 이 경로를 모른다. 503이 문서화되지 않는다.
+- 테스트와 `docs/API_SPEC.md` 항목이 없다.
 
 ### 확인이 필요한 것
 
@@ -235,9 +279,25 @@ FastAPI도 쓰지 않는다.
 일정들이 같은 `schedule_days` 행을 공유했을 수 있다. 원인은 고쳤지만 이미 저장된 50여 건은
 점검하지 않았다.
 
+**dev에 테스트 일정이 쌓인다.** 일정 삭제 API가 없어 검증용으로 만든 일정을 지울 수 없다.
+
+### 지역별 추천 장소를 하려면
+
+`places`에 지역 컬럼이 없다. 적재 때 `areaCode=6`(부산)만 고정으로 넣고 TourAPI 응답의
+`sigungucode`는 버린다. 검색도 `findByNameContainingIgnoreCase`라 **이름만** 본다.
+주소는 검색 대상이 아니다.
+
+구는 주소에서 뽑는 편이 낫다. dev 표본 20건이 전부 파싱됐고 카카오 축약형
+("부산 동구 초량동")까지 걸린다. TourAPI `sigungucode`와 달리 카카오·네이버로 resolve된
+장소까지 같은 규칙으로 덮는다. 실패분만 카카오 좌표→행정구역으로 채우면 된다.
+
+다만 "추천"에는 순위 기준이 없다. 평점·리뷰수·방문수 컬럼이 전무하고 가진 것은
+`contentTypeId`와 이미지 유무뿐이다. 필터(`?district=해운대구`)와 추천은 규모가 다르다.
+
 ### 프론트 확인 후 진행할 것
 
 - `nearby-facilities` 미지원 유형에 `501` 대신 `400` 반환. 프론트가 `501`로 분기하는지 확인 필요.
+  파라미터는 `types`(복수형)이고 현재 지원값은 `CONVENIENCE_STORE` 하나뿐이다.
 - 장소 검색 응답의 중복 필드(`placeId`/`id`, `externalId`/`externalContentId`) 정리.
 - 장소 상세 화면을 카카오·네이버 지도로 넘기는 방향이 정해졌다. 전환이 끝나면
   `TOUR_API_ENRICHMENT_ENABLED=false`로 적재 보강을 끌 수 있다.
