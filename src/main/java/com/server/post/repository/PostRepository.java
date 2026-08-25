@@ -20,6 +20,19 @@ public interface PostRepository extends JpaRepository<Post, Long> {
 
     long countByUserIdAndDeletedAtIsNull(Long userId);
 
+    /**
+     * 조회용 단건. 작성자가 탈퇴하면 게시물도 함께 사라져야 하므로 작성자 상태까지 본다.
+     * 수정·삭제 경로는 요청자가 곧 작성자라 {@link #findByIdAndDeletedAtIsNull(Long)} 를 쓴다.
+     */
+    @EntityGraph(attributePaths = "user")
+    @Query("""
+            select post from Post post
+            where post.id = :id
+              and post.deletedAt is null
+              and post.user.deletedAt is null
+            """)
+    Optional<Post> findReadableById(@Param("id") Long id);
+
     /** 특정 사용자가 쓴 게시물 한 페이지. 피드와 같은 커서 방식을 쓴다. */
     @EntityGraph(attributePaths = "user")
     List<Post> findByUserIdAndDeletedAtIsNullAndIdLessThanOrderByIdDesc(
@@ -36,6 +49,7 @@ public interface PostRepository extends JpaRepository<Post, Long> {
     @Query("""
             select post from Post post
             where post.deletedAt is null
+              and post.user.deletedAt is null
               and post.id < :cursor
               and (:followerId is null or post.user.id in (
                     select follow.following.id from Follow follow
@@ -69,6 +83,7 @@ public interface PostRepository extends JpaRepository<Post, Long> {
     @Query("""
             select post from Post post
             where post.deletedAt is null
+              and post.user.deletedAt is null
               and post.createdAt >= :since
               and (:blockerId is null or not exists (
                     select 1 from Block block

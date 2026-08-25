@@ -1,6 +1,7 @@
 package com.server.post.service;
 
 import com.server.bookmark.repository.BookmarkRepository;
+import com.server.hashtag.service.HashtagService;
 import com.server.post.domain.Post;
 import com.server.post.domain.PostMedia;
 import com.server.post.dto.PostPlaceTagView;
@@ -25,17 +26,20 @@ public class PostSummaryAssembler {
     private final PostPlaceTagRepository postPlaceTagRepository;
     private final PostLikeRepository postLikeRepository;
     private final BookmarkRepository bookmarkRepository;
+    private final HashtagService hashtagService;
 
     public PostSummaryAssembler(
             PostMediaRepository postMediaRepository,
             PostPlaceTagRepository postPlaceTagRepository,
             PostLikeRepository postLikeRepository,
-            BookmarkRepository bookmarkRepository
+            BookmarkRepository bookmarkRepository,
+            HashtagService hashtagService
     ) {
         this.postMediaRepository = postMediaRepository;
         this.postPlaceTagRepository = postPlaceTagRepository;
         this.postLikeRepository = postLikeRepository;
         this.bookmarkRepository = bookmarkRepository;
+        this.hashtagService = hashtagService;
     }
 
     /**
@@ -53,6 +57,7 @@ public class PostSummaryAssembler {
         Map<Long, List<PostPlaceTagView>> placeTagsByPost =
                 postPlaceTagRepository.findViewsByPostIdIn(postIds).stream()
                         .collect(Collectors.groupingBy(PostPlaceTagView::postId));
+        Map<Long, List<String>> hashtagsByPost = hashtagService.findNamesByPostIds(postIds);
         Set<Long> likedPostIds = likedPostIds(requesterId, postIds);
         Set<Long> bookmarkedPostIds = bookmarkedPostIds(requesterId, postIds);
 
@@ -61,6 +66,7 @@ public class PostSummaryAssembler {
                         post,
                         mediaByPost.getOrDefault(post.getId(), List.of()),
                         placeTagsByPost.getOrDefault(post.getId(), List.of()),
+                        hashtagsByPost.getOrDefault(post.getId(), List.of()),
                         likedPostIds.contains(post.getId()),
                         bookmarkedPostIds.contains(post.getId())))
                 .toList();

@@ -31,15 +31,14 @@ public class HashtagSeedInitializer {
             "해운대맛집", "해운대카페", "광안리맛집", "광안리카페", "서면맛집", "남포동맛집"
     );
 
+    /**
+     * 확인 후 넣으면 인스턴스가 둘 이상 동시에 뜰 때 이름 고유 제약에 걸린다.
+     * ApplicationRunner 에서 예외가 나면 기동 자체가 실패하므로 충돌을 무시하고 넣는다.
+     */
     @Bean
     ApplicationRunner seedPopularHashtags(JdbcTemplate jdbcTemplate) {
-        return args -> POPULAR_HASHTAGS.forEach(name -> {
-            Integer count = jdbcTemplate.queryForObject(
-                    "select count(*) from hashtags where name = ?", Integer.class, name);
-            if (count == null || count == 0) {
-                jdbcTemplate.update(
-                        "insert into hashtags(name, post_count) values (?, 0)", name);
-            }
-        });
+        return args -> jdbcTemplate.batchUpdate(
+                "insert into hashtags(name, post_count) values (?, 0) on conflict do nothing",
+                POPULAR_HASHTAGS.stream().map(name -> new Object[] {name}).toList());
     }
 }

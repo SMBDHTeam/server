@@ -7,7 +7,6 @@ import com.server.hashtag.service.HashtagService;
 import com.server.place.domain.Place;
 import com.server.place.repository.PlaceRepository;
 import com.server.post.domain.Post;
-import com.server.post.domain.PostLike;
 import com.server.post.domain.PostMedia;
 import com.server.post.domain.PostPlaceTag;
 import com.server.post.dto.PostCreateRequest;
@@ -15,7 +14,6 @@ import com.server.post.dto.PostDetailResponse;
 import com.server.post.dto.PostLikeResponse;
 import com.server.post.dto.PostPlaceTagView;
 import com.server.post.dto.PostSummaryListResponse;
-import com.server.post.dto.PostSummaryResponse;
 import com.server.post.dto.PostUpdateRequest;
 import com.server.post.repository.PostLikeRepository;
 import com.server.post.repository.PostMediaRepository;
@@ -79,20 +77,21 @@ public class PostService {
         Post post = postRepository.save(new Post(author, request.content()));
         List<PostMedia> mediaList = saveMedia(post, request.mediaList());
         List<PostPlaceTag> placeTags = savePlaceTags(post, request.placeTags());
-        hashtagService.attachFromContent(post, request.content());
+        List<String> hashtags = hashtagService.attachFromContent(post, request.content());
 
         // 방금 만든 게시물이라 좋아요·저장이 있을 수 없다.
         return PostDetailResponse.from(
                 post,
                 mediaList,
                 placeTags.stream().map(PostPlaceTagView::from).toList(),
+                hashtags,
                 false,
                 false);
     }
 
     @Transactional(readOnly = true)
     public PostDetailResponse get(Long postId, Long requesterId) {
-        Post post = postRepository.findByIdAndDeletedAtIsNull(postId)
+        Post post = postRepository.findReadableById(postId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.POST_NOT_FOUND));
 
         List<Long> postIds = List.of(postId);
@@ -100,6 +99,7 @@ public class PostService {
                 post,
                 postMediaRepository.findByPostId(postId),
                 postPlaceTagRepository.findViewsByPostId(postId),
+                hashtagService.findNamesByPostIds(postIds).getOrDefault(postId, List.of()),
                 !postSummaryAssembler.likedPostIds(requesterId, postIds).isEmpty(),
                 !postSummaryAssembler.bookmarkedPostIds(requesterId, postIds).isEmpty());
     }
@@ -154,7 +154,7 @@ public class PostService {
     @Transactional(readOnly = true)
     public PostSummaryListResponse getUserPosts(
             Long userId, Long cursor, Integer size, Long requesterId) {
-        if (!userRepository.existsById(userId)) {
+        if (!userRepository.existsByIdAndDeletedAtIsNull(userId)) {
             throw new BusinessException(ErrorCode.USER_NOT_FOUND);
         }
         int limit = resolveFeedSize(size);
@@ -178,13 +178,14 @@ public class PostService {
     public PostDetailResponse update(Long postId, Long userId, PostUpdateRequest request) {
         Post post = findWritablePost(postId, userId);
         post.updateContent(request.content());
-        hashtagService.reattachFromContent(post, request.content());
+        List<String> hashtags = hashtagService.reattachFromContent(post, request.content());
 
         List<Long> postIds = List.of(postId);
         return PostDetailResponse.from(
                 post,
                 postMediaRepository.findByPostId(postId),
                 postPlaceTagRepository.findViewsByPostId(postId),
+                hashtags,
                 !postSummaryAssembler.likedPostIds(userId, postIds).isEmpty(),
                 !postSummaryAssembler.bookmarkedPostIds(userId, postIds).isEmpty());
     }
@@ -208,16 +209,20 @@ public class PostService {
         return post;
     }
 
-    /** 이미 눌린 좋아요를 다시 눌러도 개수가 늘지 않는다. */
+    /**
+     * 이미 눌린 좋아요를 다시 눌러도 개수가 늘지 않는다. 같은 요청이 동시에 들어와도
+     * 실제로 행이 들어간 쪽만 개수를 올린다.
+     */
     @Transactional
     public PostLikeResponse like(Long postId, Long userId) {
-        Post post = postRepository.findByIdAndDeletedAtIsNull(postId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.POST_NOT_FOUND));
-        User user = userRepository.findByIdAndDeletedAtIsNull(userId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
+        if (!postRepository.existsByIdAndDeletedAtIsNull(postId)) {
+            throw new BusinessException(ErrorCode.POST_NOT_FOUND);
+        }
+        if (!userRepository.existsByIdAndDeletedAtIsNull(userId)) {
+            throw new BusinessException(ErrorCode.USER_NOT_FOUND);
+        }
 
-        if (!postLikeRepository.existsByPostIdAndUserId(postId, userId)) {
-            postLikeRepository.save(new PostLike(post, user));
+        if (postLikeRepository.insertIfAbsent(postId, userId) > 0) {
             postRepository.increaseLikeCount(postId);
         }
         return new PostLikeResponse(postRepository.findLikeCountById(postId), true);

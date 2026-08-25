@@ -1,5 +1,6 @@
 package com.server.post.dto;
 
+import com.server.post.domain.MediaType;
 import com.server.post.domain.Post;
 import com.server.post.domain.PostMedia;
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -16,6 +17,9 @@ public record PostDetailResponse(
         @Schema(example = "광안리 야경 보러 갔는데 날씨가 좋았어요") String content,
         @Schema(description = "sortOrder 오름차순") List<Media> mediaList,
         List<PlaceTag> placeTags,
+        @Schema(description = "본문에서 뽑은 해시태그. # 는 빼고 이름만 담는다.",
+                example = "[\"광안리\", \"부산야경\"]")
+        List<String> hashtags,
         @Schema(example = "12") int likeCount,
         @Schema(example = "3") int commentCount,
         @Schema(description = "요청자가 좋아요를 누른 상태인지. 요청자를 알 수 없으면 false 다.",
@@ -39,7 +43,7 @@ public record PostDetailResponse(
     public record Media(
             @Schema(example = "3") Long id,
             @Schema(example = "https://example.com/media/gwangalli-night.jpg") String url,
-            @Schema(example = "IMAGE") String mediaType,
+            @Schema(example = "IMAGE") MediaType mediaType,
             @Schema(example = "0") int sortOrder
     ) {
     }
@@ -58,6 +62,7 @@ public record PostDetailResponse(
             Post post,
             List<PostMedia> mediaList,
             List<PostPlaceTagView> placeTags,
+            List<String> hashtags,
             boolean liked,
             boolean bookmarked
     ) {
@@ -83,6 +88,7 @@ public record PostDetailResponse(
                                 tag.latitude(),
                                 tag.longitude()))
                         .toList(),
+                hashtags,
                 post.getLikeCount(),
                 post.getCommentCount(),
                 liked,

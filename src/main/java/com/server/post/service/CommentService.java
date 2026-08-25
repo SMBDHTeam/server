@@ -1,9 +1,9 @@
 package com.server.post.service;
 
+import com.server.block.repository.BlockRepository;
 import com.server.common.error.BusinessException;
 import com.server.common.error.ErrorCode;
 import com.server.post.domain.Comment;
-import com.server.post.domain.CommentLike;
 import com.server.post.domain.Post;
 import com.server.post.dto.CommentCreateRequest;
 import com.server.post.dto.CommentLikeResponse;
@@ -34,26 +34,40 @@ public class CommentService {
     private final CommentRepository commentRepository;
     private final CommentLikeRepository commentLikeRepository;
     private final PostRepository postRepository;
+    private final BlockRepository blockRepository;
     private final UserRepository userRepository;
 
     public CommentService(
             CommentRepository commentRepository,
             CommentLikeRepository commentLikeRepository,
             PostRepository postRepository,
+            BlockRepository blockRepository,
             UserRepository userRepository
     ) {
         this.commentRepository = commentRepository;
         this.commentLikeRepository = commentLikeRepository;
         this.postRepository = postRepository;
+        this.blockRepository = blockRepository;
         this.userRepository = userRepository;
     }
 
+    /**
+     * 차단 관계가 있으면 어느 쪽이 차단했든 댓글을 쓸 수 없다. 차단은 상대가 내 계정에
+     * 접근하지 못하게 하는 것이므로, 차단한 사람이 내 글에 계속 댓글을 다는 상황을 막는다.
+     * 오류 문구에 차단을 드러내지 않아 누가 차단했는지는 알 수 없다.
+     */
     @Transactional
     public CommentResponse create(Long postId, Long userId, CommentCreateRequest request) {
         Post post = postRepository.findByIdAndDeletedAtIsNull(postId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.POST_NOT_FOUND));
         User author = userRepository.findByIdAndDeletedAtIsNull(userId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
+
+        // 본인 글이면 차단 관계가 있을 수 없어 조회를 건너뛴다.
+        Long postAuthorId = post.getUser().getId();
+        if (!postAuthorId.equals(userId) && blockRepository.existsBetween(postAuthorId, userId)) {
+            throw new BusinessException(ErrorCode.COMMENT_NOT_ALLOWED);
+        }
 
         Comment parent = resolveParent(postId, request.parentId());
         Comment comment = commentRepository.save(new Comment(post, author, parent, request.content()));
@@ -80,8 +94,7 @@ public class CommentService {
         }
 
         List<Long> parentIds = parents.stream().map(Comment::getId).toList();
-        List<Comment> replies = commentRepository
-                .findByParentIdInAndDeletedAtIsNullOrderByIdAsc(parentIds);
+        List<Comment> replies = commentRepository.findRepliesByParentIds(parentIds);
 
         // 부모와 답글의 좋아요 여부를 한 번에 읽는다.
         List<Long> allIds = new ArrayList<>(parentIds);
@@ -109,12 +122,12 @@ public class CommentService {
     /** 이미 눌린 좋아요를 다시 눌러도 개수가 늘지 않는다. */
     @Transactional
     public CommentLikeResponse like(Long postId, Long commentId, Long userId) {
-        Comment comment = findComment(postId, commentId);
-        User user = userRepository.findByIdAndDeletedAtIsNull(userId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
+        findComment(postId, commentId);
+        if (!userRepository.existsByIdAndDeletedAtIsNull(userId)) {
+            throw new BusinessException(ErrorCode.USER_NOT_FOUND);
+        }
 
-        if (!commentLikeRepository.existsByCommentIdAndUserId(commentId, userId)) {
-            commentLikeRepository.save(new CommentLike(comment, user));
+        if (commentLikeRepository.insertIfAbsent(commentId, userId) > 0) {
             commentRepository.increaseLikeCount(commentId);
         }
         return new CommentLikeResponse(commentRepository.findLikeCountById(commentId), true);

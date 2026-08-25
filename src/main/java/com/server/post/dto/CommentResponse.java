@@ -9,9 +9,9 @@ import java.util.List;
 @Schema(description = "댓글 한 건. 최상위 댓글이면 replies 에 답글이 담긴다.")
 public record CommentResponse(
         @Schema(example = "3") Long id,
-        @Schema(description = "삭제된 댓글이면 null 이다.")
+        @Schema(description = "감춰진 댓글이면 null 이다.")
         PostDetailResponse.Author author,
-        @Schema(description = "삭제된 댓글이면 null 이다. 화면 문구는 클라이언트가 정한다.",
+        @Schema(description = "감춰진 댓글이면 null 이다. 화면 문구는 클라이언트가 정한다.",
                 example = "저도 여기 가봤는데 좋았어요")
         String content,
         @Schema(example = "2") int likeCount,
@@ -19,18 +19,23 @@ public record CommentResponse(
                 example = "false")
         boolean liked,
         @Schema(example = "2026-08-18T04:02:00") LocalDateTime createdAt,
-        @Schema(description = "삭제된 댓글인지. 답글이 남아 있어 자리만 유지하는 경우 true 다.",
-                example = "false")
+        @Schema(description = "감춰진 댓글인지. 삭제됐거나 작성자가 탈퇴했지만 답글이 남아 "
+                + "자리만 유지하는 경우 true 다.", example = "false")
         boolean deleted,
+        @Schema(description = "감춰진 이유. deleted 가 false 면 null 이다. "
+                + "화면 문구는 이 값을 보고 클라이언트가 정한다.", example = "WITHDRAWN")
+        CommentHiddenReason hiddenReason,
         @Schema(description = "이 댓글에 달린 답글. 답글에는 다시 답글이 없으므로 항상 비어 있다.")
         List<CommentResponse> replies
 ) {
 
     public static CommentResponse from(Comment comment, boolean liked, List<CommentResponse> replies) {
-        if (comment.getDeletedAt() != null) {
-            // 삭제된 댓글은 답글을 매달 자리만 남기고 작성자와 내용을 감춘다.
+        CommentHiddenReason hiddenReason = hiddenReason(comment);
+        if (hiddenReason != null) {
+            // 답글을 매달 자리만 남기고 작성자와 내용을 감춘다.
             return new CommentResponse(
-                    comment.getId(), null, null, 0, false, comment.getCreatedAt(), true, replies);
+                    comment.getId(), null, null, 0, false, comment.getCreatedAt(),
+                    true, hiddenReason, replies);
         }
         return new CommentResponse(
                 comment.getId(),
@@ -43,10 +48,22 @@ public record CommentResponse(
                 liked,
                 comment.getCreatedAt(),
                 false,
+                null,
                 replies);
     }
 
     public static CommentResponse from(Comment comment, boolean liked) {
         return from(comment, liked, List.of());
+    }
+
+    /** 탈퇴한 사용자의 댓글도 삭제된 댓글과 똑같이 감춘다. 감출 이유가 없으면 null 이다. */
+    private static CommentHiddenReason hiddenReason(Comment comment) {
+        if (comment.getDeletedAt() != null) {
+            return CommentHiddenReason.DELETED;
+        }
+        if (comment.getUser().getDeletedAt() != null) {
+            return CommentHiddenReason.WITHDRAWN;
+        }
+        return null;
     }
 }

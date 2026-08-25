@@ -2,7 +2,10 @@ package com.server.common.error;
 
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolationException;
+import java.util.Arrays;
 import java.util.List;
+import java.util.Objects;
+import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -17,6 +20,8 @@ import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.method.annotation.HandlerMethodValidationException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
+import tools.jackson.core.JacksonException.Reference;
+import tools.jackson.databind.exc.InvalidFormatException;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
@@ -107,6 +112,9 @@ public class GlobalExceptionHandler {
     /**
      * 본문 JSON이 깨졌거나 비어 있을 때. 예전에는 핸들러가 없어 Spring 기본 응답이 나가
      * code와 traceId가 없는 본문을 클라이언트가 받았다.
+     *
+     * <p>열거형에 없는 값을 보낸 경우처럼 어느 필드가 잘못됐는지 알 수 있으면 그 필드를
+     * 짚어 준다. 본문 전체를 "읽을 수 없다"고만 하면 클라이언트가 원인을 찾기 어렵다.
      */
     @ExceptionHandler(HttpMessageNotReadableException.class)
     public ResponseEntity<ErrorResponse> handleUnreadableBody(
@@ -117,9 +125,46 @@ public class GlobalExceptionHandler {
                 .status(HttpStatus.BAD_REQUEST)
                 .body(ErrorResponse.of(
                         ErrorCode.MALFORMED_REQUEST,
-                        List.of(new ErrorResponse.FieldErrorResponse(
-                                "body", "요청 본문을 읽을 수 없습니다. JSON 형식을 확인해 주세요.")),
+                        List.of(unreadableBodyFieldError(exception)),
                         traceId(request)));
+    }
+
+    private ErrorResponse.FieldErrorResponse unreadableBodyFieldError(
+            HttpMessageNotReadableException exception) {
+        InvalidFormatException invalidFormat = findInvalidFormat(exception);
+        if (invalidFormat != null) {
+            String field = invalidFormat.getPath().stream()
+                    .map(Reference::getPropertyName)
+                    .filter(Objects::nonNull)
+                    .reduce((parent, child) -> parent + "." + child)
+                    .orElse("body");
+            return new ErrorResponse.FieldErrorResponse(field,
+                    "값 \"%s\" 을(를) 쓸 수 없습니다.%s"
+                            .formatted(invalidFormat.getValue(), allowedValues(invalidFormat)));
+        }
+        return new ErrorResponse.FieldErrorResponse(
+                "body", "요청 본문을 읽을 수 없습니다. JSON 형식을 확인해 주세요.");
+    }
+
+    /** 레코드 생성 중 실패하면 원인이 한 겹 더 안쪽에 들어가므로 사슬을 따라 내려간다. */
+    private InvalidFormatException findInvalidFormat(Throwable exception) {
+        for (Throwable cause = exception; cause != null; cause = cause.getCause()) {
+            if (cause instanceof InvalidFormatException invalidFormat) {
+                return invalidFormat;
+            }
+        }
+        return null;
+    }
+
+    /** 열거형이면 쓸 수 있는 값을 알려준다. 그 밖의 타입은 알려줄 목록이 없다. */
+    private String allowedValues(InvalidFormatException exception) {
+        Class<?> targetType = exception.getTargetType();
+        if (targetType == null || !targetType.isEnum()) {
+            return "";
+        }
+        return Arrays.stream(targetType.getEnumConstants())
+                .map(String::valueOf)
+                .collect(Collectors.joining(", ", " 가능한 값: ", ""));
     }
 
     /** 경로 변수나 쿼리 파라미터의 타입이 맞지 않을 때. 예: /schedules/abc */
@@ -213,6 +258,16 @@ public class GlobalExceptionHandler {
         }
         if (uri.startsWith("/api/v1/places") || uri.startsWith("/api/v1/locations")) {
             return ErrorCode.INVALID_PLACE_SEARCH_REQUEST;
+        }
+        // 댓글 경로가 /api/v1/posts/{postId}/comments 라 게시물보다 먼저 본다.
+        if (uri.startsWith("/api/v1/posts") && uri.contains("/comments")) {
+            return ErrorCode.INVALID_COMMENT_REQUEST;
+        }
+        if (uri.startsWith("/api/v1/posts")) {
+            return ErrorCode.INVALID_POST_REQUEST;
+        }
+        if (uri.startsWith("/api/v1/users")) {
+            return ErrorCode.INVALID_USER_REQUEST;
         }
         return ErrorCode.INVALID_SCHEDULE_CONDITION;
     }

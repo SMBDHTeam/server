@@ -13,8 +13,9 @@ public class PostMedia {
     @ManyToOne(fetch = FetchType.LAZY)
     private Post post;
 
+    @Enumerated(EnumType.STRING)
     @Column(name = "media_type", nullable = false)
-    private String mediaType;
+    private MediaType mediaType;
 
     @Column(nullable = false, columnDefinition = "text")
     private String url;
@@ -25,7 +26,7 @@ public class PostMedia {
     protected PostMedia() {
     }
 
-    public PostMedia(Post post, String mediaType, String url, int sortOrder) {
+    public PostMedia(Post post, MediaType mediaType, String url, int sortOrder) {
         this.post = post;
         this.mediaType = mediaType;
         this.url = url;
@@ -40,7 +41,7 @@ public class PostMedia {
         return post;
     }
 
-    public String getMediaType() {
+    public MediaType getMediaType() {
         return mediaType;
     }
 
