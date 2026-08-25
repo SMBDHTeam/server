@@ -87,6 +87,16 @@ public class Place {
     @Column(name = "ingestion_last_error", columnDefinition = "text")
     private String ingestionLastError;
 
+    /**
+     * 관리자가 가린 시각. 지우지 않고 가리는 이유는, 행을 지우면 TourAPI 증분 동기화가
+     * 다음 실행에서 같은 장소를 다시 만들기 때문이다.
+     */
+    @Column(name = "hidden_at")
+    private LocalDateTime hiddenAt;
+
+    @Column(name = "hidden_reason", columnDefinition = "text")
+    private String hiddenReason;
+
     @Column(name = "ingestion_next_retry_at")
     private LocalDateTime ingestionNextRetryAt;
 
@@ -128,6 +138,28 @@ public class Place {
         this.lastSeenAt = this.createdAt;
         this.lastSyncedAt = this.createdAt;
         this.ingestionStatus = PlaceIngestionStatus.SYNCED;
+    }
+
+    public LocalDateTime getHiddenAt() {
+        return hiddenAt;
+    }
+
+    public String getHiddenReason() {
+        return hiddenReason;
+    }
+
+    public boolean isHidden() {
+        return hiddenAt != null;
+    }
+
+    public void hide(String reason) {
+        this.hiddenAt = LocalDateTime.now();
+        this.hiddenReason = reason;
+    }
+
+    public void unhide() {
+        this.hiddenAt = null;
+        this.hiddenReason = null;
     }
 
     public Long getId() {

@@ -51,6 +51,14 @@ public class Report {
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
 
+    /** 처리한 관리자. 이견이 생겼을 때 되짚을 근거다. */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "handled_by")
+    private User handledBy;
+
+    @Column(name = "handled_at")
+    private LocalDateTime handledAt;
+
     protected Report() {
     }
 
@@ -61,6 +69,24 @@ public class Report {
         this.reason = reason;
         this.status = ReportStatus.PENDING;
         this.createdAt = LocalDateTime.now();
+    }
+
+    /**
+     * 처리 상태를 바꾼다. 되돌리는 것도 허용한다. 잘못 처리한 신고를 다시 대기로 놓을 수
+     * 없으면 관리자가 새 신고를 기다리는 수밖에 없다.
+     */
+    public void handle(ReportStatus status, User handler) {
+        this.status = status;
+        this.handledBy = handler;
+        this.handledAt = LocalDateTime.now();
+    }
+
+    public User getHandledBy() {
+        return handledBy;
+    }
+
+    public LocalDateTime getHandledAt() {
+        return handledAt;
     }
 
     public Long getId() {

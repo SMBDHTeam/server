@@ -22,7 +22,7 @@ import org.springframework.data.redis.core.ValueOperations;
  *
  * <p>TTL 은 무시한다. 만료는 Redis 의 몫이고, 여기서 검증하려는 것은 회전과 재사용 판정이다.
  */
-class InMemoryStringRedisTemplate extends StringRedisTemplate {
+public class InMemoryStringRedisTemplate extends StringRedisTemplate {
 
     private final Map<String, String> store = new LinkedHashMap<>();
 

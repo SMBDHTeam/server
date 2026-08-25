@@ -74,6 +74,12 @@ class PostgresMigrationIntegrationTest {
                         + "and indexname = 'uk_users_provider_active'",
                 Integer.class
         );
+        Integer reportHandlingColumnCount = jdbcTemplate.queryForObject(
+                "select count(*) from information_schema.columns "
+                        + "where table_schema = 'public' and table_name = 'reports' "
+                        + "and column_name in ('handled_by', 'handled_at')",
+                Integer.class
+        );
         Integer scheduleOwnerColumnCount = jdbcTemplate.queryForObject(
                 "select count(*) from information_schema.columns "
                         + "where table_schema = 'public' and table_name = 'schedules' "
@@ -100,6 +106,7 @@ class PostgresMigrationIntegrationTest {
         // 같은 구글 계정으로 두 번 가입되지 않게 막는 부분 고유 인덱스.
         assertThat(providerIndexCount).isEqualTo(1);
         assertThat(scheduleOwnerColumnCount).isEqualTo(1);
+        assertThat(reportHandlingColumnCount).isEqualTo(2);
     }
 
     /** classpath의 db/migration 아래 있는 실제 스크립트 수. */

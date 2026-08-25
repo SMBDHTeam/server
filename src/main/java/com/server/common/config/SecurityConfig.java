@@ -3,6 +3,7 @@ package com.server.common.config;
 import com.server.auth.web.AccessTokenAuthenticationFilter;
 import com.server.auth.web.ErrorResponseAccessDeniedHandler;
 import com.server.auth.web.ErrorResponseAuthenticationEntryPoint;
+import com.server.auth.web.SuspendedUserWriteFilter;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.Customizer;
@@ -21,17 +22,20 @@ public class SecurityConfig {
     private final AccessTokenAuthenticationFilter accessTokenAuthenticationFilter;
     private final ErrorResponseAuthenticationEntryPoint authenticationEntryPoint;
     private final ErrorResponseAccessDeniedHandler accessDeniedHandler;
+    private final SuspendedUserWriteFilter suspendedUserWriteFilter;
 
     public SecurityConfig(
             CorsProperties corsProperties,
             AccessTokenAuthenticationFilter accessTokenAuthenticationFilter,
             ErrorResponseAuthenticationEntryPoint authenticationEntryPoint,
-            ErrorResponseAccessDeniedHandler accessDeniedHandler
+            ErrorResponseAccessDeniedHandler accessDeniedHandler,
+            SuspendedUserWriteFilter suspendedUserWriteFilter
     ) {
         this.corsProperties = corsProperties;
         this.accessTokenAuthenticationFilter = accessTokenAuthenticationFilter;
         this.authenticationEntryPoint = authenticationEntryPoint;
         this.accessDeniedHandler = accessDeniedHandler;
+        this.suspendedUserWriteFilter = suspendedUserWriteFilter;
     }
 
     @Bean
@@ -46,6 +50,10 @@ public class SecurityConfig {
         // 토큰이 있으면 읽어 인증 정보를 채운다. 없어도 통과시킨다.
         http.addFilterBefore(
                 accessTokenAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
+
+        // 인증 정보를 채운 뒤에 본다. 정지된 계정의 쓰기를 여기서 막지 않으면 정지가
+        // 상태만 저장하고 아무것도 막지 못한다.
+        http.addFilterAfter(suspendedUserWriteFilter, AccessTokenAuthenticationFilter.class);
 
         // 401·403 도 다른 오류와 같은 ErrorResponse 형태로 내보낸다. Security 예외는 필터
         // 단계에서 나 @ControllerAdvice 가 잡지 못하므로 여기서 직접 연결한다.

@@ -205,6 +205,11 @@ jobs:
             printf 'JWT_SECRET=%s\n' "$JWT_SECRET"
             printf 'GOOGLE_CLIENT_ID=%s\n' "$GOOGLE_CLIENT_ID"
 
+            # 복구 기한이 지난 게시물을 실제로 지우는 스케줄러. 기본값이 false 라
+            # 여기서 켜지 않으면 지운 게시물이 영원히 쌓이고, 사용자가 지웠다고 믿는
+            # 본문과 사진 URL 이 DB 에 그대로 남는다.
+            printf 'COMMUNITY_POST_PURGE_ENABLED=true\n'
+
             printf 'REDIS_HOST=redis\n'
             printf 'REDIS_PORT=6379\n'
             printf 'SCHEDULE_FASTAPI_ENABLED=true\n'
