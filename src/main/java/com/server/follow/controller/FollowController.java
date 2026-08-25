@@ -6,6 +6,7 @@ import com.server.follow.service.FollowService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -64,7 +65,7 @@ public class FollowController {
             @Parameter(description = "0부터 시작하는 페이지 번호", example = "0")
             @RequestParam(defaultValue = "0") Integer page,
             @Parameter(description = "한 번에 가져올 인원 수. 1 이상 50 이하", example = "20")
-            @RequestParam(defaultValue = "20") @Min(1) Integer size
+            @RequestParam(defaultValue = "20") @Min(1) @Max(50) Integer size
     ) {
         return followService.getFollowers(userId, page, size);
     }
@@ -76,7 +77,7 @@ public class FollowController {
             @Parameter(description = "0부터 시작하는 페이지 번호", example = "0")
             @RequestParam(defaultValue = "0") Integer page,
             @Parameter(description = "한 번에 가져올 인원 수. 1 이상 50 이하", example = "20")
-            @RequestParam(defaultValue = "20") @Min(1) Integer size
+            @RequestParam(defaultValue = "20") @Min(1) @Max(50) Integer size
     ) {
         return followService.getFollowings(userId, page, size);
     }

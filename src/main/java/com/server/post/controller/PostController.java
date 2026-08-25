@@ -10,6 +10,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import org.springframework.http.HttpStatus;
 import org.springframework.validation.annotation.Validated;
@@ -67,7 +68,7 @@ public class PostController {
             @Parameter(description = "이전 응답의 nextCursor. 첫 페이지는 생략한다.", example = "81")
             @RequestParam(required = false) Long cursor,
             @Parameter(description = "한 번에 가져올 게시물 수. 1 이상 50 이하", example = "20")
-            @RequestParam(defaultValue = "20") @Min(1) Integer size,
+            @RequestParam(defaultValue = "20") @Min(1) @Max(50) Integer size,
             @Parameter(description = "following 이면 팔로우한 사람들의 게시물만 반환한다. "
                     + "이때 X-User-Id 가 필요하다.", example = "following")
             @RequestParam(required = false) String feed,
@@ -94,7 +95,7 @@ public class PostController {
             @Parameter(description = "0부터 시작하는 페이지 번호", example = "0")
             @RequestParam(defaultValue = "0") Integer page,
             @Parameter(description = "한 번에 가져올 게시물 수. 1 이상 50 이하", example = "20")
-            @RequestParam(defaultValue = "20") @Min(1) Integer size,
+            @RequestParam(defaultValue = "20") @Min(1) @Max(50) Integer size,
             // TODO: 인증 도입 시 제거하고 인증 주체에서 사용자 ID 를 받는다. 임시 식별 수단이다.
             @Parameter(description = "요청자 ID. 차단한 사용자를 걸러내는 데 쓴다.", example = "1")
             @RequestHeader(value = "X-User-Id", required = false) Long requesterId

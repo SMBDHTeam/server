@@ -5,6 +5,7 @@ import com.server.hashtag.service.HashtagService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -35,7 +36,7 @@ public class HashtagController {
             @Parameter(description = "태그 앞글자. # 은 빼고 보낸다.", example = "광")
             @RequestParam(required = false) String keyword,
             @Parameter(description = "최대 후보 수. 1 이상 30 이하", example = "10")
-            @RequestParam(defaultValue = "10") @Min(1) Integer size
+            @RequestParam(defaultValue = "10") @Min(1) @Max(30) Integer size
     ) {
         return hashtagService.suggest(keyword, size);
     }

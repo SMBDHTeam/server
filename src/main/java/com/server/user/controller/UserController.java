@@ -7,6 +7,7 @@ import com.server.user.service.UserService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -54,7 +55,7 @@ public class UserController {
             @Parameter(description = "이전 응답의 nextCursor. 첫 페이지는 생략한다.", example = "81")
             @RequestParam(required = false) Long cursor,
             @Parameter(description = "한 번에 가져올 게시물 수. 1 이상 50 이하", example = "20")
-            @RequestParam(defaultValue = "20") @Min(1) Integer size,
+            @RequestParam(defaultValue = "20") @Min(1) @Max(50) Integer size,
             // TODO: 인증 도입 시 제거하고 인증 주체에서 사용자 ID 를 받는다. 임시 식별 수단이다.
             @Parameter(description = "요청자 ID. 없으면 좋아요·저장 여부가 false 로 나간다.", example = "1")
             @RequestHeader(value = "X-User-Id", required = false) Long requesterId
