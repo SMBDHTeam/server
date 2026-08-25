@@ -3,6 +3,8 @@ package com.server.post.service;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.server.bookmark.repository.BookmarkRepository;
+import com.server.hashtag.repository.HashtagRepository;
+import com.server.hashtag.service.HashtagService;
 import com.server.post.domain.Comment;
 import com.server.post.domain.Post;
 import com.server.post.domain.PostMedia;
@@ -15,6 +17,7 @@ import com.server.post.repository.PostRepository;
 import com.server.user.domain.User;
 import jakarta.persistence.EntityManager;
 import java.time.LocalDateTime;
+import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -58,6 +61,12 @@ class PostPurgeServiceTest {
     private BookmarkRepository bookmarkRepository;
 
     @Autowired
+    private HashtagService hashtagService;
+
+    @Autowired
+    private HashtagRepository hashtagRepository;
+
+    @Autowired
     private EntityManager entityManager;
 
     private User author;
@@ -95,6 +104,24 @@ class PostPurgeServiceTest {
     }
 
     @Test
+    @DisplayName("완전히 지울 때 해시태그 사용 수도 함께 되돌린다")
+    void restoresHashtagPostCount() {
+        Post expired = givenPost(LocalDateTime.now().minusDays(RETENTION_DAYS + 1));
+        // 소프트 삭제 때 연결이 끊기지 않고 남아 있는 상황을 만든다.
+        hashtagService.attachFromContent(expired, "지운 글 #광안리");
+        entityManager.flush();
+        entityManager.clear();
+
+        long before = postCountOf("광안리");
+        assertThat(postPurgeService.purgeExpired(RETENTION_DAYS)).isEqualTo(1);
+        entityManager.flush();
+        entityManager.clear();
+
+        // 링크만 지우면 사용 수가 부풀어 자동완성 정렬이 틀어진다.
+        assertThat(postCountOf("광안리")).isEqualTo(before - 1);
+    }
+
+    @Test
     @DisplayName("아직 복구할 수 있는 게시물은 건드리지 않는다")
     void keepsRestorablePost() {
         Post restorable = givenPost(LocalDateTime.now().minusDays(RETENTION_DAYS - 1));
@@ -116,6 +143,10 @@ class PostPurgeServiceTest {
 
         assertThat(postPurgeService.purgeExpired(RETENTION_DAYS)).isZero();
         assertThat(postRepository.findById(live.getId())).isPresent();
+    }
+
+    private long postCountOf(String name) {
+        return hashtagRepository.findByNameIn(List.of(name)).get(0).getPostCount();
     }
 
     private Post givenPost(LocalDateTime deletedAt) {

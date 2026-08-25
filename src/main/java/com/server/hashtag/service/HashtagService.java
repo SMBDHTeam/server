@@ -1,13 +1,11 @@
 package com.server.hashtag.service;
 
 import com.server.hashtag.domain.Hashtag;
-import com.server.hashtag.domain.PostHashtag;
 import com.server.hashtag.dto.HashtagSuggestionListResponse;
 import com.server.hashtag.dto.HashtagSuggestionResponse;
 import com.server.hashtag.repository.HashtagRepository;
 import com.server.hashtag.repository.PostHashtagRepository;
 import com.server.post.domain.Post;
-import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
@@ -49,11 +47,15 @@ public class HashtagService {
             return List.of();
         }
 
-        List<Hashtag> hashtags = findOrCreate(names);
-        postHashtagRepository.saveAll(hashtags.stream()
-                .map(hashtag -> new PostHashtag(post, hashtag))
-                .toList());
-        hashtagRepository.increasePostCount(hashtags.stream().map(Hashtag::getId).toList());
+        // 실제로 새로 연결된 것만 사용 수를 올린다. 같은 게시물을 동시에 두 번 저장해도
+        // 한쪽만 연결되고, 이미 연결돼 있으면 사용 수가 두 번 오르지 않는다.
+        List<Long> attachedIds = findOrCreate(names).stream()
+                .map(Hashtag::getId)
+                .filter(hashtagId -> postHashtagRepository.insertIfAbsent(post.getId(), hashtagId) > 0)
+                .toList();
+        if (!attachedIds.isEmpty()) {
+            hashtagRepository.increasePostCount(attachedIds);
+        }
         return names;
     }
 
@@ -115,21 +117,24 @@ public class HashtagService {
     }
 
     /**
-     * 이미 있는 태그는 그대로 쓰고 없는 것만 만든다. 같은 태그를 두 사람이 동시에 처음
-     * 쓰면 이름 고유 제약에 걸릴 수 있으며, 그 경우 요청 하나가 실패한다.
+     * 이미 있는 태그는 그대로 쓰고 없는 것만 만든다.
+     *
+     * <p>없는 것을 바로 저장하지 않고 DB 에 맡긴 뒤 다시 읽는다. 같은 태그를 두 사람이
+     * 동시에 처음 쓰면 양쪽 다 없다고 읽어, 확인 후 저장하는 방식으로는 한쪽이 이름 고유
+     * 제약에 걸려 실패한다.
      */
     private List<Hashtag> findOrCreate(List<String> names) {
         Map<String, Hashtag> existing = hashtagRepository.findByNameIn(names).stream()
                 .collect(Collectors.toMap(Hashtag::getName, Function.identity()));
 
-        List<Hashtag> created = new ArrayList<>();
-        for (String name : names) {
-            if (!existing.containsKey(name)) {
-                created.add(new Hashtag(name));
-            }
-        }
-        if (!created.isEmpty()) {
-            hashtagRepository.saveAll(created).forEach(hashtag -> existing.put(hashtag.getName(), hashtag));
+        List<String> missing = names.stream()
+                .filter(name -> !existing.containsKey(name))
+                .toList();
+        if (!missing.isEmpty()) {
+            missing.forEach(hashtagRepository::insertIfAbsent);
+            // 다른 요청이 먼저 만들었을 수 있으므로 만든 것이 아니라 읽은 것을 쓴다.
+            hashtagRepository.findByNameIn(missing)
+                    .forEach(hashtag -> existing.put(hashtag.getName(), hashtag));
         }
         return names.stream().map(existing::get).toList();
     }

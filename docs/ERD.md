@@ -527,7 +527,7 @@ DB에서 직접 증감시킨다. 동시에 들어온 요청이 같은 값을 읽
 **`target_id`에는 외래키가 없다.** 대상이 게시물·댓글·사용자로 달라져 한 테이블을 가리킬 수
 없기 때문이다. 대상이 실제로 있는지는 애플리케이션에서 확인한다.
 
-같은 사용자가 같은 대상을 다시 신고하면 거절한다. `V9__add_reports_unique_constraint.sql`에서
+같은 사용자가 같은 대상을 다시 신고하면 거절한다. `V11__add_reports_unique_constraint.sql`에서
 `uk_reports_reporter_target(reporter_id, target_type, target_id)` 고유 제약을 추가했다.
 코드로만 막으면 같은 요청이 동시에 들어올 때 중복 행이 남는다.
 
@@ -557,7 +557,7 @@ DB에서 직접 증감시킨다. 동시에 들어온 요청이 같은 값을 읽
 조회에 쓴다. `idx_notifications_unread`는 안 읽은 행만 담는 부분 인덱스로, 읽은 알림이 쌓여도
 안 읽은 수 조회 비용이 늘지 않게 한다.
 
-`V10__create_notifications_table.sql`에서 추가한다.
+`V14__create_notifications_table.sql`에서 추가한다.
 
 ## 일정 생성 V2 변경
 

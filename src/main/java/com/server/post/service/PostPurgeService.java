@@ -1,7 +1,7 @@
 package com.server.post.service;
 
 import com.server.bookmark.repository.BookmarkRepository;
-import com.server.hashtag.repository.PostHashtagRepository;
+import com.server.hashtag.service.HashtagService;
 import com.server.post.domain.Post;
 import com.server.post.repository.CommentLikeRepository;
 import com.server.post.repository.CommentRepository;
@@ -29,13 +29,13 @@ public class PostPurgeService {
     private static final Logger log = LoggerFactory.getLogger(PostPurgeService.class);
 
     /** 한 번에 지우는 최대 건수. 한 트랜잭션이 지나치게 길어지지 않게 나눠 지운다. */
-    private static final int BATCH_SIZE = 100;
+    public static final int BATCH_SIZE = 100;
 
     private final PostRepository postRepository;
     private final PostMediaRepository postMediaRepository;
     private final PostPlaceTagRepository postPlaceTagRepository;
     private final PostLikeRepository postLikeRepository;
-    private final PostHashtagRepository postHashtagRepository;
+    private final HashtagService hashtagService;
     private final CommentRepository commentRepository;
     private final CommentLikeRepository commentLikeRepository;
     private final BookmarkRepository bookmarkRepository;
@@ -45,7 +45,7 @@ public class PostPurgeService {
             PostMediaRepository postMediaRepository,
             PostPlaceTagRepository postPlaceTagRepository,
             PostLikeRepository postLikeRepository,
-            PostHashtagRepository postHashtagRepository,
+            HashtagService hashtagService,
             CommentRepository commentRepository,
             CommentLikeRepository commentLikeRepository,
             BookmarkRepository bookmarkRepository
@@ -54,16 +54,20 @@ public class PostPurgeService {
         this.postMediaRepository = postMediaRepository;
         this.postPlaceTagRepository = postPlaceTagRepository;
         this.postLikeRepository = postLikeRepository;
-        this.postHashtagRepository = postHashtagRepository;
+        this.hashtagService = hashtagService;
         this.commentRepository = commentRepository;
         this.commentLikeRepository = commentLikeRepository;
         this.bookmarkRepository = bookmarkRepository;
     }
 
     /**
-     * 삭제한 지 {@code retentionDays} 일이 지난 게시물을 지운다.
+     * 삭제한 지 {@code retentionDays} 일이 지난 게시물을 최대 {@value #BATCH_SIZE} 건 지운다.
      *
-     * @return 지운 게시물 수
+     * <p>한 번에 다 지우지 않는 것은 트랜잭션을 짧게 유지하기 위해서다. 남은 분량은
+     * 호출하는 쪽이 반환값을 보고 다시 부른다. 그러지 않으면 하루 만료량이 이 값을 넘을 때
+     * 매일 조금씩 밀려 격차가 계속 벌어진다.
+     *
+     * @return 이번에 지운 게시물 수. {@value #BATCH_SIZE} 이면 더 남아 있을 수 있다.
      */
     @Transactional
     public int purgeExpired(int retentionDays) {
@@ -75,7 +79,10 @@ public class PostPurgeService {
         }
 
         expired.forEach(post -> purge(post.getId()));
+        // deleteAllByIdInBatch 를 쓰면 안 된다. 벌크 삭제가 즉시 나가는 바람에 위에서 지운
+        // 북마크·좋아요가 아직 반영되지 않아 외래키에 걸린다.
         postRepository.deleteAll(expired);
+
         log.info("복구 기한이 지난 게시물 {}건을 지웠다. 기준 시각={}", expired.size(), deadline);
         return expired.size();
     }
@@ -88,7 +95,8 @@ public class PostPurgeService {
         bookmarkRepository.deleteByPostId(postId);
         postMediaRepository.deleteByPostId(postId);
         postPlaceTagRepository.deleteByPostId(postId);
-        // 삭제 시점에 이미 끊었지만, 예전 데이터가 남아 있을 수 있어 한 번 더 지운다.
-        postHashtagRepository.deleteByPostId(postId);
+        // 소프트 삭제 때 이미 끊었지만 남아 있을 수 있다. 링크만 지우면 태그 사용 수가
+        // 부풀어 자동완성 정렬이 틀어지고 되돌릴 근거도 없으므로 사용 수까지 함께 되돌린다.
+        hashtagService.detachFromPost(postId);
     }
 }

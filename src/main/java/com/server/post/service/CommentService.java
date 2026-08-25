@@ -173,6 +173,8 @@ public class CommentService {
         return new CommentLikeResponse(commentRepository.findLikeCountById(commentId), false);
     }
 
+    /** 내용만 바꾼다. 답글 관계와 좋아요 수는 그대로 둔다. */
+    @Transactional
     public CommentResponse update(
             Long postId, Long commentId, Long userId, CommentUpdateRequest request) {
         Comment comment = findWritableComment(postId, commentId, userId);
