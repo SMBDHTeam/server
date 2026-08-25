@@ -4,6 +4,7 @@ import com.server.post.dto.CommentCreateRequest;
 import com.server.post.dto.CommentLikeResponse;
 import com.server.post.dto.CommentListResponse;
 import com.server.post.dto.CommentResponse;
+import com.server.post.dto.CommentUpdateRequest;
 import com.server.post.service.CommentService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -14,6 +15,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -49,6 +51,22 @@ public class CommentController {
             @Valid @RequestBody CommentCreateRequest request
     ) {
         return commentService.create(postId, userId, request);
+    }
+
+    @PatchMapping("/{commentId}")
+    @Operation(
+            summary = "댓글 수정",
+            description = "내용만 바꾼다. 작성자 본인이 아니면 403 을 반환한다."
+    )
+    public CommentResponse update(
+            // TODO: 인증 도입 시 제거하고 인증 주체에서 사용자 ID 를 받는다. 임시 식별 수단이다.
+            @Parameter(description = "요청자 ID. 인증 도입 전까지 쓰는 임시 헤더다.", example = "1")
+            @RequestHeader("X-User-Id") Long userId,
+            @Parameter(example = "7") @PathVariable Long postId,
+            @Parameter(example = "3") @PathVariable Long commentId,
+            @Valid @RequestBody CommentUpdateRequest request
+    ) {
+        return commentService.update(postId, commentId, userId, request);
     }
 
     @DeleteMapping("/{commentId}")

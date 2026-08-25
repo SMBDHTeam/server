@@ -101,6 +101,11 @@ public class Comment {
         return user.getId().equals(userId);
     }
 
+    public void updateContent(String content) {
+        this.content = content;
+        this.updatedAt = LocalDateTime.now();
+    }
+
     /** 게시물과 마찬가지로 물리 삭제하지 않는다. */
     public void delete() {
         this.deletedAt = LocalDateTime.now();

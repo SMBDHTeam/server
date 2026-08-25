@@ -228,6 +228,11 @@ jobs:
             printf 'TOUR_API_PLACE_INGESTION_ENABLED=false\n'
             printf 'TOUR_API_KEY=%s\n' "$TOUR_API_KEY"
             printf 'TOUR_API_INGESTION_SCHEDULER_ENABLED=true\n'
+
+            # 복구 기한이 지난 게시물을 실제로 지운다.
+            # 이 값이 없으면 기본값 false로 기동해 스케줄러 빈이 등록되지 않고,
+            # 지운 게시물의 본문과 사진 URL이 DB에 계속 남는다.
+            printf 'COMMUNITY_POST_PURGE_ENABLED=true\n'
             printf 'TOUR_API_MAX_REQUESTS_PER_DAY=900\n'
 
             # Kakao 장소 검색 API

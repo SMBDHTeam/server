@@ -11,6 +11,7 @@ import com.server.block.repository.BlockRepository;
 import com.server.common.error.BusinessException;
 import com.server.common.error.ErrorCode;
 import com.server.follow.repository.FollowRepository;
+import com.server.notification.service.NotificationService;
 import com.server.user.domain.User;
 import com.server.user.repository.UserRepository;
 import java.util.Optional;
@@ -32,9 +33,12 @@ class FollowBlockRuleTest {
     private final FollowRepository followRepository = Mockito.mock(FollowRepository.class);
     private final BlockRepository blockRepository = Mockito.mock(BlockRepository.class);
     private final UserRepository userRepository = Mockito.mock(UserRepository.class);
+    private final NotificationService notificationService =
+            Mockito.mock(NotificationService.class);
 
     private final FollowService followService =
-            new FollowService(followRepository, blockRepository, userRepository);
+            new FollowService(
+                    followRepository, blockRepository, userRepository, notificationService);
 
     @Test
     @DisplayName("내가 차단한 상대는 차단을 풀어야 팔로우할 수 있다")

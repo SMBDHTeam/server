@@ -11,6 +11,7 @@ import com.server.report.dto.ReportResponse;
 import com.server.report.repository.ReportRepository;
 import com.server.user.domain.User;
 import com.server.user.repository.UserRepository;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -45,9 +46,15 @@ public class ReportService {
             throw new BusinessException(ErrorCode.ALREADY_REPORTED);
         }
 
-        Report report = reportRepository.save(new Report(
-                reporter, request.targetType(), request.targetId(), request.reason()));
-        return ReportResponse.from(report);
+        try {
+            Report report = reportRepository.saveAndFlush(new Report(
+                    reporter, request.targetType(), request.targetId(), request.reason()));
+            return ReportResponse.from(report);
+        } catch (DataIntegrityViolationException exception) {
+            // 위 확인과 저장 사이에 같은 신고가 들어오면 uk_reports_reporter_target 에 걸린다.
+            // 확인만으로는 막을 수 없는 경합이라 제약에 맡기고 같은 응답으로 돌려준다.
+            throw new BusinessException(ErrorCode.ALREADY_REPORTED);
+        }
     }
 
     /** {@code target_id}에 외래키가 없으므로 대상이 실제로 있는지 여기서 확인한다. */

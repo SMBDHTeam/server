@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -11,11 +12,15 @@ import static org.mockito.Mockito.when;
 import com.server.block.repository.BlockRepository;
 import com.server.common.error.BusinessException;
 import com.server.common.error.ErrorCode;
+import com.server.notification.domain.NotificationTargetType;
+import com.server.notification.domain.NotificationType;
+import com.server.notification.service.NotificationService;
 import com.server.post.domain.Comment;
 import com.server.post.domain.Post;
 import com.server.post.dto.CommentCreateRequest;
 import com.server.post.dto.CommentHiddenReason;
 import com.server.post.dto.CommentResponse;
+import com.server.post.dto.CommentUpdateRequest;
 import com.server.post.repository.CommentLikeRepository;
 import com.server.post.repository.CommentRepository;
 import com.server.post.repository.PostRepository;
@@ -43,10 +48,12 @@ class CommentServiceTest {
     private final PostRepository postRepository = Mockito.mock(PostRepository.class);
     private final BlockRepository blockRepository = Mockito.mock(BlockRepository.class);
     private final UserRepository userRepository = Mockito.mock(UserRepository.class);
+    private final NotificationService notificationService =
+            Mockito.mock(NotificationService.class);
 
     private final CommentService commentService = new CommentService(
             commentRepository, commentLikeRepository, postRepository, blockRepository,
-            userRepository);
+            userRepository, notificationService);
 
     @Test
     @DisplayName("답글에 다시 답글을 달 수 없다")
@@ -77,6 +84,58 @@ class CommentServiceTest {
                 .isInstanceOfSatisfying(BusinessException.class, exception ->
                         assertThat(exception.getErrorCode())
                                 .isEqualTo(ErrorCode.INVALID_COMMENT_REQUEST));
+    }
+
+    @Test
+    @DisplayName("일반 댓글은 게시물 작성자에게, 답글은 부모 댓글 작성자에게 알린다")
+    void notifiesRightPerson() {
+        Post post = givenPost(POST_ID);
+        givenActiveUser(OTHER_USER_ID);
+        when(commentRepository.save(any(Comment.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        commentService.create(POST_ID, OTHER_USER_ID, new CommentCreateRequest("댓글", null));
+        verify(notificationService).notify(
+                eq(AUTHOR_ID), eq(OTHER_USER_ID), eq(NotificationType.COMMENT),
+                eq(NotificationTargetType.COMMENT), any());
+
+        Comment parent = comment(10L, post, null);
+        when(commentRepository.findByIdAndDeletedAtIsNull(10L)).thenReturn(Optional.of(parent));
+        commentService.create(POST_ID, OTHER_USER_ID, new CommentCreateRequest("답글", 10L));
+        verify(notificationService).notify(
+                eq(AUTHOR_ID), eq(OTHER_USER_ID), eq(NotificationType.COMMENT_REPLY),
+                eq(NotificationTargetType.COMMENT), any());
+    }
+
+    @Test
+    @DisplayName("남의 댓글은 수정할 수 없다")
+    void updateRejectsOtherUsersComment() {
+        Comment comment = comment(10L, givenPost(POST_ID), null);
+        when(commentRepository.findByIdAndDeletedAtIsNull(10L)).thenReturn(Optional.of(comment));
+
+        assertThatThrownBy(() -> commentService.update(
+                POST_ID, 10L, OTHER_USER_ID, new CommentUpdateRequest("고쳐볼까")))
+                .isInstanceOfSatisfying(BusinessException.class, exception ->
+                        assertThat(exception.getErrorCode())
+                                .isEqualTo(ErrorCode.COMMENT_ACCESS_DENIED));
+        assertThat(comment.getContent()).isEqualTo("내용");
+    }
+
+    @Test
+    @DisplayName("수정해도 좋아요 수와 답글 관계는 그대로 둔다")
+    void updateKeepsLikesAndReplies() {
+        Post post = givenPost(POST_ID);
+        Comment parent = comment(10L, post, null);
+        Comment reply = comment(11L, post, parent);
+        ReflectionTestUtils.setField(reply, "likeCount", 5);
+        when(commentRepository.findByIdAndDeletedAtIsNull(11L)).thenReturn(Optional.of(reply));
+
+        CommentResponse response = commentService.update(
+                POST_ID, 11L, AUTHOR_ID, new CommentUpdateRequest("고친 답글"));
+
+        assertThat(response.content()).isEqualTo("고친 답글");
+        assertThat(response.likeCount()).isEqualTo(5);
+        assertThat(reply.getParent()).isEqualTo(parent);
     }
 
     @Test
