@@ -89,6 +89,10 @@ jobs:
           SPRING_DATASOURCE_USERNAME: ${{ secrets.SPRING_DATASOURCE_USERNAME }}
           SPRING_DATASOURCE_PASSWORD: ${{ secrets.SPRING_DATASOURCE_PASSWORD }}
 
+          # 인증 설정
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+
           # 외부 API 설정
           TOUR_API_KEY: ${{ secrets.TOUR_API_KEY }}
           KAKAO_REST_API_KEY: ${{ secrets.KAKAO_REST_API_KEY }}
@@ -171,6 +175,14 @@ jobs:
           # 그 뒤 상대 컨테이너가 재시작하면 설정을 잃는다. 실제로 8월 11일
           # 08:24~09:00 사이에 서로를 덮어썼고 data-ai가 환경변수 없이 기동했다.
           # 이 레포는 .env.server 만 쓴다. 각자 자기 파일만 쓰면 간섭이 없다.
+          # 값이 없으면 컨테이너가 기동하다 죽는다. 배포를 시작하기 전에 멈추는 편이
+          # 원인을 찾기 쉽다.
+          if [ -z "$JWT_SECRET" ]; then
+            echo "ERROR: JWT_SECRET secret is not set"
+            echo "Register it in GitHub repository secrets (32 bytes or longer)"
+            exit 1
+          fi
+
           echo "[5/8] Create .env.server"
 
           # GitHub Secrets를 기반으로 임시 환경변수 파일을 만든다.
@@ -187,6 +199,19 @@ jobs:
             # 일정 생성/조회를 FastAPI(data-ai)에 위임한다.
             # 이 값이 없으면 기본값 false로 기동해 일정 API 전체가 503을 반환한다.
             # base-url은 끝에 슬래시를 붙이지 않는다. 붙이면 //api/v1/... 로 요청이 나가 404가 된다.
+            # 인증. JWT_SECRET 이 없으면 서버가 기동하지 않는다.
+            # 서명 키 없이 뜨면 누구나 원하는 사용자와 권한으로 토큰을 만들 수 있어,
+            # 조용히 뚫린 채 도는 것보다 뜨지 않는 편이 낫다고 판단했다.
+            printf 'JWT_SECRET=%s\n' "$JWT_SECRET"
+            printf 'GOOGLE_CLIENT_ID=%s\n' "$GOOGLE_CLIENT_ID"
+
+            # 복구 기한이 지난 게시물을 실제로 지우는 스케줄러. 기본값이 false 라
+            # 여기서 켜지 않으면 지운 게시물이 영원히 쌓이고, 사용자가 지웠다고 믿는
+            # 본문과 사진 URL 이 DB 에 그대로 남는다.
+            printf 'COMMUNITY_POST_PURGE_ENABLED=true\n'
+
+            printf 'REDIS_HOST=redis\n'
+            printf 'REDIS_PORT=6379\n'
             printf 'SCHEDULE_FASTAPI_ENABLED=true\n'
             printf 'SCHEDULE_FASTAPI_BASE_URL=http://data-ai:8010\n'
           
@@ -279,6 +304,24 @@ jobs:
 
               docker pull \
                 "${ECR_REGISTRY}/${ECR_REPOSITORY_NAME}:latest-dev"
+
+              echo "Ensure redis container"
+
+              # 리프레시 토큰 저장소. 이미 있으면 그대로 쓰고, 없을 때만 만든다.
+              # 배포마다 지우면 로그인 세션이 전부 끊긴다.
+              #
+              # 조건문에 명령 치환을 쓰지 않는다. 이 스크립트는 인용하지 않은 heredoc
+              # (<< EOF)으로 SSH 에 넘어가므로 $(...) 가 EC2 가 아니라 러너에서 평가된다.
+              # 러너에는 이 컨테이너가 없어 조건이 항상 참이 되고, 이미 떠 있는 컨테이너를
+              # 다시 만들려다 이름 충돌로 배포가 죽는다. 실제로 한 번 겪었다.
+              #
+              # docker start 는 컨테이너가 있으면(멈춰 있어도) 성공하고 없으면 실패한다.
+              docker start redis 2>/dev/null || docker run -d \
+                --name redis \
+                --restart unless-stopped \
+                --network hackathon-network \
+                redis:7-alpine \
+                redis-server --save 60 1 --appendonly no
 
               echo "Stop old container"
 

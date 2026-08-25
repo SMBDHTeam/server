@@ -1,5 +1,6 @@
 package com.server.schedule.service;
 
+import com.server.auth.web.CurrentUser;
 import com.server.common.error.BusinessException;
 import com.server.common.error.ErrorCode;
 import com.server.external.schedule.FastApiScheduleClient;
@@ -23,7 +24,7 @@ public class ScheduleV2Service {
             String idempotencyKey
     ) {
         validateKey(idempotencyKey);
-        return requireFastApiScheduleClient().createScheduleFromPreview(request, idempotencyKey);
+        return requireFastApiScheduleClient().createScheduleFromPreview(request, idempotencyKey, CurrentUser.idOrNull());
     }
 
     private void validateKey(String key) {

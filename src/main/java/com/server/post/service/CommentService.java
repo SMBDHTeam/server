@@ -195,6 +195,20 @@ public class CommentService {
         postRepository.decreaseCommentCount(postId);
     }
 
+    /**
+     * 관리자 삭제. 작성자 확인과 게시물 소속 확인을 건너뛰고 댓글 ID 만으로 지운다.
+     * 신고 화면은 댓글 ID 만 들고 있어 게시물 ID 를 함께 요구하면 한 번 더 조회해야 한다.
+     *
+     * <p>댓글 수 감소와 자리 유지는 본인 삭제와 같다.
+     */
+    @Transactional
+    public void deleteByAdmin(Long commentId) {
+        Comment comment = commentRepository.findByIdAndDeletedAtIsNull(commentId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.COMMENT_NOT_FOUND));
+        comment.delete();
+        postRepository.decreaseCommentCount(comment.getPost().getId());
+    }
+
     private Comment findComment(Long postId, Long commentId) {
         Comment comment = commentRepository.findByIdAndDeletedAtIsNull(commentId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.COMMENT_NOT_FOUND));

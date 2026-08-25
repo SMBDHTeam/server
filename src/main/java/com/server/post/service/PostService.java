@@ -246,6 +246,21 @@ public class PostService {
         hashtagService.detachFromPost(postId);
     }
 
+    /**
+     * 관리자 삭제. 작성자 확인만 건너뛰고 나머지는 본인 삭제와 같다.
+     *
+     * <p>소프트 삭제이므로 복구 기한 안에는 되살릴 수 있고, 기한이 지나면 정리 스케줄러가
+     * 함께 지운다. 해시태그 연결도 똑같이 끊는다. 여기서 다르게 처리하면 관리자가 지운
+     * 게시물만 다른 상태로 남는다.
+     */
+    @Transactional
+    public void deleteByAdmin(Long postId) {
+        Post post = postRepository.findByIdAndDeletedAtIsNull(postId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.POST_NOT_FOUND));
+        post.delete();
+        hashtagService.detachFromPost(postId);
+    }
+
     /** 내가 지운 게시물 목록. 복구 기한이 남은 것만 준다. */
     @Transactional(readOnly = true)
     public PostSummaryListResponse getMyDeletedPosts(Long userId, Integer page, Integer size) {

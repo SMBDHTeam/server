@@ -70,6 +70,11 @@ public class ErrorResponseOpenApiConfig {
                     + "또는 같은 요청의 생성이 진행 중이다.", codesOf(409));
             putIfAbsent(responses, "410", "Preview가 만료됐다.", codesOf(410));
         }
+        // 인증이 필요한 경로. 지금은 관리자만이며, 인가를 전면 적용하면 대상이 늘어난다.
+        if (requiresAuthentication(path)) {
+            putIfAbsent(responses, "401", "인증이 필요하거나 토큰이 유효하지 않다.", codesOf(401));
+            putIfAbsent(responses, "403", "권한이 없다.", codesOf(403));
+        }
         if (delegatesToFastApi(path, httpMethod)) {
             putIfAbsent(responses, "503",
                     "일정 생성·조회를 담당하는 FastAPI가 응답하지 않는다.", codesOf(503));
@@ -77,6 +82,16 @@ public class ErrorResponseOpenApiConfig {
         putIfAbsent(responses, "500",
                 "서버가 처리하지 못한 예외. 응답에 내부 메시지를 담지 않으며 "
                         + "원인은 같은 traceId로 서버 로그에 남는다.", codesOf(500));
+    }
+
+    /**
+     * 인증이 필요한 경로.
+     *
+     * <p>관리자 경로는 만들어진 시점부터 인가가 걸려 있다. 사용자 API 는 인가를 전면
+     * 적용할 때 여기에 더한다.
+     */
+    private boolean requiresAuthentication(String path) {
+        return path.startsWith("/api/v1/admin");
     }
 
     /** Preview를 만들거나 소비하는 경로. */

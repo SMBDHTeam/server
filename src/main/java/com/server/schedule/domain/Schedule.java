@@ -27,6 +27,14 @@ public class Schedule {
     @Column(nullable = false)
     private String status;
 
+    /**
+     * 소유자. FastAPI 가 채운다.
+     *
+     * <p>인증이 없던 시절에 만들어진 일정은 {@code null} 이다. 소유자를 되짚을 근거가 없다.
+     */
+    @Column(name = "user_id")
+    private Long userId;
+
     @Column(name = "start_date", nullable = false)
     private LocalDate startDate;
 
@@ -145,6 +153,15 @@ public class Schedule {
         this.routeCoverage = routeCoverage;
         this.planningWarningsJson = planningWarningsJson;
         touch();
+    }
+
+    public Long getUserId() {
+        return userId;
+    }
+
+    /** 소유자가 없는 예전 일정은 누구의 것도 아니다. */
+    public boolean isOwnedBy(Long candidateId) {
+        return userId != null && userId.equals(candidateId);
     }
 
     public UUID getId() {

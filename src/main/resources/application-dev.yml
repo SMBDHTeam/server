@@ -26,11 +26,21 @@ spring:
     enabled: true
     baseline-on-migrate: true
     baseline-version: 0
+    # 두 갈래 작업이 동시에 migration 을 추가한다. 커뮤니티(V8)와 인증(V9)처럼 서로
+    # 독립적인 변경이 다른 순서로 머지되면, 낮은 버전이 나중에 도착해 기동이 깨진다.
+    # 두 순서 모두 안전하도록 허용한다. 같은 테이블을 건드리는 migration 을 나눠 만들지 않는 것이 전제다.
+    out-of-order: true
 
 app:
   seed:
     dummy-place:
       enabled: ${DUMMY_PLACE_SEED_ENABLED:false}
+
+# Nginx 뒤에서 돈다. 이 설정이 없으면 Spring 이 자기 주소를 http 로 판단해
+# OpenAPI 문서의 servers 가 http 로 나가고, https 로 연 Swagger 에서 Try it out 이
+# 브라우저에 막힌다. Nginx 는 X-Forwarded-Proto 를 넘기고 있다.
+server:
+  forward-headers-strategy: framework
 
 springdoc:
   api-docs:

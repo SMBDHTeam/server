@@ -30,6 +30,15 @@ import org.springframework.web.client.RestClientResponseException;
 @Component
 public class FastApiScheduleClient {
 
+    /**
+     * 일정 소유자를 FastAPI 에 알린다.
+     *
+     * <p>Spring 과 FastAPI 사이의 내부 호출에만 쓴다. 외부에서 들어오는 헤더가 아니라
+     * 검증된 토큰에서 꺼낸 값이므로 FastAPI 가 그대로 신뢰해도 된다. 두 컨테이너는
+     * 같은 도커 네트워크에 있고 FastAPI 는 외부에 공개되지 않는다.
+     */
+    private static final String OWNER_HEADER = "X-Auth-User-Id";
+
     private static final Logger log = LoggerFactory.getLogger(FastApiScheduleClient.class);
 
     private final RestClient restClient;
@@ -90,14 +99,15 @@ public class FastApiScheduleClient {
         }
     }
 
-    public ScheduleResponse createSchedule(ScheduleCreateRequest request) {
+    public ScheduleResponse createSchedule(ScheduleCreateRequest request, Long ownerId) {
         try {
             return executeWithLogging(
                     "createSchedule",
-                    "startDate=%s, endDate=%s".formatted(request.startDate(), request.endDate()),
-                    () -> restClient.post()
-                    .uri("/api/v1/schedules")
-                    .contentType(MediaType.APPLICATION_JSON)
+                    "startDate=%s, endDate=%s, ownerId=%s"
+                            .formatted(request.startDate(), request.endDate(), ownerId),
+                    () -> withOwner(restClient.post()
+                            .uri("/api/v1/schedules")
+                            .contentType(MediaType.APPLICATION_JSON), ownerId)
                     .body(writeJson(request))
                     .retrieve()
                     .body(ScheduleResponse.class)
@@ -112,16 +122,18 @@ public class FastApiScheduleClient {
 
     public ScheduleResponse createScheduleFromPreview(
             SchedulePreviewScheduleRequest request,
-            String idempotencyKey
+            String idempotencyKey,
+            Long ownerId
     ) {
         try {
             return executeWithLogging(
                     "createScheduleFromPreview",
-                    "previewId=%s, idempotencyKey=%s".formatted(request.previewId(), idempotencyKey),
-                    () -> restClient.post()
-                    .uri("/api/v1/schedules")
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .header("Idempotency-Key", idempotencyKey)
+                    "previewId=%s, idempotencyKey=%s, ownerId=%s"
+                            .formatted(request.previewId(), idempotencyKey, ownerId),
+                    () -> withOwner(restClient.post()
+                            .uri("/api/v1/schedules")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .header("Idempotency-Key", idempotencyKey), ownerId)
                     .body(writeJson(request))
                     .retrieve()
                     .body(ScheduleResponse.class)
@@ -274,6 +286,12 @@ public class FastApiScheduleClient {
             return new BusinessException(ErrorCode.PREVIEW_ALREADY_CONSUMED, exception);
         }
         return new BusinessException(ErrorCode.IDEMPOTENCY_KEY_REUSED, exception);
+    }
+
+    /** 로그인하지 않은 요청이면 헤더를 붙이지 않는다. FastAPI 는 소유자 없는 일정으로 저장한다. */
+    private org.springframework.web.client.RestClient.RequestBodySpec withOwner(
+            org.springframework.web.client.RestClient.RequestBodySpec spec, Long ownerId) {
+        return ownerId == null ? spec : spec.header(OWNER_HEADER, String.valueOf(ownerId));
     }
 
     private String writeJson(Object value) {

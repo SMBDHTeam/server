@@ -140,6 +140,7 @@ TourAPI의 일일 요청 제한을 서버 재시작과 중복 실행 이후에�
 | 컬럼 | 자료형 | 키·필수 | 의미 |
 | --- | --- | --- | --- |
 | `id` | uuid | PK, O | 일정 ID |
+| `user_id` | bigint | FK, X | 소유자 `users.id`. 인증 도입 전 일정은 NULL 이며 목록에 나오지 않는다 |
 | `status` | varchar | O | 일정 상태. 예: `CONFIRMED` |
 | `start_date` | date | O | 여행 시작일 |
 | `end_date` | date | O | 여행 종료일 |
@@ -306,23 +307,39 @@ TourAPI의 일일 요청 제한을 서버 재시작과 중복 실행 이후에�
 
 ## 14. users
 
-서비스 사용자다. 인증 도입 전이므로 로그인에 필요한 컬럼은 아직 없다.
+서비스 사용자다. V6에서 만들고 V9에서 인증·권한 컬럼을 더했다.
 
 | 컬럼 | 자료형 | 키·필수 | 의미 |
 | --- | --- | --- | --- |
-| `id` | bigint | PK, O | 서비스 내부 사용자 ID |
-| `nickname` | varchar | O | 표시용 닉네임. 최대 10자는 요청 DTO에서 검증한다 |
-| `profile_image_url` | text | X | 프로필 사진 URL |
+| `id` | bigint | PK, O | 사용자 ID |
+| `nickname` | varchar(255) | O | 표시 이름. 사용자가 직접 바꾼다 |
+| `profile_image_url` | text | X | 프로필 사진 |
+| `email` | varchar(255) | X | 제공자가 준 이메일. 식별자로 쓰지 않는다 |
+| `provider` | varchar(20) | X | 로그인 제공자. 현재 `GOOGLE` |
+| `provider_id` | varchar(255) | X | 제공자 고유 ID. 구글은 `sub` |
+| `role` | varchar(20) | O | `USER` 또는 `ADMIN`. 기본 `USER` |
+| `status` | varchar(20) | O | `ACTIVE`·`SUSPENDED`·`WITHDRAWN`. 기본 `ACTIVE` |
+| `suspended_until` | datetime | X | 정지 만료시각. 지나면 스스로 풀린 것으로 본다 |
+| `suspended_reason` | text | X | 정지 사유 |
 | `created_at` | datetime | O | 가입시각 |
-| `deleted_at` | datetime | X | 탈퇴 처리시각 |
+| `deleted_at` | datetime | X | 탈퇴시각 |
 
-닉네임 고유 조건은 일반 unique 제약이 아니라 부분 고유 인덱스
-`uk_users_nickname_active(nickname) WHERE deleted_at IS NULL`이다. 탈퇴한 사용자가 쓰던 닉네임을
-다른 사용자가 다시 쓸 수 있어야 하기 때문이다. 부분 인덱스는 JPA로 표현할 수 없어 엔티티에는
-제약을 두지 않고 migration에서만 관리한다.
+인덱스는 다음과 같다.
 
-탈퇴해도 행을 지우지 않는다. 댓글을 남기고 작성자만 감추는 정책이라 참조가 남아 있어야 한다.
-인증 도입 시 추가될 개인정보 컬럼은 탈퇴 시 비우는 처리가 필요하다.
+| 이름 | 대상 | 비고 |
+| --- | --- | --- |
+| `uk_users_nickname_active` | (`nickname`) | 부분 고유. `deleted_at IS NULL` 인 행만 |
+| `uk_users_provider_active` | (`provider`, `provider_id`) | 부분 고유. 같은 계정의 중복 가입을 막는다 |
+| `idx_users_role` | (`role`) | 관리자 목록 조회 |
+
+**`provider`·`provider_id`·`email`은 nullable이다.** V6로 이미 만들어진 행이 있어
+`NOT NULL`을 걸 수 없다. 로그인으로 생기는 행은 애플리케이션이 항상 채운다.
+
+**고유 인덱스를 탈퇴하지 않은 행에만 적용한다.** 닉네임과 같은 이유다. 탈퇴 후 재가입은
+새 행으로 들어오며, 이전 행은 이력으로 남는다.
+
+**정지 만료에 배치를 두지 않는다.** `suspended_until`이 지났는지를 읽는 쪽에서 판단한다
+(`User.isWriteBlockedAt`). 상태를 되돌리는 스케줄러가 없어도 만료가 동작한다.
 
 ## 15. posts
 
@@ -522,6 +539,8 @@ DB에서 직접 증감시킨다. 동시에 들어온 요청이 같은 값을 읽
 | `target_id` | bigint | O | 신고 대상 ID |
 | `reason` | text | O | 신고 사유 |
 | `status` | varchar | O | `PENDING`, `RESOLVED` |
+| `handled_by` | bigint | FK, X | 처리한 관리자 `users.id`. 처리 전이면 NULL |
+| `handled_at` | datetime | X | 처리 시각 |
 | `created_at` | datetime | O | 접수시각 |
 
 **`target_id`에는 외래키가 없다.** 대상이 게시물·댓글·사용자로 달라져 한 테이블을 가리킬 수
@@ -530,6 +549,11 @@ DB에서 직접 증감시킨다. 동시에 들어온 요청이 같은 값을 읽
 같은 사용자가 같은 대상을 다시 신고하면 거절한다. `V11__add_reports_unique_constraint.sql`에서
 `uk_reports_reporter_target(reporter_id, target_type, target_id)` 고유 제약을 추가했다.
 코드로만 막으면 같은 요청이 동시에 들어올 때 중복 행이 남는다.
+`idx_reports_status_created_at` 은 관리자 화면이 대기 중인 신고부터 보기 위한 것이다.
+
+`status` 는 `PENDING`·`REVIEWING`·`RESOLVED`·`REJECTED` 다. `REVIEWING` 은 관리자가 여럿일 때
+같은 신고를 두 사람이 동시에 들여다보는 것을 줄이기 위한 값이다. 확인만 하고 조치하지 않은 것과
+아직 아무도 보지 않은 것을 구분하지 못하면 대기 목록이 같은 항목으로 계속 채워진다.
 
 ## 27. notifications
 

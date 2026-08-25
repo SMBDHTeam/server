@@ -61,6 +61,31 @@ class PostgresMigrationIntegrationTest {
                         + "and column_name in ('arrive_at', 'depart_at')",
                 Integer.class
         );
+        Integer userAuthColumnCount = jdbcTemplate.queryForObject(
+                "select count(*) from information_schema.columns "
+                        + "where table_schema = 'public' and table_name = 'users' "
+                        + "and column_name in ('email', 'provider', 'provider_id', 'role', "
+                        + "'status', 'suspended_until', 'suspended_reason')",
+                Integer.class
+        );
+        Integer providerIndexCount = jdbcTemplate.queryForObject(
+                "select count(*) from pg_indexes "
+                        + "where schemaname = 'public' and tablename = 'users' "
+                        + "and indexname = 'uk_users_provider_active'",
+                Integer.class
+        );
+        Integer reportHandlingColumnCount = jdbcTemplate.queryForObject(
+                "select count(*) from information_schema.columns "
+                        + "where table_schema = 'public' and table_name = 'reports' "
+                        + "and column_name in ('handled_by', 'handled_at')",
+                Integer.class
+        );
+        Integer scheduleOwnerColumnCount = jdbcTemplate.queryForObject(
+                "select count(*) from information_schema.columns "
+                        + "where table_schema = 'public' and table_name = 'schedules' "
+                        + "and column_name = 'user_id'",
+                Integer.class
+        );
         Integer questionUiStepColumnCount = jdbcTemplate.queryForObject(
                 "select count(*) from information_schema.columns "
                         + "where table_schema = 'public' and table_name = 'questions' "
@@ -77,6 +102,11 @@ class PostgresMigrationIntegrationTest {
         assertThat(creationRequestTableCount).isEqualTo(1);
         assertThat(questionUiStepColumnCount).isEqualTo(1);
         assertThat(stopTimeColumnCount).isEqualTo(2);
+        assertThat(userAuthColumnCount).isEqualTo(7);
+        // 같은 구글 계정으로 두 번 가입되지 않게 막는 부분 고유 인덱스.
+        assertThat(providerIndexCount).isEqualTo(1);
+        assertThat(scheduleOwnerColumnCount).isEqualTo(1);
+        assertThat(reportHandlingColumnCount).isEqualTo(2);
     }
 
     /** classpath의 db/migration 아래 있는 실제 스크립트 수. */

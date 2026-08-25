@@ -177,12 +177,19 @@ public class PlaceService {
     public PlaceDetailResponse getDetail(Long placeId) {
         Place place = placeRepository.findById(placeId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.PLACE_NOT_FOUND));
+        // 가린 장소는 없는 것으로 다룬다. 검색에서 빼놓고 상세만 열어 두면 예전 링크로
+        // 그대로 들어올 수 있다.
+        if (place.isHidden()) {
+            throw new BusinessException(ErrorCode.PLACE_NOT_FOUND);
+        }
         return toDetailResponse(place);
     }
 
     private PlaceSearchResponse searchByKeyword(String keyword, String scope, int size) {
         List<PlaceSearchResponse.Item> items = new ArrayList<>(placeRepository
                 .findByNameContainingIgnoreCaseOrderByNameAsc(keyword).stream()
+                // 관리자가 가린 장소는 검색에 나오지 않는다.
+                .filter(place -> !place.isHidden())
                 .limit(size)
                 .map(place -> toSearchItem(place, null))
                 .toList());
@@ -212,6 +219,7 @@ public class PlaceService {
             int size
     ) {
         List<PlaceSearchResponse.Item> items = placeRepository.findAll().stream()
+                .filter(place -> !place.isHidden())
                 .map(place -> toSearchItem(place, distanceMeters(longitude, latitude, place)))
                 .filter(item -> item.distanceMeters() <= radius)
                 .sorted(Comparator.comparing(PlaceSearchResponse.Item::distanceMeters))
