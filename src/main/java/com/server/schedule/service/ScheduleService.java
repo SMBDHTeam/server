@@ -34,7 +34,10 @@ public class ScheduleService {
      */
     @Transactional(readOnly = true)
     public ScheduleSummaryListResponse getAll() {
-        return ScheduleSummaryListResponse.from(requireFastApiScheduleClient().listSchedules());
+        // 로그인한 사용자의 일정만 반환한다. 인가를 아직 켜지 않아 비로그인 호출도 들어오는데,
+        // 전체를 돌려주면 남의 일정이 그대로 노출된다. 이때는 빈 목록을 준다.
+        return ScheduleSummaryListResponse.from(
+                requireFastApiScheduleClient().listSchedules(CurrentUser.idOrNull()));
     }
 
     @Transactional(readOnly = true)
