@@ -9,7 +9,7 @@ import org.springframework.stereotype.Component;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
-import software.amazon.awssdk.services.s3.model.S3Exception;
+import software.amazon.awssdk.core.exception.SdkException;
 
 @Component
 @ConditionalOnBean(S3Client.class)
@@ -34,7 +34,9 @@ public class S3MediaStorage implements MediaStorage {
                 .build();
         try {
             s3Client.putObject(request, RequestBody.fromInputStream(content, size));
-        } catch (S3Exception exception) {
+        } catch (SdkException exception) {
+            // S3Exception 만 잡으면 연결 실패·타임아웃이 그대로 올라가 500 이 나간다.
+            // 저장소가 응답하지 않는 것은 서버 결함이 아니므로 503 으로 알린다.
             throw new BusinessException(ErrorCode.EXTERNAL_PROVIDER_UNAVAILABLE, exception);
         }
         return publicUrl(key);

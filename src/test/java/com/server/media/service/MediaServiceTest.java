@@ -55,6 +55,14 @@ class MediaServiceTest {
     }
 
     @Test
+    @DisplayName("정상 webp 는 통과한다")
+    void acceptsWebp() {
+        assertThat(mediaService.upload(USER_ID, List.of(webp("photo.webp"))).mediaList())
+                .singleElement()
+                .satisfies(media -> assertThat(media.url()).endsWith(".webp"));
+    }
+
+    @Test
     @DisplayName("객체 키는 연월 폴더 아래 임의 이름으로 만든다")
     void buildsDatePartitionedKey() {
         mediaService.upload(USER_ID, List.of(jpeg("사진 이름.jpg")));
@@ -76,6 +84,21 @@ class MediaServiceTest {
         void contentDoesNotMatchExtension() {
             MultipartFile disguised = new MockMultipartFile(
                     "files", "evil.jpg", "image/jpeg", "MZ not an image".getBytes());
+
+            assertThatThrownBy(() -> mediaService.upload(USER_ID, List.of(disguised)))
+                    .isInstanceOf(BusinessException.class)
+                    .extracting(exception -> ((BusinessException) exception).getErrorCode())
+                    .isEqualTo(ErrorCode.UNSUPPORTED_MEDIA_FORMAT);
+        }
+
+        @Test
+        @DisplayName("RIFF 로 시작하지만 webp 가 아닌 파일")
+        void riffButNotWebp() {
+            // wav 도 RIFF 로 시작한다. 앞 네 글자만 보면 이미지로 통과한다.
+            byte[] wav = new byte[16];
+            System.arraycopy("RIFF".getBytes(), 0, wav, 0, 4);
+            System.arraycopy("WAVE".getBytes(), 0, wav, 8, 4);
+            MultipartFile disguised = new MockMultipartFile("files", "sound.webp", "image/webp", wav);
 
             assertThatThrownBy(() -> mediaService.upload(USER_ID, List.of(disguised)))
                     .isInstanceOf(BusinessException.class)
@@ -171,6 +194,13 @@ class MediaServiceTest {
         byte[] content = new byte[8];
         System.arraycopy(jpegHeader(), 0, content, 0, jpegHeader().length);
         return new MockMultipartFile("files", filename, "image/jpeg", content);
+    }
+
+    private static MultipartFile webp(String filename) {
+        byte[] content = new byte[16];
+        System.arraycopy("RIFF".getBytes(), 0, content, 0, 4);
+        System.arraycopy("WEBP".getBytes(), 0, content, 8, 4);
+        return new MockMultipartFile("files", filename, "image/webp", content);
     }
 
     private static MultipartFile png(String filename) {

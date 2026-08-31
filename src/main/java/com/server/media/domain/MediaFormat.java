@@ -16,8 +16,11 @@ public enum MediaFormat {
     JPEG(MediaType.IMAGE, "jpg", "image/jpeg", new int[] {0xFF, 0xD8, 0xFF}),
     PNG(MediaType.IMAGE, "png", "image/png", new int[] {0x89, 0x50, 0x4E, 0x47}),
     GIF(MediaType.IMAGE, "gif", "image/gif", new int[] {0x47, 0x49, 0x46, 0x38}),
-    /** RIFF....WEBP. 5~8번째 바이트가 파일 크기라 앞 네 글자만 본다. */
-    WEBP(MediaType.IMAGE, "webp", "image/webp", new int[] {0x52, 0x49, 0x46, 0x46}),
+    /**
+     * RIFF....WEBP. 5~8번째 바이트는 파일 크기라 건너뛰고 9번째부터 확인한다. 앞의 RIFF 만
+     * 보면 같은 컨테이너를 쓰는 wav 파일이 이미지로 통과한다.
+     */
+    WEBP(MediaType.IMAGE, "webp", "image/webp", 8, new int[] {0x57, 0x45, 0x42, 0x50}),
     /** ISO base media. 시그니처가 4번째 바이트부터라 offset 을 둔다. */
     MP4(MediaType.VIDEO, "mp4", "video/mp4", 4, new int[] {0x66, 0x74, 0x79, 0x70}),
     MOV(MediaType.VIDEO, "mov", "video/quicktime", 4, new int[] {0x66, 0x74, 0x79, 0x70});
