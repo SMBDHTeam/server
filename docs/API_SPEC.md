@@ -1347,9 +1347,7 @@ Provider 응답의 `distanceMeters`가 누락되거나 0 이하이면 서버는 
     { "url": "https://example.com/media/1.jpg", "mediaType": "IMAGE", "sortOrder": 0 },
     { "url": "https://example.com/media/2.jpg", "mediaType": "IMAGE", "sortOrder": 1 }
   ],
-  "placeTags": [
-    { "placeId": 42, "latitude": 35.15320000, "longitude": 129.11860000 }
-  ]
+  "categories": ["야경", "맛집"]
 }
 ```
 
@@ -1360,8 +1358,14 @@ Provider 응답의 `distanceMeters`가 누락되거나 0 이하이면 서버는 
 | `mediaList[].url` | O | 최대 2048자 |
 | `mediaList[].mediaType` | O | `IMAGE`, `VIDEO` 둘 중 하나. 다른 값은 `MALFORMED_REQUEST` |
 | `mediaList[].sortOrder` | O | 표시 순서. 0 이상 |
-| `placeTags` | X | 내부 `places`에 등록된 장소만 태그할 수 있다. 최대 열 건 |
-| `placeTags[].latitude`·`longitude` | X | 사진 EXIF의 촬영 지점. 없으면 생략한다 |
+| `mediaList[].placeId` | X | 이 사진에서 다녀온 장소. 붙이지 않으려면 생략한다 |
+| `categories` | X | 고른 카테고리. 등록된 것만 붙는다 |
+
+**장소는 사진에 붙인다.** 사진마다 다른 곳을 다녀왔을 수 있어 게시물이 아니라 사진 단위로
+저장한다. 장소를 붙이지 않아도 되고, 사진마다 따로 정할 수 있다.
+
+`placeId`는 내부 `places`에 등록된 장소여야 한다. 사용자는 자기 일정에 담긴 장소에서 고르거나,
+목록에 없으면 지도에서 검색해 확정한다. 없는 장소를 보내면 `404 PLACE_NOT_FOUND`다.
 
 본문 상한을 두는 이유는 `content` 컬럼이 `text`라 DB가 길이를 막지 않기 때문이다. 상한이
 없으면 수 MB 본문이 저장되고 그 글이 실린 피드 응답이 전부 부풀어 오른다. 화면에서 긴 본문을
@@ -1448,15 +1452,11 @@ Provider 응답의 `distanceMeters`가 누락되거나 0 이하이면 서버는 
   "author": { "id": 1, "nickname": "감자", "profileImageUrl": "https://example.com/p/1.jpg" },
   "content": "광안리 야경 보러 갔는데 날씨가 좋았어요",
   "mediaList": [
-    { "id": 3, "url": "https://example.com/media/1.jpg", "mediaType": "IMAGE", "sortOrder": 0 }
+    { "id": 3, "url": "https://example.com/media/1.jpg", "mediaType": "IMAGE", "sortOrder": 0,
+      "placeId": 42, "placeName": "광안리해수욕장" }
   ],
   "placeTags": [
-    {
-      "placeId": 42,
-      "placeName": "광안리해수욕장",
-      "latitude": 35.15320000,
-      "longitude": 129.11860000
-    }
+    { "placeId": 42, "placeName": "광안리해수욕장" }
   ],
   "categories": ["야경", "맛집"],
   "likeCount": 12,
@@ -1471,8 +1471,9 @@ Provider 응답의 `distanceMeters`가 누락되거나 0 이하이면 서버는 
 `categories`는 뽑아 저장해 둔 태그다. 본문을 다시 파싱하지 않고 이 값을 쓰면 되고,
 태그를 눌러 `GET /api/v1/posts?category=` 필터 피드로 넘길 때도 그대로 넘긴다.
 
-`mediaList`는 `sortOrder` 오름차순이다. `placeTags[].latitude`는 촬영 지점이며 알 수 없으면
-`null`이다. 지도에 표시할 좌표가 없으면 `placeId`로 장소 상세를 조회한다.
+`mediaList`는 `sortOrder` 오름차순이다. 사진마다 붙은 장소는 `mediaList[].placeId`·`placeName`
+으로 나가고, 붙이지 않은 사진은 `null`이다. `placeTags`는 이 게시물에 붙은 장소를 모아 준다.
+지도에 표시할 좌표가 필요하면 `placeId`로 장소 상세를 조회한다.
 
 ### C-5. 게시물 수정·삭제
 
@@ -1495,11 +1496,11 @@ Provider 응답의 `distanceMeters`가 누락되거나 0 이하이면 서버는 
 | --- | --- |
 | 항목 생략 | 그대로 둔다 |
 | `mediaList` 배열 | 기존 사진을 전부 지우고 보낸 것으로 교체한다. 한 건 이상 열 건 이하 |
-| `placeTags` 배열 | 기존 태그를 전부 지우고 보낸 것으로 교체한다 |
-| `placeTags: []` | 장소 태그를 모두 없앤다 |
+
 | 세 항목 모두 생략 | `400 INVALID_POST_REQUEST` |
 
-**배열은 통째로 교체한다.** 사진 세 장 중 하나를 빼려면 남길 두 장을 보낸다. 추가·삭제·순서
+**배열은 통째로 교체한다.** 사진 세 장 중 하나를 빼려면 남길 두 장을 보낸다. 장소는 사진에
+붙으므로 사진을 교체하면 장소도 함께 바뀐다. 추가·삭제·순서
 변경이 모두 같은 방식이라 별도 파라미터를 두지 않았다. `mediaList`는 빈 배열로 보낼 수 없다.
 사진 없는 게시물을 허용하지 않기 때문이다.
 

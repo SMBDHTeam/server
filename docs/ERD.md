@@ -385,21 +385,27 @@ DB에서 직접 증감시킨다. 동시에 들어온 요청이 같은 값을 읽
 
 ## 17. post_place_tags
 
-게시물에 태그한 장소다.
+사진에 붙인 장소다. 사진마다 다른 곳을 다녀왔을 수 있어 게시물이 아니라 사진 단위로 둔다.
 
 | 컬럼 | 자료형 | 키·필수 | 의미 |
 | --- | --- | --- | --- |
 | `id` | bigint | PK, O | 태그 ID |
 | `post_id` | bigint | FK, O | 소속 `posts.id` |
+| `media_id` | bigint | FK, X | 이 장소를 붙인 `post_media.id` |
 | `place_id` | bigint | FK, O | 태그한 `places.id` |
-| `latitude` | decimal | X | 사진이 실제로 촬영된 위도 |
-| `longitude` | decimal | X | 사진이 실제로 촬영된 경도 |
 
-좌표는 장소 대표 좌표가 아니라 **사진 EXIF에서 얻은 촬영 지점**이다. `places`의 좌표를 복사하지
-않으며, EXIF가 없으면 `null`로 둔다. 값의 유무로 촬영 위치를 아는지가 구분된다. 화면에 표시할
-좌표가 없으면 `place_id`로 `places`에서 읽는다.
+**`media_id`는 nullable이다.** 장소를 붙이지 않은 사진이 있을 수 있고, 이 컬럼이 생긴
+`V16` 이전에 저장된 태그는 어느 사진의 것인지 되짚을 근거가 없다.
 
-인덱스: `idx_post_place_tags_post_id`, `idx_post_place_tags_place_id`
+`post_id`를 함께 두는 이유는 조회 때문이다. 게시물의 장소를 모으거나 장소로 게시물을 거를 때
+사진을 거치지 않고 바로 읽는다.
+
+좌표 컬럼은 `V16`에서 지웠다. 사진 EXIF로 촬영 지점을 채우려던 것인데, 장소는 사용자가 자기
+일정이나 지도 검색에서 직접 고르는 것으로 정해져 좌표를 받을 경로가 없어졌다. 장소의 대표
+좌표는 `places`에 있어 지도 표시에는 지장이 없다.
+
+인덱스: `idx_post_place_tags_post_id`, `idx_post_place_tags_place_id`,
+`idx_post_place_tags_media_id`
 
 ## 18. comments
 
@@ -767,6 +773,7 @@ Preview의 고정 행사 제약이 실제 일정의 방문지로 배치된 결�
 | `users` 1 : N `posts` | 사용자는 여러 게시물을 쓴다 |
 | `posts` 1 : N `post_media` | 게시물은 사진·영상을 여러 개 가진다 |
 | `posts` 1 : N `post_place_tags` | 게시물은 장소를 여러 개 태그할 수 있다 |
+| `post_media` 1 : N `post_place_tags` | 사진마다 장소를 붙일 수 있다. 붙이지 않아도 된다 |
 | `places` 1 : N `post_place_tags` | 장소는 여러 게시물에 태그된다 |
 | `posts` 1 : N `comments` | 게시물은 여러 댓글을 가진다 |
 | `comments` 1 : N `comments` | 댓글은 답글을 여러 개 가진다. 답글에는 답글이 없다 |
