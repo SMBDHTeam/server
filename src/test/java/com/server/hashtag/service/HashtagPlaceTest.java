@@ -84,13 +84,30 @@ class HashtagPlaceTest {
     }
 
     @Test
-    @DisplayName("장소를 여러 곳 태그한 글은 어디를 가리키는지 알 수 없어 세지 않는다")
+    @DisplayName("같은 장소를 사진 여러 장에 붙여도 한 곳으로 센다")
+    void countsPostOnceWhenSamePlaceOnSeveralPhotos() {
+        for (String name : List.of("가", "나", "다")) {
+            Post post = post(user(name), "여기 좋다");
+            // 사진 두 장에 같은 장소를 붙였다. 가리키는 곳이 하나이므로 세야 한다.
+            entityManager.persist(new PostPlaceTag(post, null, restaurant));
+            entityManager.persist(new PostPlaceTag(post, null, restaurant));
+            hashtagService.attach(post, List.of(TAG));
+        }
+        flush();
+
+        assertThat(findPlaces())
+                .singleElement()
+                .satisfies(place -> assertThat(place.authorCount()).isEqualTo(3));
+    }
+
+    @Test
+    @DisplayName("사진마다 다른 곳을 태그한 글은 어디를 가리키는지 알 수 없어 세지 않는다")
     void ignoresPostsWithSeveralPlaces() {
         // 세 사람이 태그했지만 모두 "해운대 들렀다가 국밥집" 형태다.
         for (String name : List.of("가", "나", "다")) {
             Post post = post(user(name), "해운대 갔다가 국밥 #맛집");
-            entityManager.persist(new PostPlaceTag(post, beach, null, null));
-            entityManager.persist(new PostPlaceTag(post, restaurant, null, null));
+            entityManager.persist(new PostPlaceTag(post, null, beach));
+            entityManager.persist(new PostPlaceTag(post, null, restaurant));
             hashtagService.attach(post, List.of("야경", "카페"));
         }
         flush();
@@ -118,7 +135,7 @@ class HashtagPlaceTest {
 
     private void taggedPost(User author, Place place, String category) {
         Post post = post(author, "여기 진짜 좋다");
-        entityManager.persist(new PostPlaceTag(post, place, null, null));
+        entityManager.persist(new PostPlaceTag(post, null, place));
         hashtagService.attach(post, List.of(category));
     }
 

@@ -5,10 +5,11 @@ import com.server.post.domain.Post;
 import com.server.post.domain.PostMedia;
 import io.swagger.v3.oas.annotations.media.Schema;
 
-import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 @Schema(description = "게시물 상세. 첨부 미디어와 장소 태그를 모두 포함한다.")
 public record PostDetailResponse(
@@ -47,7 +48,11 @@ public record PostDetailResponse(
             @Schema(example = "3") Long id,
             @Schema(example = "https://example.com/media/gwangalli-night.jpg") String url,
             @Schema(example = "IMAGE") MediaType mediaType,
-            @Schema(example = "0") int sortOrder
+            @Schema(example = "0") int sortOrder,
+            @Schema(description = "이 사진에서 다녀온 장소. 붙이지 않았으면 null 이다.",
+                    example = "42")
+            Long placeId,
+            @Schema(example = "광안리해수욕장") String placeName
     ) {
     }
 
@@ -58,10 +63,7 @@ public record PostDetailResponse(
     @Schema(name = "PostPlaceTag", description = "장소 태그 한 건")
     public record PlaceTag(
             @Schema(example = "42") Long placeId,
-            @Schema(example = "광안리해수욕장") String placeName,
-            @Schema(description = "사진이 촬영된 지점. 알 수 없으면 null이다.", example = "35.15320000")
-            BigDecimal latitude,
-            @Schema(example = "129.11860000") BigDecimal longitude
+            @Schema(example = "광안리해수욕장") String placeName
     ) {
     }
 
@@ -73,6 +75,9 @@ public record PostDetailResponse(
             boolean liked,
             boolean bookmarked
     ) {
+        Map<Long, PostPlaceTagView> placeByMediaId = placeTags.stream()
+                .filter(tag -> tag.mediaId() != null)
+                .collect(Collectors.toMap(PostPlaceTagView::mediaId, tag -> tag, (a, b) -> a));
         return new PostDetailResponse(
                 post.getId(),
                 new Author(
@@ -82,18 +87,21 @@ public record PostDetailResponse(
                 post.getContent(),
                 mediaList.stream()
                         .sorted(Comparator.comparingInt(PostMedia::getSortOrder))
-                        .map(media -> new Media(
-                                media.getId(),
-                                media.getUrl(),
-                                media.getMediaType(),
-                                media.getSortOrder()))
+                        .map(media -> {
+                            PostPlaceTagView tag = placeByMediaId.get(media.getId());
+                            return new Media(
+                                    media.getId(),
+                                    media.getUrl(),
+                                    media.getMediaType(),
+                                    media.getSortOrder(),
+                                    tag == null ? null : tag.placeId(),
+                                    tag == null ? null : tag.placeName());
+                        })
                         .toList(),
                 placeTags.stream()
                         .map(tag -> new PlaceTag(
                                 tag.placeId(),
-                                tag.placeName(),
-                                tag.latitude(),
-                                tag.longitude()))
+                                tag.placeName()))
                         .toList(),
                 categories,
                 post.getLikeCount(),

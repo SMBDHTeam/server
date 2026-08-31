@@ -15,7 +15,6 @@ import com.server.post.domain.PostPlaceTag;
 import com.server.post.dto.PostCreateRequest;
 import com.server.post.dto.PostDetailResponse;
 import com.server.post.dto.PostLikeResponse;
-import com.server.post.dto.PostPlaceTagView;
 import com.server.post.dto.PostSummaryListResponse;
 import com.server.post.dto.PostUpdateRequest;
 import com.server.post.repository.PostLikeRepository;
@@ -25,8 +24,10 @@ import com.server.post.repository.PostRepository;
 import com.server.user.domain.User;
 import com.server.user.repository.UserRepository;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import org.springframework.beans.factory.annotation.Value;
@@ -90,14 +91,13 @@ public class PostService {
 
         Post post = postRepository.save(new Post(author, request.content()));
         List<PostMedia> mediaList = saveMedia(post, request.mediaList());
-        List<PostPlaceTag> placeTags = savePlaceTags(post, request.placeTags());
         List<String> categories = hashtagService.attach(post, request.categories());
 
         // 방금 만든 게시물이라 좋아요·저장이 있을 수 없다.
         return PostDetailResponse.from(
                 post,
                 mediaList,
-                placeTags.stream().map(PostPlaceTagView::from).toList(),
+                postPlaceTagRepository.findViewsByPostId(post.getId()),
                 categories,
                 false,
                 false);
@@ -235,12 +235,10 @@ public class PostService {
                 : hashtagService.reattach(post, request.categories());
 
         if (request.mediaList() != null) {
+            // 장소는 사진에 붙으므로 사진을 지우기 전에 함께 지운다.
+            postPlaceTagRepository.deleteByPostId(postId);
             postMediaRepository.deleteByPostId(postId);
             saveMedia(post, request.mediaList());
-        }
-        if (request.placeTags() != null) {
-            postPlaceTagRepository.deleteByPostId(postId);
-            savePlaceTags(post, request.placeTags());
         }
 
         List<Long> postIds = List.of(postId);
@@ -375,31 +373,45 @@ public class PostService {
         if (requests == null || requests.isEmpty()) {
             return List.of();
         }
-        return postMediaRepository.saveAll(requests.stream()
+        List<PostMedia> saved = postMediaRepository.saveAll(requests.stream()
                 .map(media -> new PostMedia(post, media.mediaType(), media.url(), media.sortOrder()))
                 .toList());
+        savePlaceTags(post, requests, saved);
+        return saved;
     }
 
-    private List<PostPlaceTag> savePlaceTags(Post post, List<PostCreateRequest.PlaceTag> requests) {
-        if (requests == null || requests.isEmpty()) {
-            return List.of();
-        }
+    /**
+     * 사진에 붙인 장소를 저장한다. 장소는 선택이라 지정하지 않은 사진은 건너뛴다.
+     *
+     * <p>{@code requests} 와 {@code saved} 는 같은 순서다. 사진을 한 번에 저장하므로
+     * 짝을 맞춰 장소를 붙일 수 있다.
+     */
+    private void savePlaceTags(
+            Post post, List<PostCreateRequest.Media> requests, List<PostMedia> saved) {
         List<Long> placeIds = requests.stream()
-                .map(PostCreateRequest.PlaceTag::placeId)
+                .map(PostCreateRequest.Media::placeId)
+                .filter(Objects::nonNull)
                 .distinct()
                 .toList();
+        if (placeIds.isEmpty()) {
+            return;
+        }
         Map<Long, Place> places = placeRepository.findAllById(placeIds).stream()
                 .collect(Collectors.toMap(Place::getId, Function.identity()));
 
-        return postPlaceTagRepository.saveAll(requests.stream()
-                .map(tag -> {
-                    Place place = places.get(tag.placeId());
-                    if (place == null) {
-                        throw new BusinessException(ErrorCode.PLACE_NOT_FOUND);
-                    }
-                    return new PostPlaceTag(post, place, tag.latitude(), tag.longitude());
-                })
-                .toList());
+        List<PostPlaceTag> tags = new ArrayList<>();
+        for (int index = 0; index < requests.size(); index++) {
+            Long placeId = requests.get(index).placeId();
+            if (placeId == null) {
+                continue;
+            }
+            Place place = places.get(placeId);
+            if (place == null) {
+                throw new BusinessException(ErrorCode.PLACE_NOT_FOUND);
+            }
+            tags.add(new PostPlaceTag(post, saved.get(index), place));
+        }
+        postPlaceTagRepository.saveAll(tags);
     }
 
     /** 소문자로 저장하므로 조회도 맞춘다. 대소문자가 다르다고 못 찾는 일이 없게 한다. */

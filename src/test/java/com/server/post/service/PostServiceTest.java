@@ -122,7 +122,7 @@ class PostServiceTest {
         givenPostWrittenBy(AUTHOR_ID);
 
         assertThatThrownBy(() ->
-                postService.update(POST_ID, OTHER_USER_ID, new PostUpdateRequest("고쳐볼까", null, null, null)))
+                postService.update(POST_ID, OTHER_USER_ID, new PostUpdateRequest("고쳐볼까", null, null)))
                 .isInstanceOfSatisfying(BusinessException.class, exception ->
                         assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.POST_ACCESS_DENIED));
     }
@@ -158,7 +158,7 @@ class PostServiceTest {
         when(postPlaceTagRepository.findViewsByPostId(POST_ID)).thenReturn(List.of());
 
         postService.update(POST_ID, AUTHOR_ID,
-                new PostUpdateRequest("고친 본문", null, null, List.of("맛집")));
+                new PostUpdateRequest("고친 본문", null, List.of("맛집")));
 
         assertThat(post.getContent()).isEqualTo("고친 본문");
         verify(hashtagService).reattach(post, List.of("맛집"));
@@ -195,7 +195,7 @@ class PostServiceTest {
         when(postMediaRepository.findByPostId(POST_ID)).thenReturn(List.of());
         when(postPlaceTagRepository.findViewsByPostId(POST_ID)).thenReturn(List.of());
 
-        postService.update(POST_ID, AUTHOR_ID, new PostUpdateRequest("본문만 고침", null, null, null));
+        postService.update(POST_ID, AUTHOR_ID, new PostUpdateRequest("본문만 고침", null, null));
 
         verify(postMediaRepository, never()).deleteByPostId(anyLong());
         verify(postPlaceTagRepository, never()).deleteByPostId(anyLong());
@@ -208,10 +208,12 @@ class PostServiceTest {
         when(postMediaRepository.findByPostId(POST_ID)).thenReturn(List.of());
         when(postPlaceTagRepository.findViewsByPostId(POST_ID)).thenReturn(List.of());
         List<PostCreateRequest.Media> media = List.of(
-                new PostCreateRequest.Media("https://e.com/b.jpg", MediaType.IMAGE, 0));
+                new PostCreateRequest.Media("https://e.com/b.jpg", MediaType.IMAGE, 0, null));
 
-        postService.update(POST_ID, AUTHOR_ID, new PostUpdateRequest(null, media, null, null));
+        postService.update(POST_ID, AUTHOR_ID, new PostUpdateRequest(null, media, null));
 
+        // 장소는 사진에 붙으므로 사진을 교체하면 장소도 함께 지워진다.
+        verify(postPlaceTagRepository).deleteByPostId(POST_ID);
         verify(postMediaRepository).deleteByPostId(POST_ID);
         verify(postMediaRepository).saveAll(any());
         // 카테고리를 안 보냈으므로 기존 연결을 건드리지 않는다.
@@ -219,23 +221,10 @@ class PostServiceTest {
     }
 
     @Test
-    @DisplayName("장소 태그를 빈 배열로 보내면 전부 없앤다")
-    void updateClearsPlaceTags() {
-        givenPostWrittenBy(AUTHOR_ID);
-        when(postMediaRepository.findByPostId(POST_ID)).thenReturn(List.of());
-        when(postPlaceTagRepository.findViewsByPostId(POST_ID)).thenReturn(List.of());
-
-        postService.update(POST_ID, AUTHOR_ID, new PostUpdateRequest(null, null, List.of(), null));
-
-        verify(postPlaceTagRepository).deleteByPostId(POST_ID);
-        verify(postPlaceTagRepository, never()).saveAll(any());
-    }
-
-    @Test
     @DisplayName("바꿀 항목을 하나도 보내지 않으면 거절한다")
     void updateRejectsEmptyRequest() {
         assertThatThrownBy(() ->
-                postService.update(POST_ID, AUTHOR_ID, new PostUpdateRequest(null, null, null, null)))
+                postService.update(POST_ID, AUTHOR_ID, new PostUpdateRequest(null, null, null)))
                 .isInstanceOfSatisfying(BusinessException.class, exception ->
                         assertThat(exception.getErrorCode())
                                 .isEqualTo(ErrorCode.INVALID_POST_REQUEST));
