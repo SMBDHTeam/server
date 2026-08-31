@@ -147,13 +147,27 @@ public class FastApiScheduleClient {
         }
     }
 
-    public ScheduleListResponse listSchedules() {
+    /**
+     * 일정 목록.
+     *
+     * <p>{@code ownerId} 로 거르는 일은 FastAPI 가 한다. 전체를 받아 Spring 에서 거르면
+     * 페이징이 맞지 않는다. 한 페이지를 받아 거른 뒤 남은 수를 세면 실제보다 적어진다.
+     *
+     * <p>{@code ownerId} 가 {@code null} 이면 빈 목록을 준다. 로그인하지 않은 요청에
+     * 전체 사용자의 일정을 돌려주면 남의 일정이 그대로 노출된다.
+     */
+    public ScheduleListResponse listSchedules(Long ownerId) {
+        if (ownerId == null) {
+            return new ScheduleListResponse(java.util.List.of());
+        }
         try {
             return executeWithLogging(
                     "listSchedules",
-                    "",
+                    "ownerId=%s".formatted(ownerId),
                     () -> restClient.get()
-                    .uri("/api/v1/schedules")
+                    .uri(uriBuilder -> uriBuilder.path("/api/v1/schedules")
+                            .queryParam("userId", ownerId)
+                            .build())
                     .retrieve()
                     .body(ScheduleListResponse.class)
             );

@@ -31,12 +31,16 @@ public interface UserRepository extends JpaRepository<User, Long> {
     /**
      * 관리자 사용자 검색. 닉네임·이메일 부분 일치이며 탈퇴한 사용자도 포함한다.
      * 신고를 따라 들어왔을 때 이미 탈퇴했다는 사실 자체가 필요한 정보다.
+     *
+     * <p>{@code cast(:keyword as string)} 이 필요하다. 검색어가 없을 때 PostgreSQL 은
+     * 파라미터 타입을 추론하지 못해 bytea 로 보고 {@code function lower(bytea) does not exist}
+     * 로 실패한다. H2 는 이를 허용해서 테스트만으로는 드러나지 않는다.
      */
     @Query("""
             select user from User user
             where (:keyword is null
-                   or lower(user.nickname) like lower(concat('%', :keyword, '%'))
-                   or lower(user.email) like lower(concat('%', :keyword, '%')))
+                   or lower(user.nickname) like lower(concat('%', cast(:keyword as string), '%'))
+                   or lower(user.email) like lower(concat('%', cast(:keyword as string), '%')))
               and (:status is null or user.status = :status)
             order by user.createdAt desc
             """)
@@ -48,8 +52,8 @@ public interface UserRepository extends JpaRepository<User, Long> {
     @Query("""
             select count(user) from User user
             where (:keyword is null
-                   or lower(user.nickname) like lower(concat('%', :keyword, '%'))
-                   or lower(user.email) like lower(concat('%', :keyword, '%')))
+                   or lower(user.nickname) like lower(concat('%', cast(:keyword as string), '%'))
+                   or lower(user.email) like lower(concat('%', cast(:keyword as string), '%')))
               and (:status is null or user.status = :status)
             """)
     long countForAdmin(@Param("keyword") String keyword, @Param("status") UserStatus status);
