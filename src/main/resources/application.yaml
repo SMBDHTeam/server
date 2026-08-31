@@ -13,6 +13,12 @@ spring:
     properties:
       hibernate:
         default_batch_fetch_size: 100
+  servlet:
+    multipart:
+      # 기본값은 한 건 1MB, 요청 전체 10MB 다. 그대로 두면 app.media 한도에 닿기 전에
+      # 서블릿이 먼저 막는다. 한 건 10MB × 10건에 여유를 둔다.
+      max-file-size: ${COMMUNITY_MEDIA_MAX_FILE_SIZE:10MB}
+      max-request-size: ${COMMUNITY_MEDIA_MAX_REQUEST_SIZE:110MB}
 
 server:
   port: 8080
@@ -96,3 +102,14 @@ app:
       enabled: ${COMMUNITY_POST_PURGE_ENABLED:false}
       retention-days: ${COMMUNITY_POST_RETENTION_DAYS:30}
       cron: "${COMMUNITY_POST_PURGE_CRON:0 30 4 * * *}"
+  # 게시물에 붙일 사진·영상 업로드. 자격 증명은 yaml 이 아니라 환경변수에서 읽는다
+  # (AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY). 키가 없으면 enabled 를 끄고 띄운다.
+  media:
+    max-file-size: ${COMMUNITY_MEDIA_MAX_FILE_SIZE:10MB}
+    # 게시물 첨부 상한(PostCreateRequest.MAX_MEDIA_COUNT)과 같아야 한다.
+    max-file-count: ${COMMUNITY_MEDIA_MAX_FILE_COUNT:10}
+    s3:
+      enabled: ${COMMUNITY_MEDIA_S3_ENABLED:false}
+      bucket: ${COMMUNITY_MEDIA_S3_BUCKET:}
+      region: ${COMMUNITY_MEDIA_S3_REGION:ap-northeast-2}
+      key-prefix: ${COMMUNITY_MEDIA_S3_KEY_PREFIX:posts}
