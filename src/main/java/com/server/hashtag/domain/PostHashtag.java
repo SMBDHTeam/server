@@ -36,7 +36,4 @@ public class PostHashtag {
         return post;
     }
 
-    public Hashtag getHashtag() {
-        return hashtag;
-    }
 }

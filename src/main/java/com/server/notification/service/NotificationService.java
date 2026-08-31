@@ -8,7 +8,6 @@ import com.server.notification.domain.NotificationType;
 import com.server.notification.dto.NotificationListResponse;
 import com.server.notification.dto.NotificationResponse;
 import com.server.notification.repository.NotificationRepository;
-import com.server.user.domain.User;
 import com.server.user.repository.UserRepository;
 import java.time.LocalDateTime;
 import java.util.List;

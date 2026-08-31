@@ -62,9 +62,6 @@ public class Notification {
         return id;
     }
 
-    public User getRecipient() {
-        return recipient;
-    }
 
     public User getActor() {
         return actor;
