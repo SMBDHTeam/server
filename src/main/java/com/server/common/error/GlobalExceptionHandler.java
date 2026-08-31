@@ -19,6 +19,8 @@ import org.springframework.web.bind.MissingRequestHeaderException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.method.annotation.HandlerMethodValidationException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
+import org.springframework.web.multipart.support.MissingServletRequestPartException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 import tools.jackson.core.JacksonException.Reference;
 import tools.jackson.databind.exc.InvalidFormatException;
@@ -215,6 +217,42 @@ public class GlobalExceptionHandler {
                         traceId(request)));
     }
 
+    /**
+     * multipart 요청에서 파일 파트가 통째로 빠졌을 때. 그대로 두면 500 이 나가 프론트가
+     * 서버 장애로 오해한다.
+     */
+    @ExceptionHandler(MissingServletRequestPartException.class)
+    public ResponseEntity<ErrorResponse> handleMissingPart(
+            MissingServletRequestPartException exception,
+            HttpServletRequest request
+    ) {
+        return ResponseEntity
+                .status(HttpStatus.BAD_REQUEST)
+                .body(ErrorResponse.of(
+                        validationErrorCode(request),
+                        List.of(new ErrorResponse.FieldErrorResponse(
+                                exception.getRequestPartName(), "필수 파트입니다.")),
+                        traceId(request)));
+    }
+
+    /**
+     * 서블릿이 크기를 먼저 막았을 때. MediaService 의 검사는 파일이 컨트롤러까지 와야
+     * 돌기 때문에, 그보다 큰 요청은 여기로 떨어진다. 두 경로가 같은 코드를 주어야
+     * 프론트가 한 가지 분기만 두면 된다.
+     */
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    public ResponseEntity<ErrorResponse> handleMaxUploadSize(
+            MaxUploadSizeExceededException exception,
+            HttpServletRequest request
+    ) {
+        return ResponseEntity
+                .status(ErrorCode.MEDIA_FILE_TOO_LARGE.getStatus())
+                .body(ErrorResponse.of(
+                        ErrorCode.MEDIA_FILE_TOO_LARGE,
+                        List.of(new ErrorResponse.FieldErrorResponse("files", "파일이 너무 큽니다.")),
+                        traceId(request)));
+    }
+
     /** 존재하지 않는 경로. 오류 응답 형태를 나머지와 맞춘다. */
     @ExceptionHandler(NoResourceFoundException.class)
     public ResponseEntity<ErrorResponse> handleNoResource(
@@ -268,6 +306,9 @@ public class GlobalExceptionHandler {
         }
         if (uri.startsWith("/api/v1/users")) {
             return ErrorCode.INVALID_USER_REQUEST;
+        }
+        if (uri.startsWith("/api/v1/media")) {
+            return ErrorCode.INVALID_MEDIA_FILE;
         }
         // 분기가 없으면 로그인 요청 오류가 "일정 조건이 올바르지 않습니다"로 나간다.
         if (uri.startsWith("/api/v1/auth")) {
