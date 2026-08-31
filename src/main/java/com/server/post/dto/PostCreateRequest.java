@@ -22,7 +22,11 @@ public record PostCreateRequest(
         @NotEmpty @Size(max = MAX_MEDIA_COUNT) @Valid List<Media> mediaList,
 
         @Schema(description = "게시물에 태그한 장소. 내부 places에 등록된 장소만 태그할 수 있다. 최대 열 건이다.")
-        @Size(max = MAX_PLACE_TAG_COUNT) @Valid List<PlaceTag> placeTags
+        @Size(max = MAX_PLACE_TAG_COUNT) @Valid List<PlaceTag> placeTags,
+
+        @Schema(description = "고른 카테고리. GET /api/v1/categories 의 이름을 그대로 보낸다. "
+                + "등록되지 않은 이름은 무시한다.", example = "[\"맛집\", \"야경\"]")
+        @Size(max = MAX_CATEGORY_COUNT) List<String> categories
 ) {
 
     /** 본문 컬럼이 text 라 DB가 길이를 막지 않는다. 여기서 막지 않으면 수 MB 본문이 그대로 저장된다. */
@@ -33,6 +37,9 @@ public record PostCreateRequest(
     public static final int MAX_PLACE_TAG_COUNT = 10;
 
     public static final int MAX_URL_LENGTH = 2048;
+
+    /** 등록된 카테고리 수보다 많이 보낼 이유가 없다. 늘어나면 함께 올린다. */
+    public static final int MAX_CATEGORY_COUNT = 10;
 
     @Schema(description = "첨부 미디어 한 건")
     public record Media(

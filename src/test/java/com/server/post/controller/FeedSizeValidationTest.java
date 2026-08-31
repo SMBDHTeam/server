@@ -49,11 +49,11 @@ class FeedSizeValidationTest {
     }
 
     @Test
-    @DisplayName("해시태그 자동완성은 상한이 30 이다")
+    @DisplayName("카테고리 자동완성은 상한이 30 이다")
     void hashtagSuggestionHasOwnBound() throws Exception {
-        mockMvc.perform(get("/api/v1/hashtags/search").param("keyword", "부").param("size", "31"))
+        mockMvc.perform(get("/api/v1/categories/search").param("keyword", "부").param("size", "31"))
                 .andExpect(status().isBadRequest());
-        mockMvc.perform(get("/api/v1/hashtags/search").param("keyword", "부").param("size", "30"))
+        mockMvc.perform(get("/api/v1/categories/search").param("keyword", "부").param("size", "30"))
                 .andExpect(status().isOk());
     }
 }

@@ -95,8 +95,8 @@ public class PostPurgeService {
         bookmarkRepository.deleteByPostId(postId);
         postMediaRepository.deleteByPostId(postId);
         postPlaceTagRepository.deleteByPostId(postId);
-        // 소프트 삭제 때 이미 끊었지만 남아 있을 수 있다. 링크만 지우면 태그 사용 수가
-        // 부풀어 자동완성 정렬이 틀어지고 되돌릴 근거도 없으므로 사용 수까지 함께 되돌린다.
-        hashtagService.detachFromPost(postId);
+        // 소프트 삭제에서는 복구를 위해 연결을 남겨 두므로 여기서 지운다. 링크만 지우면
+        // 사용 수가 부풀어 자동완성 정렬이 틀어지고 되돌릴 근거도 없어, 함께 되돌린다.
+        hashtagService.purgeForPost(postId);
     }
 }

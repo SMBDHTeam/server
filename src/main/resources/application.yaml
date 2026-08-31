@@ -83,6 +83,13 @@ app:
         cron: "${TOUR_API_INGESTION_CRON:0 0 4 * * *}"
     #---------------
   community:
+    # 해시태그가 가리키는 장소를 집계할 때 필요한 최소 인원.
+    #
+    # 3은 신뢰할 만한 기준이 아니라 데이터가 없어서 낮춰 둔 값이다. 한 장소에 열 명이
+    # 같은 태그를 달려면 그 태그 아래 글이 수백 개는 쌓여야 하는데, 지금은 게시물이 거의
+    # 없어 그 기준으로는 아무 장소도 뜨지 않는다. 글이 쌓이면 올린다.
+    hashtag-place:
+      min-authors: ${COMMUNITY_HASHTAG_PLACE_MIN_AUTHORS:3}
     # 지운 게시물은 retention-days 동안 복구할 수 있고, 그 뒤 이 스케줄러가 실제로 지운다.
     # 끄면 지운 게시물이 영원히 쌓이고 본문과 사진 URL 이 DB 에 남는다.
     post-purge:

@@ -26,11 +26,15 @@ public record PostUpdateRequest(
 
         @Schema(description = "교체할 장소 태그 전체. 생략하면 그대로 두고, 빈 배열이면 모두 없앤다.")
         @Size(max = PostCreateRequest.MAX_PLACE_TAG_COUNT)
-        @Valid List<PostCreateRequest.PlaceTag> placeTags
+        @Valid List<PostCreateRequest.PlaceTag> placeTags,
+
+        @Schema(description = "교체할 카테고리 전체. 생략하면 그대로 두고, 빈 배열이면 모두 없앤다.",
+                example = "[\"맛집\"]")
+        @Size(max = PostCreateRequest.MAX_CATEGORY_COUNT) List<String> categories
 ) {
 
-    /** 세 항목이 모두 비어 있으면 바꿀 것이 없는 요청이다. */
+    /** 모두 비어 있으면 바꿀 것이 없는 요청이다. */
     public boolean isEmpty() {
-        return content == null && mediaList == null && placeTags == null;
+        return content == null && mediaList == null && placeTags == null && categories == null;
     }
 }

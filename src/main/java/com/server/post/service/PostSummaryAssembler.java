@@ -57,7 +57,7 @@ public class PostSummaryAssembler {
         Map<Long, List<PostPlaceTagView>> placeTagsByPost =
                 postPlaceTagRepository.findViewsByPostIdIn(postIds).stream()
                         .collect(Collectors.groupingBy(PostPlaceTagView::postId));
-        Map<Long, List<String>> hashtagsByPost = hashtagService.findNamesByPostIds(postIds);
+        Map<Long, List<String>> categoriesByPost = hashtagService.findNamesByPostIds(postIds);
         Set<Long> likedPostIds = likedPostIds(requesterId, postIds);
         Set<Long> bookmarkedPostIds = bookmarkedPostIds(requesterId, postIds);
 
@@ -66,7 +66,7 @@ public class PostSummaryAssembler {
                         post,
                         mediaByPost.getOrDefault(post.getId(), List.of()),
                         placeTagsByPost.getOrDefault(post.getId(), List.of()),
-                        hashtagsByPost.getOrDefault(post.getId(), List.of()),
+                        categoriesByPost.getOrDefault(post.getId(), List.of()),
                         likedPostIds.contains(post.getId()),
                         bookmarkedPostIds.contains(post.getId())))
                 .toList();

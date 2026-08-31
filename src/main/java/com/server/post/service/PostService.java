@@ -91,14 +91,14 @@ public class PostService {
         Post post = postRepository.save(new Post(author, request.content()));
         List<PostMedia> mediaList = saveMedia(post, request.mediaList());
         List<PostPlaceTag> placeTags = savePlaceTags(post, request.placeTags());
-        List<String> hashtags = hashtagService.attachFromContent(post, request.content());
+        List<String> categories = hashtagService.attach(post, request.categories());
 
         // 방금 만든 게시물이라 좋아요·저장이 있을 수 없다.
         return PostDetailResponse.from(
                 post,
                 mediaList,
                 placeTags.stream().map(PostPlaceTagView::from).toList(),
-                hashtags,
+                categories,
                 false,
                 false);
     }
@@ -121,7 +121,7 @@ public class PostService {
     /**
      * @param following   true 면 요청자가 팔로우한 사람들의 게시물만 반환한다.
      * @param placeId     값이 있으면 이 장소를 태그한 게시물만 반환한다.
-     * @param hashtag     값이 있으면 이 해시태그가 달린 게시물만 반환한다.
+     * @param category    값이 있으면 이 카테고리가 붙은 게시물만 반환한다.
      * @param requesterId 팔로잉 피드에 필요하며, 차단한 사용자를 걸러내는 데도 쓴다.
      */
     @Transactional(readOnly = true)
@@ -130,7 +130,7 @@ public class PostService {
             Integer size,
             boolean following,
             Long placeId,
-            String hashtag,
+            String category,
             Long requesterId
     ) {
         if (following && requesterId == null) {
@@ -142,7 +142,7 @@ public class PostService {
                 postRepository.findFeed(
                         following ? requesterId : null,
                         placeId,
-                        hashtag == null || hashtag.isBlank() ? null : hashtag.trim().toLowerCase(),
+                        normalizeCategory(category),
                         requesterId,
                         cursor == null ? FIRST_PAGE_CURSOR : cursor,
                         PageRequest.of(0, limit)),
@@ -150,13 +150,32 @@ public class PostService {
                 requesterId);
     }
 
-    /** 탐색 탭. 최근 {@value #POPULAR_FEED_DAYS}일 게시물을 좋아요·댓글 기준으로 정렬한다. */
+    /**
+     * 탐색 탭. 최근 {@value #POPULAR_FEED_DAYS}일 게시물을 좋아요·댓글 기준으로 정렬한다.
+     *
+     * <p>정렬만 다를 뿐 거르는 조건은 최신순 피드와 같다. 정렬을 바꿨다고 쓸 수 있는
+     * 필터가 달라지면 같은 탭을 눌러도 두 목록이 서로 다른 기준으로 보인다.
+     */
     @Transactional(readOnly = true)
-    public PostSummaryListResponse getPopularFeed(Integer page, Integer size, Long requesterId) {
+    public PostSummaryListResponse getPopularFeed(
+            Integer page,
+            Integer size,
+            boolean following,
+            Long placeId,
+            String category,
+            Long requesterId
+    ) {
+        if (following && requesterId == null) {
+            throw new BusinessException(ErrorCode.INVALID_FEED_REQUEST, List.of(new FieldViolation(
+                    "X-User-Id", "팔로잉 피드를 보려면 요청자를 알 수 있어야 합니다.")));
+        }
         int resolvedPage = page == null || page < 0 ? 0 : page;
         int limit = resolveFeedSize(size);
         List<Post> posts = postRepository.findPopularFeed(
                 LocalDateTime.now().minusDays(POPULAR_FEED_DAYS),
+                following ? requesterId : null,
+                placeId,
+                normalizeCategory(category),
                 requesterId,
                 PageRequest.of(resolvedPage, limit));
 
@@ -203,18 +222,17 @@ public class PostService {
         }
         Post post = findWritablePost(postId, userId);
 
-        List<String> hashtags;
-        if (request.content() == null) {
-            hashtags = hashtagService.findNamesByPostIds(List.of(postId))
-                    .getOrDefault(postId, List.of());
-        } else {
+        if (request.content() != null) {
             if (request.content().isBlank()) {
                 throw new BusinessException(ErrorCode.INVALID_POST_REQUEST, List.of(
                         new FieldViolation("content", "본문은 공백일 수 없습니다.")));
             }
             post.updateContent(request.content());
-            hashtags = hashtagService.reattachFromContent(post, request.content());
         }
+        // 카테고리는 본문과 무관하므로 보낸 경우에만 교체한다.
+        List<String> categories = request.categories() == null
+                ? hashtagService.findNamesByPostIds(List.of(postId)).getOrDefault(postId, List.of())
+                : hashtagService.reattach(post, request.categories());
 
         if (request.mediaList() != null) {
             postMediaRepository.deleteByPostId(postId);
@@ -230,7 +248,7 @@ public class PostService {
                 post,
                 postMediaRepository.findByPostId(postId),
                 postPlaceTagRepository.findViewsByPostId(postId),
-                hashtags,
+                categories,
                 !postSummaryAssembler.likedPostIds(userId, postIds).isEmpty(),
                 !postSummaryAssembler.bookmarkedPostIds(userId, postIds).isEmpty());
     }
@@ -293,14 +311,15 @@ public class PostService {
         }
 
         post.restore();
-        List<String> hashtags = hashtagService.attachFromContent(post, post.getContent());
+        // 연결은 삭제할 때 지우지 않았으므로 사용 수만 되돌린다.
+        List<String> categories = hashtagService.restoreForPost(postId);
 
         List<Long> postIds = List.of(postId);
         return PostDetailResponse.from(
                 post,
                 postMediaRepository.findByPostId(postId),
                 postPlaceTagRepository.findViewsByPostId(postId),
-                hashtags,
+                categories,
                 !postSummaryAssembler.likedPostIds(userId, postIds).isEmpty(),
                 !postSummaryAssembler.bookmarkedPostIds(userId, postIds).isEmpty());
     }
@@ -381,6 +400,11 @@ public class PostService {
                     return new PostPlaceTag(post, place, tag.latitude(), tag.longitude());
                 })
                 .toList());
+    }
+
+    /** 소문자로 저장하므로 조회도 맞춘다. 대소문자가 다르다고 못 찾는 일이 없게 한다. */
+    private String normalizeCategory(String category) {
+        return category == null || category.isBlank() ? null : category.trim().toLowerCase();
     }
 
     private int resolveFeedSize(Integer size) {
