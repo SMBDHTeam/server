@@ -71,7 +71,7 @@ public class ErrorResponseOpenApiConfig {
             putIfAbsent(responses, "410", "Preview가 만료됐다.", codesOf(410));
         }
         // 인증이 필요한 경로. 지금은 관리자만이며, 인가를 전면 적용하면 대상이 늘어난다.
-        if (requiresAuthentication(path)) {
+        if (requiresAuthentication(path, httpMethod)) {
             putIfAbsent(responses, "401", "인증이 필요하거나 토큰이 유효하지 않다.", codesOf(401));
             putIfAbsent(responses, "403", "권한이 없다.", codesOf(403));
         }
@@ -94,11 +94,38 @@ public class ErrorResponseOpenApiConfig {
     /**
      * 인증이 필요한 경로.
      *
-     * <p>관리자 경로는 만들어진 시점부터 인가가 걸려 있다. 사용자 API 는 인가를 전면
-     * 적용할 때 여기에 더한다.
+     * <p>관리자 경로와 커뮤니티가 여기 해당한다. 일정 API 는 인증 없이 만든 일정이 남아
+     * 있어 아직 걸지 않았고, 걸 때 여기에 더한다.
      */
-    private boolean requiresAuthentication(String path) {
-        return path.startsWith("/api/v1/admin");
+    private boolean requiresAuthentication(String path, String httpMethod) {
+        if (path.startsWith("/api/v1/admin")) {
+            return true;
+        }
+        return isCommunity(path) && !isPubliclyReadable(path, httpMethod);
+    }
+
+    /** 커뮤니티 경로. SecurityConfig 의 인가 규칙과 같은 범위를 본다. */
+    private boolean isCommunity(String path) {
+        return path.startsWith("/api/v1/posts")
+                || path.startsWith("/api/v1/users")
+                || path.startsWith("/api/v1/notifications")
+                || path.startsWith("/api/v1/reports")
+                || path.startsWith("/api/v1/media");
+    }
+
+    /**
+     * 로그인 없이 볼 수 있는 경로.
+     *
+     * <p>공유 링크로 들어온 사람이 그 글과 댓글까지는 봐야 한다. 토큰을 보내면 읽으므로
+     * {@code liked} 같은 값은 로그인해야 채워진다.
+     */
+    private boolean isPubliclyReadable(String path, String httpMethod) {
+        if (!"get".equals(httpMethod)) {
+            // 같은 경로라도 댓글 작성은 로그인이 필요하다.
+            return false;
+        }
+        return path.equals("/api/v1/posts/{postId}")
+                || path.equals("/api/v1/posts/{postId}/comments");
     }
 
     /** Preview를 만들거나 소비하는 경로. */

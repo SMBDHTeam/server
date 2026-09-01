@@ -42,7 +42,7 @@ public class UserController {
             @Parameter(example = "1") @PathVariable Long userId,
             @AuthenticationPrincipal AuthenticatedUser loginUser
     ) {
-        Long requesterId = LoginUser.idOrNull(loginUser);
+        Long requesterId = LoginUser.require(loginUser);
         return userService.getProfile(userId, requesterId);
     }
 
@@ -59,7 +59,7 @@ public class UserController {
             @RequestParam(defaultValue = "20") @Min(1) @Max(50) Integer size,
             @AuthenticationPrincipal AuthenticatedUser loginUser
     ) {
-        Long requesterId = LoginUser.idOrNull(loginUser);
+        Long requesterId = LoginUser.require(loginUser);
         return postService.getUserPosts(userId, cursor, size, requesterId);
     }
 }

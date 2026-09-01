@@ -80,7 +80,7 @@ public class PostController {
             @RequestParam(required = false) String category,
             @AuthenticationPrincipal AuthenticatedUser loginUser
     ) {
-        Long requesterId = LoginUser.idOrNull(loginUser);
+        Long requesterId = LoginUser.require(loginUser);
         return postService.getFeed(
                 cursor, size, FOLLOWING_FEED.equals(feed), placeId, category, requesterId);
     }
@@ -107,7 +107,7 @@ public class PostController {
             @RequestParam(required = false) String category,
             @AuthenticationPrincipal AuthenticatedUser loginUser
     ) {
-        Long requesterId = LoginUser.idOrNull(loginUser);
+        Long requesterId = LoginUser.require(loginUser);
         return postService.getPopularFeed(
                 page, size, FOLLOWING_FEED.equals(feed), placeId, category, requesterId);
     }
