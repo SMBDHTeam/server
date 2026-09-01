@@ -1,5 +1,7 @@
 package com.server.notification.controller;
 
+import com.server.auth.service.AuthenticatedUser;
+import com.server.auth.web.LoginUser;
 import com.server.notification.dto.NotificationListResponse;
 import com.server.notification.dto.NotificationResponse;
 import com.server.notification.dto.UnreadCountResponse;
@@ -9,6 +11,7 @@ import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
@@ -31,13 +34,12 @@ public class NotificationController {
                     + "벨 아이콘 표시도 같이 갱신할 수 있다."
     )
     public NotificationListResponse getMyNotifications(
-            // TODO: 인증 도입 시 제거하고 인증 주체에서 사용자 ID 를 받는다. 임시 식별 수단이다.
-            @Parameter(description = "요청자 ID. 인증 도입 전까지 쓰는 임시 헤더다.", example = "1")
-            @RequestHeader("X-User-Id") Long userId,
+            @AuthenticationPrincipal AuthenticatedUser loginUser,
             @Parameter(example = "9") @RequestParam(required = false) Long cursor,
             @Parameter(description = "한 번에 가져올 알림 수. 1 이상 50 이하", example = "20")
             @RequestParam(defaultValue = "20") @Min(1) @Max(50) Integer size
     ) {
+        Long userId = LoginUser.require(loginUser);
         return notificationService.getMyNotifications(userId, cursor, size);
     }
 
@@ -47,10 +49,9 @@ public class NotificationController {
             description = "벨 아이콘 표시용이다. 목록 전체를 받지 않고 수만 확인할 때 쓴다."
     )
     public UnreadCountResponse getUnreadCount(
-            // TODO: 인증 도입 시 제거하고 인증 주체에서 사용자 ID 를 받는다. 임시 식별 수단이다.
-            @Parameter(description = "요청자 ID. 인증 도입 전까지 쓰는 임시 헤더다.", example = "1")
-            @RequestHeader("X-User-Id") Long userId
+            @AuthenticationPrincipal AuthenticatedUser loginUser
     ) {
+        Long userId = LoginUser.require(loginUser);
         return new UnreadCountResponse(notificationService.countUnread(userId));
     }
 
@@ -61,11 +62,10 @@ public class NotificationController {
                     + "남의 알림이면 404 를 반환한다."
     )
     public NotificationResponse markAsRead(
-            // TODO: 인증 도입 시 제거하고 인증 주체에서 사용자 ID 를 받는다. 임시 식별 수단이다.
-            @Parameter(description = "요청자 ID. 인증 도입 전까지 쓰는 임시 헤더다.", example = "1")
-            @RequestHeader("X-User-Id") Long userId,
+            @AuthenticationPrincipal AuthenticatedUser loginUser,
             @Parameter(example = "12") @PathVariable Long notificationId
     ) {
+        Long userId = LoginUser.require(loginUser);
         return notificationService.markAsRead(notificationId, userId);
     }
 
@@ -75,10 +75,9 @@ public class NotificationController {
             description = "이미 다 읽은 상태에서 다시 요청해도 아무 일도 일어나지 않는다."
     )
     public UnreadCountResponse markAllAsRead(
-            // TODO: 인증 도입 시 제거하고 인증 주체에서 사용자 ID 를 받는다. 임시 식별 수단이다.
-            @Parameter(description = "요청자 ID. 인증 도입 전까지 쓰는 임시 헤더다.", example = "1")
-            @RequestHeader("X-User-Id") Long userId
+            @AuthenticationPrincipal AuthenticatedUser loginUser
     ) {
+        Long userId = LoginUser.require(loginUser);
         return new UnreadCountResponse(notificationService.markAllAsRead(userId));
     }
 }

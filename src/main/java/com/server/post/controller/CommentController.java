@@ -1,5 +1,7 @@
 package com.server.post.controller;
 
+import com.server.auth.service.AuthenticatedUser;
+import com.server.auth.web.LoginUser;
 import com.server.post.dto.CommentCreateRequest;
 import com.server.post.dto.CommentLikeResponse;
 import com.server.post.dto.CommentListResponse;
@@ -13,6 +15,7 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -20,7 +23,6 @@ import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
@@ -45,12 +47,11 @@ public class CommentController {
             description = "parentId 를 주면 답글이 된다. 답글에 다시 답글을 달면 400 을 반환한다."
     )
     public CommentResponse create(
-            // TODO: 인증 도입 시 제거하고 인증 주체에서 사용자 ID 를 받는다. 임시 식별 수단이다.
-            @Parameter(description = "작성자 ID. 인증 도입 전까지 쓰는 임시 헤더다.", example = "1")
-            @RequestHeader("X-User-Id") Long userId,
+            @AuthenticationPrincipal AuthenticatedUser loginUser,
             @Parameter(example = "1") @PathVariable Long postId,
             @Valid @RequestBody CommentCreateRequest request
     ) {
+        Long userId = LoginUser.require(loginUser);
         return commentService.create(postId, userId, request);
     }
 
@@ -60,13 +61,12 @@ public class CommentController {
             description = "내용만 바꾼다. 작성자 본인이 아니면 403 을 반환한다."
     )
     public CommentResponse update(
-            // TODO: 인증 도입 시 제거하고 인증 주체에서 사용자 ID 를 받는다. 임시 식별 수단이다.
-            @Parameter(description = "요청자 ID. 인증 도입 전까지 쓰는 임시 헤더다.", example = "1")
-            @RequestHeader("X-User-Id") Long userId,
+            @AuthenticationPrincipal AuthenticatedUser loginUser,
             @Parameter(example = "7") @PathVariable Long postId,
             @Parameter(example = "3") @PathVariable Long commentId,
             @Valid @RequestBody CommentUpdateRequest request
     ) {
+        Long userId = LoginUser.require(loginUser);
         return commentService.update(postId, commentId, userId, request);
     }
 
@@ -78,12 +78,11 @@ public class CommentController {
                     + "이 댓글은 작성자와 내용이 감춰진 자리로 남는다. 작성자 본인이 아니면 403 을 반환한다."
     )
     public void delete(
-            // TODO: 인증 도입 시 제거하고 인증 주체에서 사용자 ID 를 받는다. 임시 식별 수단이다.
-            @Parameter(description = "요청자 ID. 인증 도입 전까지 쓰는 임시 헤더다.", example = "1")
-            @RequestHeader("X-User-Id") Long userId,
+            @AuthenticationPrincipal AuthenticatedUser loginUser,
             @Parameter(example = "1") @PathVariable Long postId,
             @Parameter(example = "3") @PathVariable Long commentId
     ) {
+        Long userId = LoginUser.require(loginUser);
         commentService.delete(postId, commentId, userId);
     }
 
@@ -99,34 +98,31 @@ public class CommentController {
             @RequestParam(required = false) Long cursor,
             @Parameter(description = "한 번에 가져올 댓글 수. 1 이상 50 이하", example = "20")
             @RequestParam(defaultValue = "20") @Min(1) @Max(50) Integer size,
-            // TODO: 인증 도입 시 제거하고 인증 주체에서 사용자 ID 를 받는다. 임시 식별 수단이다.
-            @Parameter(description = "요청자 ID. 없으면 좋아요 여부가 false 로 나간다.", example = "1")
-            @RequestHeader(value = "X-User-Id", required = false) Long requesterId
+            @AuthenticationPrincipal AuthenticatedUser loginUser
     ) {
+        Long requesterId = LoginUser.idOrNull(loginUser);
         return commentService.getComments(postId, cursor, size, requesterId);
     }
 
     @PostMapping("/{commentId}/likes")
     @Operation(summary = "댓글 좋아요", description = "이미 누른 상태에서 다시 요청해도 개수가 늘지 않는다.")
     public CommentLikeResponse like(
-            // TODO: 인증 도입 시 제거하고 인증 주체에서 사용자 ID 를 받는다. 임시 식별 수단이다.
-            @Parameter(description = "요청자 ID. 인증 도입 전까지 쓰는 임시 헤더다.", example = "1")
-            @RequestHeader("X-User-Id") Long userId,
+            @AuthenticationPrincipal AuthenticatedUser loginUser,
             @Parameter(example = "1") @PathVariable Long postId,
             @Parameter(example = "3") @PathVariable Long commentId
     ) {
+        Long userId = LoginUser.require(loginUser);
         return commentService.like(postId, commentId, userId);
     }
 
     @DeleteMapping("/{commentId}/likes")
     @Operation(summary = "댓글 좋아요 취소", description = "누른 적 없는 상태에서 요청해도 개수가 줄지 않는다.")
     public CommentLikeResponse unlike(
-            // TODO: 인증 도입 시 제거하고 인증 주체에서 사용자 ID 를 받는다. 임시 식별 수단이다.
-            @Parameter(description = "요청자 ID. 인증 도입 전까지 쓰는 임시 헤더다.", example = "1")
-            @RequestHeader("X-User-Id") Long userId,
+            @AuthenticationPrincipal AuthenticatedUser loginUser,
             @Parameter(example = "1") @PathVariable Long postId,
             @Parameter(example = "3") @PathVariable Long commentId
     ) {
+        Long userId = LoginUser.require(loginUser);
         return commentService.unlike(postId, commentId, userId);
     }
 }

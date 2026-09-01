@@ -1,5 +1,7 @@
 package com.server.user.controller;
 
+import com.server.auth.service.AuthenticatedUser;
+import com.server.auth.web.LoginUser;
 import com.server.post.dto.PostSummaryListResponse;
 import com.server.post.service.PostService;
 import com.server.user.dto.UserProfileResponse;
@@ -9,10 +11,10 @@ import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -38,10 +40,9 @@ public class UserController {
     )
     public UserProfileResponse getProfile(
             @Parameter(example = "1") @PathVariable Long userId,
-            // TODO: 인증 도입 시 제거하고 인증 주체에서 사용자 ID 를 받는다. 임시 식별 수단이다.
-            @Parameter(description = "요청자 ID. 없으면 팔로우 여부를 판단하지 않는다.", example = "2")
-            @RequestHeader(value = "X-User-Id", required = false) Long requesterId
+            @AuthenticationPrincipal AuthenticatedUser loginUser
     ) {
+        Long requesterId = LoginUser.idOrNull(loginUser);
         return userService.getProfile(userId, requesterId);
     }
 
@@ -56,10 +57,9 @@ public class UserController {
             @RequestParam(required = false) Long cursor,
             @Parameter(description = "한 번에 가져올 게시물 수. 1 이상 50 이하", example = "20")
             @RequestParam(defaultValue = "20") @Min(1) @Max(50) Integer size,
-            // TODO: 인증 도입 시 제거하고 인증 주체에서 사용자 ID 를 받는다. 임시 식별 수단이다.
-            @Parameter(description = "요청자 ID. 없으면 좋아요·저장 여부가 false 로 나간다.", example = "1")
-            @RequestHeader(value = "X-User-Id", required = false) Long requesterId
+            @AuthenticationPrincipal AuthenticatedUser loginUser
     ) {
+        Long requesterId = LoginUser.idOrNull(loginUser);
         return postService.getUserPosts(userId, cursor, size, requesterId);
     }
 }

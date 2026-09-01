@@ -165,16 +165,12 @@ class PostServiceTest {
     }
 
     @Test
-    @DisplayName("팔로잉 피드는 요청자를 알 수 없으면 거절한다")
+    @DisplayName("팔로잉 피드는 로그인하지 않으면 거절한다")
     void followingFeedRequiresRequester() {
+        // 경로가 /posts 로 같고 feed 파라미터로만 갈려 SecurityConfig 이 구분하지 못한다.
         assertThatThrownBy(() -> postService.getFeed(null, 20, true, null, null, null))
-                .isInstanceOfSatisfying(BusinessException.class, exception -> {
-                    assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.INVALID_FEED_REQUEST);
-                    assertThat(exception.getFieldViolations())
-                            .singleElement()
-                            .satisfies(violation ->
-                                    assertThat(violation.field()).isEqualTo("X-User-Id"));
-                });
+                .isInstanceOfSatisfying(BusinessException.class, exception ->
+                        assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.UNAUTHORIZED));
     }
 
     @Test
@@ -292,13 +288,12 @@ class PostServiceTest {
     }
 
     @Test
-    @DisplayName("인기 피드도 팔로잉이면 요청자를 알아야 한다")
+    @DisplayName("인기 피드도 팔로잉이면 로그인이 필요하다")
     void popularFollowingFeedRequiresRequester() {
         // 정렬만 다를 뿐 거르는 조건은 최신 피드와 같아야 한다.
         assertThatThrownBy(() -> postService.getPopularFeed(0, 20, true, null, null, null))
                 .isInstanceOfSatisfying(BusinessException.class, exception ->
-                        assertThat(exception.getErrorCode())
-                                .isEqualTo(ErrorCode.INVALID_FEED_REQUEST));
+                        assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.UNAUTHORIZED));
     }
 
     @Test

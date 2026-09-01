@@ -133,9 +133,9 @@ public class PostService {
             String category,
             Long requesterId
     ) {
+        // 경로가 같고 feed 파라미터로만 갈려 SecurityConfig 이 구분하지 못한다. 여기서 막는다.
         if (following && requesterId == null) {
-            throw new BusinessException(ErrorCode.INVALID_FEED_REQUEST, List.of(new FieldViolation(
-                    "X-User-Id", "팔로잉 피드를 보려면 요청자를 알 수 있어야 합니다.")));
+            throw new BusinessException(ErrorCode.UNAUTHORIZED);
         }
         int limit = resolveFeedSize(size);
         return toSummaryList(
@@ -165,9 +165,9 @@ public class PostService {
             String category,
             Long requesterId
     ) {
+        // 경로가 같고 feed 파라미터로만 갈려 SecurityConfig 이 구분하지 못한다. 여기서 막는다.
         if (following && requesterId == null) {
-            throw new BusinessException(ErrorCode.INVALID_FEED_REQUEST, List.of(new FieldViolation(
-                    "X-User-Id", "팔로잉 피드를 보려면 요청자를 알 수 있어야 합니다.")));
+            throw new BusinessException(ErrorCode.UNAUTHORIZED);
         }
         int resolvedPage = page == null || page < 0 ? 0 : page;
         int limit = resolveFeedSize(size);
