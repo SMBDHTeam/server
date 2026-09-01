@@ -11,7 +11,7 @@ import jakarta.validation.constraints.PositiveOrZero;
 import jakarta.validation.constraints.Size;
 import java.util.List;
 
-@Schema(description = "커뮤니티 게시물 작성 요청. 작성자는 X-User-Id 헤더로 전달한다.")
+@Schema(description = "커뮤니티 게시물 작성 요청. 작성자는 액세스 토큰에서 읽는다.")
 public record PostCreateRequest(
         @Schema(description = "본문. 최대 2000자다.",
                 example = "광안리 야경 보러 갔는데 날씨가 좋았어요")

@@ -20,15 +20,12 @@ public record CorsProperties(
      * 브라우저가 보낼 수 있는 요청 헤더.
      *
      * <p>{@code Authorization}이 없으면 로그인한 요청이 preflight에서 막힌다.
-     * {@code X-User-Id}는 인증 도입 전까지 커뮤니티 API가 작성자를 받는 임시 헤더이며,
-     * 인증이 붙으면 함께 제거한다.
      */
     private static final List<String> DEFAULT_ALLOWED_HEADERS = List.of(
             "Content-Type",
             "Authorization",
             "X-Trace-Id",
-            "Idempotency-Key",
-            "X-User-Id");
+            "Idempotency-Key");
 
     /**
      * 브라우저가 응답에서 읽을 수 있는 헤더.

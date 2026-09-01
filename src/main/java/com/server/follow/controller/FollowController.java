@@ -1,5 +1,7 @@
 package com.server.follow.controller;
 
+import com.server.auth.service.AuthenticatedUser;
+import com.server.auth.web.LoginUser;
 import com.server.follow.dto.FollowResponse;
 import com.server.follow.dto.FollowUserListResponse;
 import com.server.follow.service.FollowService;
@@ -8,12 +10,12 @@ import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -36,11 +38,10 @@ public class FollowController {
             description = "이미 팔로우한 상태에서 다시 요청해도 팔로워 수가 늘지 않는다. 자기 자신은 팔로우할 수 없다."
     )
     public FollowResponse follow(
-            // TODO: 인증 도입 시 제거하고 인증 주체에서 사용자 ID 를 받는다. 임시 식별 수단이다.
-            @Parameter(description = "요청자 ID. 인증 도입 전까지 쓰는 임시 헤더다.", example = "1")
-            @RequestHeader("X-User-Id") Long requesterId,
+            @AuthenticationPrincipal AuthenticatedUser loginUser,
             @Parameter(description = "팔로우할 대상 사용자 ID", example = "2") @PathVariable Long userId
     ) {
+        Long requesterId = LoginUser.require(loginUser);
         return followService.follow(userId, requesterId);
     }
 
@@ -50,11 +51,10 @@ public class FollowController {
             description = "팔로우하지 않은 상태에서 요청해도 팔로워 수가 줄지 않는다."
     )
     public FollowResponse unfollow(
-            // TODO: 인증 도입 시 제거하고 인증 주체에서 사용자 ID 를 받는다. 임시 식별 수단이다.
-            @Parameter(description = "요청자 ID. 인증 도입 전까지 쓰는 임시 헤더다.", example = "1")
-            @RequestHeader("X-User-Id") Long requesterId,
+            @AuthenticationPrincipal AuthenticatedUser loginUser,
             @Parameter(description = "팔로우를 취소할 대상 사용자 ID", example = "2") @PathVariable Long userId
     ) {
+        Long requesterId = LoginUser.require(loginUser);
         return followService.unfollow(userId, requesterId);
     }
 

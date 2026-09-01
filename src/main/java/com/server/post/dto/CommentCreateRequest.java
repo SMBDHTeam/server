@@ -5,7 +5,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 
-@Schema(description = "댓글 작성 요청. 작성자는 X-User-Id 헤더로 전달한다.")
+@Schema(description = "댓글 작성 요청. 작성자는 액세스 토큰에서 읽는다.")
 public record CommentCreateRequest(
         @Schema(description = "댓글 내용. 최대 1000자다.", example = "저도 여기 가봤는데 좋았어요")
         @NotBlank @Size(max = MAX_CONTENT_LENGTH) String content,

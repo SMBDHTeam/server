@@ -1,17 +1,18 @@
 package com.server.user.controller;
 
+import com.server.auth.service.AuthenticatedUser;
+import com.server.auth.web.LoginUser;
 import com.server.user.dto.NicknameUpdateRequest;
 import com.server.user.dto.ProfileImageUpdateRequest;
 import com.server.user.dto.UserProfileResponse;
 import com.server.user.service.UserService;
 import io.swagger.v3.oas.annotations.Operation;
-import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -37,11 +38,10 @@ public class MyProfileController {
                     + "프로필 사진 변경은 별도 API 로 분리할 예정이다."
     )
     public UserProfileResponse changeNickname(
-            // TODO: 인증 도입 시 제거하고 인증 주체에서 사용자 ID 를 받는다. 임시 식별 수단이다.
-            @Parameter(description = "요청자 ID. 인증 도입 전까지 쓰는 임시 헤더다.", example = "1")
-            @RequestHeader("X-User-Id") Long userId,
+            @AuthenticationPrincipal AuthenticatedUser loginUser,
             @Valid @RequestBody NicknameUpdateRequest request
     ) {
+        Long userId = LoginUser.require(loginUser);
         return userService.changeNickname(userId, request);
     }
 
@@ -51,21 +51,19 @@ public class MyProfileController {
             description = "이미 업로드된 URL 을 전달한다. 사진을 지우려면 DELETE 를 쓴다."
     )
     public UserProfileResponse changeProfileImage(
-            // TODO: 인증 도입 시 제거하고 인증 주체에서 사용자 ID 를 받는다. 임시 식별 수단이다.
-            @Parameter(description = "요청자 ID. 인증 도입 전까지 쓰는 임시 헤더다.", example = "1")
-            @RequestHeader("X-User-Id") Long userId,
+            @AuthenticationPrincipal AuthenticatedUser loginUser,
             @Valid @RequestBody ProfileImageUpdateRequest request
     ) {
+        Long userId = LoginUser.require(loginUser);
         return userService.changeProfileImage(userId, request);
     }
 
     @DeleteMapping("/profile-image")
     @Operation(summary = "프로필 사진 제거", description = "기본 이미지 상태로 되돌린다.")
     public UserProfileResponse removeProfileImage(
-            // TODO: 인증 도입 시 제거하고 인증 주체에서 사용자 ID 를 받는다. 임시 식별 수단이다.
-            @Parameter(description = "요청자 ID. 인증 도입 전까지 쓰는 임시 헤더다.", example = "1")
-            @RequestHeader("X-User-Id") Long userId
+            @AuthenticationPrincipal AuthenticatedUser loginUser
     ) {
+        Long userId = LoginUser.require(loginUser);
         return userService.removeProfileImage(userId);
     }
 }

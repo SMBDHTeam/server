@@ -12,13 +12,12 @@
 | --- | --- |
 | Base URL | `/api/v1` |
 | Content Type | `application/json; charset=utf-8` |
-| 인증 | 아직 없음. 커뮤니티 API는 `X-User-Id` 헤더로 요청자를 임시 식별한다 |
+| 인증 | `Authorization: Bearer {accessToken}`. 커뮤니티 조회 일부는 없어도 된다 |
 | 좌표 | WGS84, `longitude`는 경도, `latitude`는 위도 |
-| 향후 계획 | 사용자 도메인 도입 후 JWT와 사용자별 일정 조회 적용 |
+| 향후 계획 | 일정 API에도 사용자 범위 적용 |
 
-> **`X-User-Id`는 임시 조치다.** 헤더 값을 바꾸면 다른 사용자를 사칭할 수 있으므로 인증 도입 시
-> 반드시 제거해야 한다. 요청 본문이 아니라 헤더로 받는 이유는, 조회 API에는 본문이 없어 방식이
-> 갈라지고, 나중에 `Authorization` 헤더로 교체할 때 요청 DTO를 건드리지 않아도 되기 때문이다.
+> **`X-User-Id` 헤더는 없어졌다.** 인증 도입 전까지 쓰던 임시 수단이며, 값을 바꾸면 다른
+> 사용자를 사칭할 수 있었다. 이제 요청자는 액세스 토큰에서만 읽는다. 헤더를 보내도 무시한다.
 
 ## 엔드포인트
 
@@ -51,15 +50,23 @@
 
 ### 커뮤니티 엔드포인트
 
-계약 상세는 `커뮤니티 계약`을 본다. `요청자` 열의 `필수`는 `X-User-Id` 헤더가 없으면 요청이
-실패한다는 뜻이고, `선택`은 없어도 동작하되 좋아요·저장 여부가 `false`로 나간다는 뜻이다.
+계약 상세는 `커뮤니티 계약`을 본다. `요청자` 열의 뜻은 다음과 같다.
+
+| 값 | 뜻 |
+| --- | --- |
+| `필수` | 로그인하지 않으면 `401` |
+| `선택` | 로그인하지 않아도 `200`. 좋아요·저장 여부만 `false` 로 나간다 |
+| `불필요` | 요청자와 무관한 응답 |
+
+**`선택`은 공유 링크로 들어온 글과 그 댓글뿐이다.** 앱은 로그인해야 들어오는 구조라
+목록·프로필·검색은 로그인을 요구한다.
 
 | 기능 | Method | URI | 성공 상태 | 요청자 |
 | --- | --- | --- | --- | --- |
 | 사진·영상 업로드 | POST | `/media` | `201 Created` | 필수 |
 | 게시물 작성 | POST | `/posts` | `201 Created` | 필수 |
-| 피드 조회 | GET | `/posts` | `200 OK` | 선택 |
-| 인기 피드 | GET | `/posts/popular` | `200 OK` | 선택 |
+| 피드 조회 | GET | `/posts` | `200 OK` | 필수 |
+| 인기 피드 | GET | `/posts/popular` | `200 OK` | 필수 |
 | 게시물 상세 | GET | `/posts/{postId}` | `200 OK` | 선택 |
 | 게시물 수정 | PATCH | `/posts/{postId}` | `200 OK` | 필수 |
 | 게시물 삭제 | DELETE | `/posts/{postId}` | `204 No Content` | 필수 |
@@ -78,17 +85,17 @@
 | 댓글 좋아요 취소 | DELETE | `/posts/{postId}/comments/{commentId}/likes` | `200 OK` | 필수 |
 | 팔로우 | POST | `/users/{userId}/follows` | `200 OK` | 필수 |
 | 팔로우 취소 | DELETE | `/users/{userId}/follows` | `200 OK` | 필수 |
-| 팔로워 목록 | GET | `/users/{userId}/followers` | `200 OK` | 불필요 |
-| 팔로잉 목록 | GET | `/users/{userId}/followings` | `200 OK` | 불필요 |
+| 팔로워 목록 | GET | `/users/{userId}/followers` | `200 OK` | 필수 |
+| 팔로잉 목록 | GET | `/users/{userId}/followings` | `200 OK` | 필수 |
 | 차단 | POST | `/users/{userId}/blocks` | `200 OK` | 필수 |
 | 차단 해제 | DELETE | `/users/{userId}/blocks` | `200 OK` | 필수 |
 | 내 차단 목록 | GET | `/users/me/blocks` | `200 OK` | 필수 |
-| 프로필 조회 | GET | `/users/{userId}/profile` | `200 OK` | 선택 |
-| 사용자 게시물 | GET | `/users/{userId}/posts` | `200 OK` | 선택 |
+| 프로필 조회 | GET | `/users/{userId}/profile` | `200 OK` | 필수 |
+| 사용자 게시물 | GET | `/users/{userId}/posts` | `200 OK` | 필수 |
 | 닉네임 변경 | PATCH | `/users/me/nickname` | `200 OK` | 필수 |
 | 프로필 사진 변경 | PATCH | `/users/me/profile-image` | `200 OK` | 필수 |
 | 프로필 사진 제거 | DELETE | `/users/me/profile-image` | `200 OK` | 필수 |
-| 사용자 검색 | GET | `/users/search` | `200 OK` | 불필요 |
+| 사용자 검색 | GET | `/users/search` | `200 OK` | 필수 |
 | 카테고리 목록 | GET | `/categories` | `200 OK` | 불필요 |
 | 카테고리 자동완성 | GET | `/categories/search` | `200 OK` | 불필요 |
 | 카테고리가 가리키는 장소 | GET | `/categories/{name}/places` | `200 OK` | 불필요 |
@@ -1290,7 +1297,24 @@ Provider 응답의 `distanceMeters`가 누락되거나 0 이하이면 서버는 
 
 **요청자 식별**
 
-인증 도입 전까지 `X-User-Id` 헤더로 요청자를 전달한다. 위 `공통`의 경고를 함께 본다.
+`Authorization: Bearer {accessToken}` 으로 전달한다. 서버는 토큰에서만 요청자를 읽는다.
+
+**로그인이 필요한 곳과 아닌 곳**
+
+웹에서 링크를 타고 게시물로 바로 들어오는 경우가 있어 조회는 열어 둔다.
+
+| 구분 | 대상 |
+| --- | --- |
+| 로그인 없이 | `GET /posts/{postId}`, `GET /posts/{postId}/comments`, 카테고리 |
+| 로그인 필요 | 나머지 전부. 피드 목록, 인기 피드, 프로필, 사용자 게시물, 검색 포함 |
+
+앱은 로그인해야 들어오는 구조다. 비로그인에게 여는 것은 **공유 링크로 들어온 글 하나와
+그 댓글**뿐이다. 둘러보기는 로그인한 사람의 몫이다.
+
+**열려 있는 경로도 토큰을 보내면 읽는다.** `liked`·`bookmarked` 는 로그인해야 채워지고,
+아니면 `false` 다. 같은 API 이며 헤더를 따로 두지 않는다.
+
+로그인 없이 위를 호출하면 `401 UNAUTHORIZED`다.
 
 **페이징이 두 가지다**
 
@@ -1412,12 +1436,12 @@ Provider 응답의 `distanceMeters`가 누락되거나 0 이하이면 서버는 
 | --- | --- |
 | `cursor` | 이전 응답의 `nextCursor`. 첫 페이지는 생략 |
 | `size` | 1~50, 기본 20 |
-| `feed` | `following`이면 팔로우한 사람의 게시물만. 이때 `X-User-Id`가 필요하다 |
+| `feed` | `following`이면 팔로우한 사람의 게시물만. 이때 로그인이 필요하다 |
 | `placeId` | 이 장소를 태그한 게시물만 |
 | `category` | 이 해시태그가 달린 게시물만. `#`은 빼고 보낸다 |
 
 `feed`, `placeId`, `category`는 함께 쓸 수 있으며 모두 만족하는 게시물만 반환한다.
-`X-User-Id`가 있으면 요청자가 차단한 사용자의 게시물을 제외한다.
+요청자가 차단한 사용자의 게시물은 제외한다.
 
 ```json
 {
@@ -1443,7 +1467,7 @@ Provider 응답의 `distanceMeters`가 누락되거나 0 이하이면 서버는 
 목록은 축약 응답이다. 미디어는 `sortOrder`가 가장 앞선 한 건만 `thumbnailUrl`로 주고 나머지는
 개수만 준다. 장소는 대표 하나의 이름만 준다. 전체가 필요하면 상세를 조회한다.
 
-`liked`·`bookmarked`는 요청자 기준이다. `X-User-Id`가 없으면 둘 다 `false`다. `likeCount`는
+`liked`·`bookmarked`는 요청자 기준이다. 로그인하지 않으면 둘 다 `false`다. `likeCount`는
 모두에게 같고 `liked`만 사람마다 다르다.
 
 ### C-4. 게시물 상세
@@ -1749,8 +1773,8 @@ GET /api/v1/posts/popular?category=맛집      인기순
 }
 ```
 
-`following`은 요청자가 이 사용자를 팔로우 중인지, `me`는 본인 프로필인지다. `X-User-Id`가 없으면
-둘 다 `false`다. `me`가 `true`면 북마크 탭을 노출한다.
+`following`은 요청자가 이 사용자를 팔로우 중인지, `me`는 본인 프로필인지다. 둘 다 요청자
+기준이며, 이 조회는 로그인이 필요하다. `me`가 `true`면 북마크 탭을 노출한다.
 
 `GET /api/v1/users/{userId}/posts` — 이 사용자의 게시물. 피드와 같은 커서 방식이다.
 
@@ -1992,7 +2016,7 @@ iOS 는 홈 화면 추가가 전제다. 알림이 몇십 초 늦게 뜨는 것�
 | `INVALID_COMMENT_REQUEST` | 400 | 답글에 답글을 달거나, 부모 댓글이 다른 게시물의 것 |
 | `INVALID_FOLLOW_REQUEST` | 400 | 자기 자신을 팔로우 |
 | `INVALID_BLOCK_REQUEST` | 400 | 자기 자신을 차단 |
-| `INVALID_FEED_REQUEST` | 400 | 팔로잉 피드인데 `X-User-Id`가 없음 |
+| `UNAUTHORIZED` | 401 | 로그인이 필요한 요청인데 토큰이 없거나 유효하지 않음 |
 | `FOLLOW_BLOCKED_USER` | 400 | 내가 차단한 사용자를 팔로우 |
 | `COMMENT_NOT_ALLOWED` | 403 | 차단 관계인 사람의 게시물에 댓글 작성 |
 | `NICKNAME_ALREADY_USED` | 409 | 다른 사용자가 쓰는 닉네임 |
@@ -2031,7 +2055,7 @@ iOS 는 홈 화면 추가가 전제다. 알림이 몇십 초 늦게 뜨는 것�
 
 ```
 Content-Type: multipart/form-data
-X-User-Id: 1
+Authorization: Bearer {accessToken}
 
 files: (파일)
 files: (파일)

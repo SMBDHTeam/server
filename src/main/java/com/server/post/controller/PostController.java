@@ -1,5 +1,7 @@
 package com.server.post.controller;
 
+import com.server.auth.service.AuthenticatedUser;
+import com.server.auth.web.LoginUser;
 import com.server.post.dto.PostCreateRequest;
 import com.server.post.dto.PostDetailResponse;
 import com.server.post.dto.PostLikeResponse;
@@ -13,6 +15,7 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -20,7 +23,6 @@ import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
@@ -49,11 +51,10 @@ public class PostController {
                     + "장소 태그는 내부 places 에 등록된 장소만 지정할 수 있다."
     )
     public PostDetailResponse create(
-            // TODO: 인증 도입 시 제거하고 인증 주체에서 사용자 ID 를 받는다. 임시 식별 수단이다.
-            @Parameter(description = "작성자 ID. 인증 도입 전까지 쓰는 임시 헤더다.", example = "1")
-            @RequestHeader("X-User-Id") Long userId,
+            @AuthenticationPrincipal AuthenticatedUser loginUser,
             @Valid @RequestBody PostCreateRequest request
     ) {
+        Long userId = LoginUser.require(loginUser);
         return postService.create(userId, request);
     }
 
@@ -70,17 +71,16 @@ public class PostController {
             @Parameter(description = "한 번에 가져올 게시물 수. 1 이상 50 이하", example = "20")
             @RequestParam(defaultValue = "20") @Min(1) @Max(50) Integer size,
             @Parameter(description = "following 이면 팔로우한 사람들의 게시물만 반환한다. "
-                    + "이때 X-User-Id 가 필요하다.", example = "following")
+                    + "이때 로그인이 필요하다.", example = "following")
             @RequestParam(required = false) String feed,
             @Parameter(description = "이 장소를 태그한 게시물만 반환한다.", example = "1")
             @RequestParam(required = false) Long placeId,
             @Parameter(description = "이 카테고리가 붙은 게시물만 반환한다. "
                     + "GET /api/v1/categories 의 이름을 그대로 보낸다.", example = "맛집")
             @RequestParam(required = false) String category,
-            // TODO: 인증 도입 시 제거하고 인증 주체에서 사용자 ID 를 받는다. 임시 식별 수단이다.
-            @Parameter(description = "요청자 ID. 팔로잉 피드에만 필요하다.", example = "1")
-            @RequestHeader(value = "X-User-Id", required = false) Long requesterId
+            @AuthenticationPrincipal AuthenticatedUser loginUser
     ) {
+        Long requesterId = LoginUser.require(loginUser);
         return postService.getFeed(
                 cursor, size, FOLLOWING_FEED.equals(feed), placeId, category, requesterId);
     }
@@ -98,17 +98,16 @@ public class PostController {
             @Parameter(description = "한 번에 가져올 게시물 수. 1 이상 50 이하", example = "20")
             @RequestParam(defaultValue = "20") @Min(1) @Max(50) Integer size,
             @Parameter(description = "following 이면 팔로우한 사람들의 게시물만 반환한다. "
-                    + "이때 X-User-Id 가 필요하다.", example = "following")
+                    + "이때 로그인이 필요하다.", example = "following")
             @RequestParam(required = false) String feed,
             @Parameter(description = "이 장소를 태그한 게시물만 반환한다.", example = "1")
             @RequestParam(required = false) Long placeId,
             @Parameter(description = "이 카테고리가 붙은 게시물만 반환한다. 최신 피드와 같은 "
                     + "기준으로 걸러야 탭이 두 목록에 같이 걸린다.", example = "맛집")
             @RequestParam(required = false) String category,
-            // TODO: 인증 도입 시 제거하고 인증 주체에서 사용자 ID 를 받는다. 임시 식별 수단이다.
-            @Parameter(description = "요청자 ID. 차단한 사용자를 걸러내는 데 쓴다.", example = "1")
-            @RequestHeader(value = "X-User-Id", required = false) Long requesterId
+            @AuthenticationPrincipal AuthenticatedUser loginUser
     ) {
+        Long requesterId = LoginUser.require(loginUser);
         return postService.getPopularFeed(
                 page, size, FOLLOWING_FEED.equals(feed), placeId, category, requesterId);
     }
@@ -117,10 +116,9 @@ public class PostController {
     @Operation(summary = "게시물 상세", description = "첨부 미디어와 장소 태그를 모두 포함한다.")
     public PostDetailResponse get(
             @Parameter(example = "7") @PathVariable Long postId,
-            // TODO: 인증 도입 시 제거하고 인증 주체에서 사용자 ID 를 받는다. 임시 식별 수단이다.
-            @Parameter(description = "요청자 ID. 없으면 좋아요·저장 여부가 false 로 나간다.", example = "1")
-            @RequestHeader(value = "X-User-Id", required = false) Long requesterId
+            @AuthenticationPrincipal AuthenticatedUser loginUser
     ) {
+        Long requesterId = LoginUser.idOrNull(loginUser);
         return postService.get(postId, requesterId);
     }
 
@@ -130,12 +128,11 @@ public class PostController {
             description = "본문만 수정한다. 작성자 본인이 아니면 403 을 반환한다."
     )
     public PostDetailResponse update(
-            // TODO: 인증 도입 시 제거하고 인증 주체에서 사용자 ID 를 받는다. 임시 식별 수단이다.
-            @Parameter(description = "요청자 ID. 인증 도입 전까지 쓰는 임시 헤더다.", example = "1")
-            @RequestHeader("X-User-Id") Long userId,
+            @AuthenticationPrincipal AuthenticatedUser loginUser,
             @Parameter(example = "7") @PathVariable Long postId,
             @Valid @RequestBody PostUpdateRequest request
     ) {
+        Long userId = LoginUser.require(loginUser);
         return postService.update(postId, userId, request);
     }
 
@@ -146,11 +143,10 @@ public class PostController {
             description = "바로 지우지 않고 삭제 표시만 남긴다. 작성자 본인이 아니면 403 을 반환한다."
     )
     public void delete(
-            // TODO: 인증 도입 시 제거하고 인증 주체에서 사용자 ID 를 받는다. 임시 식별 수단이다.
-            @Parameter(description = "요청자 ID. 인증 도입 전까지 쓰는 임시 헤더다.", example = "1")
-            @RequestHeader("X-User-Id") Long userId,
+            @AuthenticationPrincipal AuthenticatedUser loginUser,
             @Parameter(example = "7") @PathVariable Long postId
     ) {
+        Long userId = LoginUser.require(loginUser);
         postService.delete(postId, userId);
     }
 
@@ -161,12 +157,11 @@ public class PostController {
                     + "점수·시각 정렬이라 커서가 없다. 다음 페이지는 page 를 올려 요청한다."
     )
     public PostSummaryListResponse getMyDeletedPosts(
-            // TODO: 인증 도입 시 제거하고 인증 주체에서 사용자 ID 를 받는다. 임시 식별 수단이다.
-            @Parameter(description = "요청자 ID. 인증 도입 전까지 쓰는 임시 헤더다.", example = "1")
-            @RequestHeader("X-User-Id") Long userId,
+            @AuthenticationPrincipal AuthenticatedUser loginUser,
             @Parameter(example = "0") @RequestParam(required = false) Integer page,
             @Parameter(example = "20") @RequestParam(required = false) Integer size
     ) {
+        Long userId = LoginUser.require(loginUser);
         return postService.getMyDeletedPosts(userId, page, size);
     }
 
@@ -177,11 +172,10 @@ public class PostController {
                     + "410, 본인 게시물이 아니면 403 을 반환한다."
     )
     public PostDetailResponse restore(
-            // TODO: 인증 도입 시 제거하고 인증 주체에서 사용자 ID 를 받는다. 임시 식별 수단이다.
-            @Parameter(description = "요청자 ID. 인증 도입 전까지 쓰는 임시 헤더다.", example = "1")
-            @RequestHeader("X-User-Id") Long userId,
+            @AuthenticationPrincipal AuthenticatedUser loginUser,
             @Parameter(example = "7") @PathVariable Long postId
     ) {
+        Long userId = LoginUser.require(loginUser);
         return postService.restore(postId, userId);
     }
 
@@ -191,11 +185,10 @@ public class PostController {
             description = "이미 누른 상태에서 다시 요청해도 개수가 늘지 않는다."
     )
     public PostLikeResponse like(
-            // TODO: 인증 도입 시 제거하고 인증 주체에서 사용자 ID 를 받는다. 임시 식별 수단이다.
-            @Parameter(description = "요청자 ID. 인증 도입 전까지 쓰는 임시 헤더다.", example = "1")
-            @RequestHeader("X-User-Id") Long userId,
+            @AuthenticationPrincipal AuthenticatedUser loginUser,
             @Parameter(example = "7") @PathVariable Long postId
     ) {
+        Long userId = LoginUser.require(loginUser);
         return postService.like(postId, userId);
     }
 
@@ -205,11 +198,10 @@ public class PostController {
             description = "누른 적 없는 상태에서 요청해도 개수가 줄지 않는다."
     )
     public PostLikeResponse unlike(
-            // TODO: 인증 도입 시 제거하고 인증 주체에서 사용자 ID 를 받는다. 임시 식별 수단이다.
-            @Parameter(description = "요청자 ID. 인증 도입 전까지 쓰는 임시 헤더다.", example = "1")
-            @RequestHeader("X-User-Id") Long userId,
+            @AuthenticationPrincipal AuthenticatedUser loginUser,
             @Parameter(example = "7") @PathVariable Long postId
     ) {
+        Long userId = LoginUser.require(loginUser);
         return postService.unlike(postId, userId);
     }
 }
