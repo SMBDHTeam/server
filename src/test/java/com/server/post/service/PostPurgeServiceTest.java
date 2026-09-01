@@ -90,7 +90,7 @@ class PostPurgeServiceTest {
         entityManager.flush();
         entityManager.clear();
 
-        assertThat(postPurgeService.purgeExpired(RETENTION_DAYS)).isEqualTo(1);
+        assertThat(postPurgeService.purgeExpired(RETENTION_DAYS).purgedCount()).isEqualTo(1);
         entityManager.flush();
         entityManager.clear();
 
@@ -113,7 +113,7 @@ class PostPurgeServiceTest {
         entityManager.clear();
 
         long before = postCountOf("맛집");
-        assertThat(postPurgeService.purgeExpired(RETENTION_DAYS)).isEqualTo(1);
+        assertThat(postPurgeService.purgeExpired(RETENTION_DAYS).purgedCount()).isEqualTo(1);
         entityManager.flush();
         entityManager.clear();
 
@@ -128,7 +128,7 @@ class PostPurgeServiceTest {
         entityManager.flush();
         entityManager.clear();
 
-        assertThat(postPurgeService.purgeExpired(RETENTION_DAYS)).isZero();
+        assertThat(postPurgeService.purgeExpired(RETENTION_DAYS).purgedCount()).isZero();
         assertThat(postRepository.findById(restorable.getId())).isPresent();
     }
 
@@ -141,7 +141,7 @@ class PostPurgeServiceTest {
         entityManager.flush();
         entityManager.clear();
 
-        assertThat(postPurgeService.purgeExpired(RETENTION_DAYS)).isZero();
+        assertThat(postPurgeService.purgeExpired(RETENTION_DAYS).purgedCount()).isZero();
         assertThat(postRepository.findById(live.getId())).isPresent();
     }
 
