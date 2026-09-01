@@ -1,7 +1,9 @@
 package com.server.common.config;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -35,6 +37,44 @@ class SecurityConfigTest {
         mockMvc.perform(get("/api/v1/locations/search").param("keyword", "부산역"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.items").isArray());
+    }
+
+    @Test
+    @DisplayName("공유 링크로 들어온 게시물과 그 댓글은 로그인 없이 볼 수 있다")
+    void sharedPostIsPublic() throws Exception {
+        // 여기까지 막으면 공유 링크가 로그인 화면으로만 이어진다. 없는 게시물이라
+        // 404 지만 인가는 통과했다는 뜻이다.
+        mockMvc.perform(get("/api/v1/posts/1")).andExpect(status().isNotFound());
+        mockMvc.perform(get("/api/v1/posts/1/comments")).andExpect(status().isNotFound());
+        mockMvc.perform(get("/api/v1/categories")).andExpect(status().isOk());
+    }
+
+    @Test
+    @DisplayName("피드 목록과 프로필은 로그인해야 볼 수 있다")
+    void feedAndProfileRequireLogin() throws Exception {
+        // 앱은 로그인해야 들어오는 구조다. 둘러보기는 로그인한 사람의 몫이고,
+        // 비로그인에게 여는 것은 공유된 글 하나뿐이다.
+        mockMvc.perform(get("/api/v1/posts")).andExpect(status().isUnauthorized());
+        mockMvc.perform(get("/api/v1/posts/popular")).andExpect(status().isUnauthorized());
+        mockMvc.perform(get("/api/v1/users/1/profile")).andExpect(status().isUnauthorized());
+        mockMvc.perform(get("/api/v1/users/search").param("keyword", "가")).andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    @DisplayName("커뮤니티 쓰기는 로그인해야 한다")
+    void communityWriteRequiresLogin() throws Exception {
+        mockMvc.perform(post("/api/v1/posts/1/likes")).andExpect(status().isUnauthorized());
+        mockMvc.perform(delete("/api/v1/posts/1")).andExpect(status().isUnauthorized());
+        mockMvc.perform(post("/api/v1/users/1/follows")).andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    @DisplayName("내 것을 읽는 경로는 조회여도 로그인해야 한다")
+    void ownDataReadRequiresLogin() throws Exception {
+        // 남의 것을 읽는 조회와 달리 요청자가 누구인지 알아야 응답을 만들 수 있다.
+        mockMvc.perform(get("/api/v1/notifications")).andExpect(status().isUnauthorized());
+        mockMvc.perform(get("/api/v1/users/me/bookmarks")).andExpect(status().isUnauthorized());
+        mockMvc.perform(get("/api/v1/posts/me/deleted")).andExpect(status().isUnauthorized());
     }
 
     @Test
@@ -94,16 +134,15 @@ class SecurityConfigTest {
     }
 
     @Test
-    @DisplayName("커뮤니티가 쓰는 X-User-Id 헤더를 preflight에서 허용한다")
-    void allowsUserIdHeaderInPreflight() throws Exception {
+    @DisplayName("걷어낸 X-User-Id 헤더는 preflight에서 더 이상 허용하지 않는다")
+    void doesNotAllowLegacyUserIdHeaderInPreflight() throws Exception {
         mockMvc.perform(options("/api/v1/posts")
                         .header("Origin", "https://www.busantour.site")
                         .header("Access-Control-Request-Method", "POST")
                         .header("Access-Control-Request-Headers", "Content-Type, X-User-Id"))
-                .andExpect(status().isOk())
                 .andExpect(header().string(
                         "Access-Control-Allow-Headers",
-                        org.hamcrest.Matchers.containsString("X-User-Id")));
+                        org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("X-User-Id"))));
     }
 
     @Test

@@ -37,15 +37,6 @@ public class SuspendedUserWriteFilter extends OncePerRequestFilter {
     /** 로그인·갱신은 막지 않는다. 정지된 사용자도 로그인해 자기 상태를 볼 수 있어야 한다. */
     private static final String AUTH_PATH = "/api/v1/auth";
 
-    /**
-     * 인증 도입 전 커뮤니티가 작성자를 받는 임시 헤더.
-     *
-     * <p>토큰만 보면 정지를 우회할 수 있다. 커뮤니티 쓰기는 아직 이 헤더로 작성자를 정하므로,
-     * 정지된 사용자가 Authorization 을 빼고 이 헤더만 보내면 그대로 글이 써진다. 커뮤니티에서
-     * 이 헤더를 걷어낼 때({@code X-User-Id} 제거) 이 처리도 함께 지운다.
-     */
-    private static final String LEGACY_USER_HEADER = "X-User-Id";
-
     private final UserRepository userRepository;
     private final SecurityErrorResponder responder;
 
@@ -67,7 +58,7 @@ public class SuspendedUserWriteFilter extends OncePerRequestFilter {
             HttpServletResponse response,
             FilterChain filterChain
     ) throws ServletException, IOException {
-        Long userId = resolveUserId(request);
+        Long userId = CurrentUser.idOrNull();
         if (userId == null) {
             // 누구인지 알 수 없는 요청은 여기서 다루지 않는다. 인가가 판단할 몫이다.
             filterChain.doFilter(request, response);
@@ -84,22 +75,5 @@ public class SuspendedUserWriteFilter extends OncePerRequestFilter {
             return;
         }
         filterChain.doFilter(request, response);
-    }
-
-    /** 토큰을 우선하고, 없으면 커뮤니티의 임시 헤더를 본다. */
-    private Long resolveUserId(HttpServletRequest request) {
-        Long fromToken = CurrentUser.idOrNull();
-        if (fromToken != null) {
-            return fromToken;
-        }
-        String legacy = request.getHeader(LEGACY_USER_HEADER);
-        if (legacy == null || legacy.isBlank()) {
-            return null;
-        }
-        try {
-            return Long.valueOf(legacy.trim());
-        } catch (NumberFormatException exception) {
-            return null;
-        }
     }
 }

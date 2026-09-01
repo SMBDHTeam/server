@@ -1,14 +1,20 @@
 package com.server.post.controller;
 
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.server.auth.service.AuthenticatedUser;
+import com.server.user.domain.UserRole;
+import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.Authentication;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -29,7 +35,7 @@ class FeedSizeValidationTest {
     @Test
     @DisplayName("상한을 넘는 size 는 조용히 줄이지 않고 거절한다")
     void rejectsTooLargeSize() throws Exception {
-        mockMvc.perform(get("/api/v1/posts").param("size", "1000"))
+        mockMvc.perform(get("/api/v1/posts").param("size", "1000").with(authentication(loggedIn())))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("INVALID_POST_REQUEST"));
     }
@@ -37,14 +43,14 @@ class FeedSizeValidationTest {
     @Test
     @DisplayName("0 이하의 size 도 거절한다")
     void rejectsNonPositiveSize() throws Exception {
-        mockMvc.perform(get("/api/v1/posts").param("size", "0"))
+        mockMvc.perform(get("/api/v1/posts").param("size", "0").with(authentication(loggedIn())))
                 .andExpect(status().isBadRequest());
     }
 
     @Test
     @DisplayName("상한값 자체는 허용한다")
     void acceptsUpperBound() throws Exception {
-        mockMvc.perform(get("/api/v1/posts").param("size", "50"))
+        mockMvc.perform(get("/api/v1/posts").param("size", "50").with(authentication(loggedIn())))
                 .andExpect(status().isOk());
     }
 
@@ -55,5 +61,11 @@ class FeedSizeValidationTest {
                 .andExpect(status().isBadRequest());
         mockMvc.perform(get("/api/v1/categories/search").param("keyword", "부").param("size", "30"))
                 .andExpect(status().isOk());
+    }
+
+    /** 피드 목록은 로그인해야 열린다. size 검증까지 도달하려면 인증을 통과해야 한다. */
+    private static Authentication loggedIn() {
+        return new UsernamePasswordAuthenticationToken(
+                new AuthenticatedUser(1L, UserRole.USER), null, List.of());
     }
 }

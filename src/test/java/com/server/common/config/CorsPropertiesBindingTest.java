@@ -39,7 +39,8 @@ class CorsPropertiesBindingTest {
                 .run(context -> {
                     CorsProperties properties = context.getBean(CorsProperties.class);
                     assertThat(properties.allowedHeaders())
-                            .contains("Content-Type", "Authorization", "X-User-Id");
+                            .contains("Content-Type", "Authorization")
+                            .doesNotContain("X-User-Id");
                     assertThat(properties.exposedHeaders()).contains("X-Trace-Id");
                 });
     }
