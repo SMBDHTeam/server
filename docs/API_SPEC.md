@@ -50,15 +50,23 @@
 
 ### 커뮤니티 엔드포인트
 
-계약 상세는 `커뮤니티 계약`을 본다. `요청자` 열의 `필수`는 로그인하지 않으면 `401`이라는
-뜻이고, `선택`은 로그인하지 않아도 동작하되 좋아요·저장 여부가 `false`로 나간다는 뜻이다.
+계약 상세는 `커뮤니티 계약`을 본다. `요청자` 열의 뜻은 다음과 같다.
+
+| 값 | 뜻 |
+| --- | --- |
+| `필수` | 로그인하지 않으면 `401` |
+| `선택` | 로그인하지 않아도 `200`. 좋아요·저장 여부만 `false` 로 나간다 |
+| `불필요` | 요청자와 무관한 응답 |
+
+**`선택`은 공유 링크로 들어온 글과 그 댓글뿐이다.** 앱은 로그인해야 들어오는 구조라
+목록·프로필·검색은 로그인을 요구한다.
 
 | 기능 | Method | URI | 성공 상태 | 요청자 |
 | --- | --- | --- | --- | --- |
 | 사진·영상 업로드 | POST | `/media` | `201 Created` | 필수 |
 | 게시물 작성 | POST | `/posts` | `201 Created` | 필수 |
-| 피드 조회 | GET | `/posts` | `200 OK` | 선택 |
-| 인기 피드 | GET | `/posts/popular` | `200 OK` | 선택 |
+| 피드 조회 | GET | `/posts` | `200 OK` | 필수 |
+| 인기 피드 | GET | `/posts/popular` | `200 OK` | 필수 |
 | 게시물 상세 | GET | `/posts/{postId}` | `200 OK` | 선택 |
 | 게시물 수정 | PATCH | `/posts/{postId}` | `200 OK` | 필수 |
 | 게시물 삭제 | DELETE | `/posts/{postId}` | `204 No Content` | 필수 |
@@ -77,17 +85,17 @@
 | 댓글 좋아요 취소 | DELETE | `/posts/{postId}/comments/{commentId}/likes` | `200 OK` | 필수 |
 | 팔로우 | POST | `/users/{userId}/follows` | `200 OK` | 필수 |
 | 팔로우 취소 | DELETE | `/users/{userId}/follows` | `200 OK` | 필수 |
-| 팔로워 목록 | GET | `/users/{userId}/followers` | `200 OK` | 불필요 |
-| 팔로잉 목록 | GET | `/users/{userId}/followings` | `200 OK` | 불필요 |
+| 팔로워 목록 | GET | `/users/{userId}/followers` | `200 OK` | 필수 |
+| 팔로잉 목록 | GET | `/users/{userId}/followings` | `200 OK` | 필수 |
 | 차단 | POST | `/users/{userId}/blocks` | `200 OK` | 필수 |
 | 차단 해제 | DELETE | `/users/{userId}/blocks` | `200 OK` | 필수 |
 | 내 차단 목록 | GET | `/users/me/blocks` | `200 OK` | 필수 |
-| 프로필 조회 | GET | `/users/{userId}/profile` | `200 OK` | 선택 |
-| 사용자 게시물 | GET | `/users/{userId}/posts` | `200 OK` | 선택 |
+| 프로필 조회 | GET | `/users/{userId}/profile` | `200 OK` | 필수 |
+| 사용자 게시물 | GET | `/users/{userId}/posts` | `200 OK` | 필수 |
 | 닉네임 변경 | PATCH | `/users/me/nickname` | `200 OK` | 필수 |
 | 프로필 사진 변경 | PATCH | `/users/me/profile-image` | `200 OK` | 필수 |
 | 프로필 사진 제거 | DELETE | `/users/me/profile-image` | `200 OK` | 필수 |
-| 사용자 검색 | GET | `/users/search` | `200 OK` | 불필요 |
+| 사용자 검색 | GET | `/users/search` | `200 OK` | 필수 |
 | 카테고리 목록 | GET | `/categories` | `200 OK` | 불필요 |
 | 카테고리 자동완성 | GET | `/categories/search` | `200 OK` | 불필요 |
 | 카테고리가 가리키는 장소 | GET | `/categories/{name}/places` | `200 OK` | 불필요 |
@@ -1433,7 +1441,7 @@ Provider 응답의 `distanceMeters`가 누락되거나 0 이하이면 서버는 
 | `category` | 이 해시태그가 달린 게시물만. `#`은 빼고 보낸다 |
 
 `feed`, `placeId`, `category`는 함께 쓸 수 있으며 모두 만족하는 게시물만 반환한다.
-로그인했으면 요청자가 차단한 사용자의 게시물을 제외한다.
+요청자가 차단한 사용자의 게시물은 제외한다.
 
 ```json
 {
@@ -1765,8 +1773,8 @@ GET /api/v1/posts/popular?category=맛집      인기순
 }
 ```
 
-`following`은 요청자가 이 사용자를 팔로우 중인지, `me`는 본인 프로필인지다. 로그인하지 않으면
-둘 다 `false`다. `me`가 `true`면 북마크 탭을 노출한다.
+`following`은 요청자가 이 사용자를 팔로우 중인지, `me`는 본인 프로필인지다. 둘 다 요청자
+기준이며, 이 조회는 로그인이 필요하다. `me`가 `true`면 북마크 탭을 노출한다.
 
 `GET /api/v1/users/{userId}/posts` — 이 사용자의 게시물. 피드와 같은 커서 방식이다.
 
