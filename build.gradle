@@ -28,6 +28,9 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-webmvc'
     implementation 'org.springframework.boot:spring-boot-starter-flyway'
     implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:3.0.3'
+    // 커뮤니티 사진·영상을 S3에 올린다.
+    implementation platform('software.amazon.awssdk:bom:2.54.7')
+    implementation 'software.amazon.awssdk:s3'
     // 자체 JWT 발급·검증과 구글 JWKS 조회
     implementation 'com.auth0:java-jwt:4.4.0'
     implementation 'com.auth0:jwks-rsa:0.22.1'

@@ -8,10 +8,11 @@ import com.server.notification.domain.NotificationType;
 import com.server.notification.dto.NotificationListResponse;
 import com.server.notification.dto.NotificationResponse;
 import com.server.notification.repository.NotificationRepository;
-import com.server.user.domain.User;
 import com.server.user.repository.UserRepository;
 import java.time.LocalDateTime;
 import java.util.List;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -31,28 +32,29 @@ public class NotificationService {
     /** 첫 페이지는 커서가 없으므로 어떤 알림 ID보다 큰 값에서 시작한다. */
     private static final long FIRST_PAGE_CURSOR = Long.MAX_VALUE;
 
+    private static final Logger log = LoggerFactory.getLogger(NotificationService.class);
+
     private final NotificationRepository notificationRepository;
+    private final NotificationWriter notificationWriter;
     private final UserRepository userRepository;
 
     public NotificationService(
             NotificationRepository notificationRepository,
+            NotificationWriter notificationWriter,
             UserRepository userRepository
     ) {
         this.notificationRepository = notificationRepository;
+        this.notificationWriter = notificationWriter;
         this.userRepository = userRepository;
     }
 
     /**
      * 알림을 남긴다. 다른 도메인에서 부르는 진입점이다.
      *
-     * <p>내가 한 행동은 나에게 알리지 않는다. 받는 사람이 탈퇴했으면 남기지 않는다.
-     * 알림은 부가 기능이므로, 받는 사람을 찾지 못해도 원래 하던 작업을 실패시키지 않는다.
-     *
-     * <p>같은 사람이 같은 대상에 같은 종류의 알림을 이미 남겼으면 다시 남기지 않는다.
-     * 좋아요를 취소했다 다시 누르면 관계가 새로 생기는데, 그때마다 알리면 도배가 된다.
-     * 댓글은 대상이 매번 새 댓글이라 이 규칙에 걸리지 않는다.
+     * <p>알림은 부가 기능이라 실패해도 부르는 쪽 작업을 막지 않는다. 저장은 별도
+     * 트랜잭션({@link NotificationWriter})에서 하고, 여기서는 예외를 삼키고 로그만 남긴다.
+     * 팔로우나 댓글 작성이 알림 때문에 함께 롤백되면 사용자는 원인을 알 수 없다.
      */
-    @Transactional
     public void notify(
             Long recipientId,
             Long actorId,
@@ -60,24 +62,12 @@ public class NotificationService {
             NotificationTargetType targetType,
             Long targetId
     ) {
-        // 받는 사람을 찾는 조회가 비어 돌아올 수 있다. 알림 때문에 원래 작업이 깨지면 안 된다.
-        if (recipientId == null || recipientId.equals(actorId)) {
-            return;
+        try {
+            notificationWriter.write(recipientId, actorId, type, targetType, targetId);
+        } catch (RuntimeException exception) {
+            log.warn("알림을 남기지 못했다. recipientId={}, type={}, targetId={}",
+                    recipientId, type, targetId, exception);
         }
-        User recipient = userRepository.findByIdAndDeletedAtIsNull(recipientId).orElse(null);
-        if (recipient == null) {
-            return;
-        }
-        if (notificationRepository.existsByRecipientIdAndActorIdAndTypeAndTargetTypeAndTargetId(
-                recipientId, actorId, type, targetType, targetId)) {
-            return;
-        }
-        User actor = actorId == null
-                ? null
-                : userRepository.findByIdAndDeletedAtIsNull(actorId).orElse(null);
-
-        notificationRepository.save(
-                new Notification(recipient, actor, type, targetType, targetId));
     }
 
     /** 내 알림 목록. 목록을 열 때 벨 아이콘도 같이 갱신할 수 있게 안 읽은 수를 함께 준다. */

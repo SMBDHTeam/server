@@ -89,9 +89,9 @@ public interface PostRepository extends JpaRepository<Post, Long> {
               and (:placeId is null or exists (
                     select 1 from PostPlaceTag tag
                     where tag.post = post and tag.place.id = :placeId))
-              and (:hashtag is null or exists (
+              and (:category is null or exists (
                     select 1 from PostHashtag link
-                    where link.post = post and link.hashtag.name = :hashtag))
+                    where link.post = post and link.hashtag.name = :category))
               and (:blockerId is null or not exists (
                     select 1 from Block block
                     where block.blocker.id = :blockerId and block.blocked = post.user))
@@ -100,7 +100,7 @@ public interface PostRepository extends JpaRepository<Post, Long> {
     List<Post> findFeed(
             @Param("followerId") Long followerId,
             @Param("placeId") Long placeId,
-            @Param("hashtag") String hashtag,
+            @Param("category") String category,
             @Param("blockerId") Long blockerId,
             @Param("cursor") Long cursor,
             Pageable pageable);
@@ -110,6 +110,13 @@ public interface PostRepository extends JpaRepository<Post, Long> {
      * 차지하지 않도록 최근 게시물만 대상으로 한다.
      *
      * <p>점수 기준 정렬이라 커서로 삼을 단조 증가 값이 없어 오프셋 페이징을 쓴다.
+     *
+     * <p>정렬만 다를 뿐 거르는 조건은 최신순 피드와 같다. 정렬 방식에 따라 쓸 수 있는
+     * 필터가 달라지면, 같은 탭을 눌러도 두 목록이 서로 다른 기준으로 보인다.
+     *
+     * @param followerId 값이 있으면 이 사용자가 팔로우한 사람들의 게시물만 남긴다.
+     * @param placeId    값이 있으면 이 장소를 태그한 게시물만 남긴다.
+     * @param category   값이 있으면 이 카테고리가 붙은 게시물만 남긴다.
      */
     @EntityGraph(attributePaths = "user")
     @Query("""
@@ -117,6 +124,15 @@ public interface PostRepository extends JpaRepository<Post, Long> {
             where post.deletedAt is null
               and post.user.deletedAt is null
               and post.createdAt >= :since
+              and (:followerId is null or post.user.id in (
+                    select follow.following.id from Follow follow
+                    where follow.follower.id = :followerId))
+              and (:placeId is null or exists (
+                    select 1 from PostPlaceTag tag
+                    where tag.post = post and tag.place.id = :placeId))
+              and (:category is null or exists (
+                    select 1 from PostHashtag link
+                    where link.post = post and link.hashtag.name = :category))
               and (:blockerId is null or not exists (
                     select 1 from Block block
                     where block.blocker.id = :blockerId and block.blocked = post.user))
@@ -124,6 +140,9 @@ public interface PostRepository extends JpaRepository<Post, Long> {
             """)
     List<Post> findPopularFeed(
             @Param("since") LocalDateTime since,
+            @Param("followerId") Long followerId,
+            @Param("placeId") Long placeId,
+            @Param("category") String category,
             @Param("blockerId") Long blockerId,
             Pageable pageable);
 

@@ -40,7 +40,7 @@ class HashtagAttachConflictTest {
     void setUp() {
         User author = new User("작성자", null);
         entityManager.persist(author);
-        post = new Post(author, "광안리 야경 #광안리 #부산야경");
+        post = new Post(author, "광안리 야경 #야경 #카페");
         entityManager.persist(post);
         entityManager.flush();
     }
@@ -48,24 +48,24 @@ class HashtagAttachConflictTest {
     @Test
     @DisplayName("같은 본문으로 두 번 연결해도 실패하지 않는다")
     void attachTwiceDoesNotFail() {
-        hashtagService.attachFromContent(post, post.getContent());
+        hashtagService.attach(post, List.of("야경", "카페"));
 
         // 두 번째 호출이 기본키 충돌로 터지면 복구 버튼을 두 번 누른 사용자가 500 을 받는다.
-        assertThat(hashtagService.attachFromContent(post, post.getContent()))
-                .containsExactly("광안리", "부산야경");
+        assertThat(hashtagService.attach(post, List.of("야경", "카페")))
+                .containsExactly("야경", "카페");
     }
 
     @Test
     @DisplayName("두 번 연결해도 태그 사용 수는 한 번만 오른다")
     void attachTwiceCountsOnce() {
-        hashtagService.attachFromContent(post, post.getContent());
+        hashtagService.attach(post, List.of("야경", "카페"));
         entityManager.flush();
-        long afterFirst = postCountOf("광안리");
+        long afterFirst = postCountOf("야경");
 
-        hashtagService.attachFromContent(post, post.getContent());
+        hashtagService.attach(post, List.of("야경", "카페"));
         entityManager.flush();
 
-        assertThat(postCountOf("광안리")).isEqualTo(afterFirst);
+        assertThat(postCountOf("야경")).isEqualTo(afterFirst);
     }
 
     private long postCountOf(String name) {

@@ -7,9 +7,13 @@ import com.server.notification.service.NotificationService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
+@Validated
 @RequestMapping("/api/v1/notifications")
 @Tag(name = "알림", description = "내 알림 조회와 읽음 처리")
 public class NotificationController {
@@ -31,7 +35,8 @@ public class NotificationController {
             @Parameter(description = "요청자 ID. 인증 도입 전까지 쓰는 임시 헤더다.", example = "1")
             @RequestHeader("X-User-Id") Long userId,
             @Parameter(example = "9") @RequestParam(required = false) Long cursor,
-            @Parameter(example = "20") @RequestParam(required = false) Integer size
+            @Parameter(description = "한 번에 가져올 알림 수. 1 이상 50 이하", example = "20")
+            @RequestParam(defaultValue = "20") @Min(1) @Max(50) Integer size
     ) {
         return notificationService.getMyNotifications(userId, cursor, size);
     }

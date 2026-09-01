@@ -24,9 +24,8 @@ public record PostSummaryResponse(
         int mediaCount,
         @Schema(description = "대표 장소명. 태그가 없으면 null이다.", example = "광안리해수욕장")
         String placeName,
-        @Schema(description = "본문에서 뽑은 해시태그. # 는 빼고 이름만 담는다.",
-                example = "[\"광안리\", \"부산야경\"]")
-        List<String> hashtags,
+        @Schema(description = "이 게시물에 붙은 카테고리.", example = "[\"맛집\", \"야경\"]")
+        List<String> categories,
         @Schema(example = "12") int likeCount,
         @Schema(example = "3") int commentCount,
         @Schema(description = "요청자가 좋아요를 누른 상태인지. 요청자를 알 수 없으면 false 다.",
@@ -41,7 +40,7 @@ public record PostSummaryResponse(
             Post post,
             List<PostMedia> mediaList,
             List<PostPlaceTagView> placeTags,
-            List<String> hashtags,
+            List<String> categories,
             boolean liked,
             boolean bookmarked
     ) {
@@ -64,7 +63,7 @@ public record PostSummaryResponse(
                 thumbnailUrl,
                 mediaList.size(),
                 placeName,
-                hashtags,
+                categories,
                 post.getLikeCount(),
                 post.getCommentCount(),
                 liked,

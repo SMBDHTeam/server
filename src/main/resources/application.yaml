@@ -13,6 +13,12 @@ spring:
     properties:
       hibernate:
         default_batch_fetch_size: 100
+  servlet:
+    multipart:
+      # 기본값은 한 건 1MB, 요청 전체 10MB 다. 그대로 두면 app.media 한도에 닿기 전에
+      # 서블릿이 먼저 막는다. 한 건 10MB × 10건에 여유를 둔다.
+      max-file-size: ${COMMUNITY_MEDIA_MAX_FILE_SIZE:10MB}
+      max-request-size: ${COMMUNITY_MEDIA_MAX_REQUEST_SIZE:110MB}
 
 server:
   port: 8080
@@ -83,9 +89,27 @@ app:
         cron: "${TOUR_API_INGESTION_CRON:0 0 4 * * *}"
     #---------------
   community:
+    # 해시태그가 가리키는 장소를 집계할 때 필요한 최소 인원.
+    #
+    # 3은 신뢰할 만한 기준이 아니라 데이터가 없어서 낮춰 둔 값이다. 한 장소에 열 명이
+    # 같은 태그를 달려면 그 태그 아래 글이 수백 개는 쌓여야 하는데, 지금은 게시물이 거의
+    # 없어 그 기준으로는 아무 장소도 뜨지 않는다. 글이 쌓이면 올린다.
+    hashtag-place:
+      min-authors: ${COMMUNITY_HASHTAG_PLACE_MIN_AUTHORS:3}
     # 지운 게시물은 retention-days 동안 복구할 수 있고, 그 뒤 이 스케줄러가 실제로 지운다.
     # 끄면 지운 게시물이 영원히 쌓이고 본문과 사진 URL 이 DB 에 남는다.
     post-purge:
       enabled: ${COMMUNITY_POST_PURGE_ENABLED:false}
       retention-days: ${COMMUNITY_POST_RETENTION_DAYS:30}
       cron: "${COMMUNITY_POST_PURGE_CRON:0 30 4 * * *}"
+  # 게시물에 붙일 사진·영상 업로드. 자격 증명은 yaml 이 아니라 환경변수에서 읽는다
+  # (AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY). 키가 없으면 enabled 를 끄고 띄운다.
+  media:
+    max-file-size: ${COMMUNITY_MEDIA_MAX_FILE_SIZE:10MB}
+    # 게시물 첨부 상한(PostCreateRequest.MAX_MEDIA_COUNT)과 같아야 한다.
+    max-file-count: ${COMMUNITY_MEDIA_MAX_FILE_COUNT:10}
+    s3:
+      enabled: ${COMMUNITY_MEDIA_S3_ENABLED:false}
+      bucket: ${COMMUNITY_MEDIA_S3_BUCKET:}
+      region: ${COMMUNITY_MEDIA_S3_REGION:ap-northeast-2}
+      key-prefix: ${COMMUNITY_MEDIA_S3_KEY_PREFIX:posts}

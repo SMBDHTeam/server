@@ -33,6 +33,9 @@ class PopularFeedTest {
     private PostRepository postRepository;
 
     @Autowired
+    private com.server.hashtag.service.HashtagService hashtagService;
+
+    @Autowired
     private EntityManager entityManager;
 
     private User author;
@@ -74,6 +77,22 @@ class PopularFeedTest {
     }
 
     @Test
+    @DisplayName("카테고리를 주면 그것이 붙은 게시물만 남는다")
+    void filtersByHashtag() {
+        Post tagged = givenPost("국밥 맛있다", 1, 0, LocalDateTime.now());
+        Post other = givenPost("야경 좋다", 99, 99, LocalDateTime.now());
+        flush();
+        hashtagService.attach(entityManager.find(Post.class, tagged.getId()), java.util.List.of("맛집"));
+        hashtagService.attach(entityManager.find(Post.class, other.getId()), java.util.List.of("야경"));
+        flush();
+
+        // 카테고리 탭은 최신 피드와 인기 피드에 같은 기준으로 걸려야 한다.
+        assertThat(findPopular("맛집"))
+                .extracting(Post::getId)
+                .containsExactly(tagged.getId());
+    }
+
+    @Test
     @DisplayName("삭제된 게시물은 점수와 무관하게 빠진다")
     void excludesDeletedPosts() {
         Post deleted = givenPost("지운 인기글", 100, 100, LocalDateTime.now());
@@ -87,8 +106,13 @@ class PopularFeedTest {
     }
 
     private List<Post> findPopular() {
+        return findPopular(null);
+    }
+
+    private List<Post> findPopular(String hashtag) {
         return postRepository.findPopularFeed(
-                LocalDateTime.now().minusDays(POPULAR_FEED_DAYS), null, PageRequest.of(0, 20));
+                LocalDateTime.now().minusDays(POPULAR_FEED_DAYS), null, null, hashtag, null,
+                PageRequest.of(0, 20));
     }
 
     /** 집계 컬럼과 작성 시각은 서비스가 아니라 DB 갱신·시계로 정해지므로 직접 심는다. */

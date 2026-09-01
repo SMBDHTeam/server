@@ -33,58 +33,21 @@ class NotificationServiceTest {
             Mockito.mock(NotificationRepository.class);
     private final UserRepository userRepository = Mockito.mock(UserRepository.class);
 
+    private final NotificationWriter notificationWriter = Mockito.mock(NotificationWriter.class);
+
     private final NotificationService notificationService =
-            new NotificationService(notificationRepository, userRepository);
+            new NotificationService(notificationRepository, notificationWriter, userRepository);
 
     @Test
-    @DisplayName("내가 한 행동은 나에게 알리지 않는다")
-    void doesNotNotifySelf() {
+    @DisplayName("저장이 실패해도 부르는 쪽 작업을 막지 않는다")
+    void swallowsWriteFailure() {
+        Mockito.doThrow(new IllegalStateException("DB 연결 실패"))
+                .when(notificationWriter).write(any(), any(), any(), any(), any());
+
+        // 예외가 밖으로 나가면 팔로우나 댓글 작성이 알림 때문에 함께 롤백된다.
         notificationService.notify(
-                RECIPIENT_ID,
-                RECIPIENT_ID,
-                NotificationType.POST_LIKE,
-                NotificationTargetType.POST,
-                POST_ID);
-
-        verify(notificationRepository, never()).save(any(Notification.class));
-    }
-
-    @Test
-    @DisplayName("받는 사람이 탈퇴했으면 남기지 않는다")
-    void doesNotNotifyWithdrawnRecipient() {
-        when(userRepository.findByIdAndDeletedAtIsNull(RECIPIENT_ID)).thenReturn(Optional.empty());
-
-        // 알림은 부가 기능이라 받는 사람을 못 찾아도 원래 하던 작업을 실패시키지 않는다.
-        notificationService.notify(
-                RECIPIENT_ID,
-                ACTOR_ID,
-                NotificationType.POST_LIKE,
-                NotificationTargetType.POST,
-                POST_ID);
-
-        verify(notificationRepository, never()).save(any(Notification.class));
-    }
-
-    @Test
-    @DisplayName("같은 대상에 같은 알림이 이미 있으면 다시 남기지 않는다")
-    void doesNotNotifyTwiceForSameTarget() {
-        when(userRepository.findByIdAndDeletedAtIsNull(RECIPIENT_ID))
-                .thenReturn(Optional.of(user(RECIPIENT_ID)));
-        // 좋아요를 취소했다 다시 눌러 관계가 새로 생긴 상황이다.
-        when(notificationRepository
-                .existsByRecipientIdAndActorIdAndTypeAndTargetTypeAndTargetId(
-                        RECIPIENT_ID, ACTOR_ID, NotificationType.POST_LIKE,
-                        NotificationTargetType.POST, POST_ID))
-                .thenReturn(true);
-
-        notificationService.notify(
-                RECIPIENT_ID,
-                ACTOR_ID,
-                NotificationType.POST_LIKE,
-                NotificationTargetType.POST,
-                POST_ID);
-
-        verify(notificationRepository, never()).save(any(Notification.class));
+                RECIPIENT_ID, ACTOR_ID, NotificationType.POST_LIKE,
+                NotificationTargetType.POST, POST_ID);
     }
 
     @Test

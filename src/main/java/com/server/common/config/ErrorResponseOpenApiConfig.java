@@ -79,6 +79,13 @@ public class ErrorResponseOpenApiConfig {
             putIfAbsent(responses, "503",
                     "일정 생성·조회를 담당하는 FastAPI가 응답하지 않는다.", codesOf(503));
         }
+        if (uploadsToStorage(path)) {
+            putIfAbsent(responses, "413", "파일이 한 건당 허용 크기를 넘었다.", codesOf(413));
+            putIfAbsent(responses, "415", "지원하지 않는 형식이거나 내용이 확장자와 다르다.",
+                    codesOf(415));
+            putIfAbsent(responses, "503",
+                    "파일 저장소가 꺼져 있거나 응답하지 않는다.", codesOf(503));
+        }
         putIfAbsent(responses, "500",
                 "서버가 처리하지 못한 예외. 응답에 내부 메시지를 담지 않으며 "
                         + "원인은 같은 traceId로 서버 로그에 남는다.", codesOf(500));
@@ -120,6 +127,11 @@ public class ErrorResponseOpenApiConfig {
             return !path.contains("/shares");
         }
         return false;
+    }
+
+    /** 외부 파일 저장소(S3)를 타는 경로. 저장소가 꺼져 있으면 503 을 준다. */
+    private boolean uploadsToStorage(String path) {
+        return path.startsWith("/api/v1/media");
     }
 
     private void putIfAbsent(ApiResponses responses, String status, String summary, String codes) {

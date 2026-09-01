@@ -43,9 +43,6 @@ public class Block {
         this.createdAt = LocalDateTime.now();
     }
 
-    public User getBlocker() {
-        return blocker;
-    }
 
     public User getBlocked() {
         return blocked;

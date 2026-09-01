@@ -20,6 +20,15 @@ public interface HashtagRepository extends JpaRepository<Hashtag, Long> {
     List<Hashtag> findByNameStartingWithOrderByPostCountDescNameAsc(String prefix, Pageable pageable);
 
     /**
+     * 등록된 태그 전체. 사용자가 새로 만들 수 없으므로 이 목록이 곧 선택지이자 화면의
+     * 카테고리 탭이다. 지금은 여덟 개뿐이라 페이징하지 않는다.
+     *
+     * <p>이름순으로 준다. 사용 수로 정렬하면 글이 쌓일 때마다 탭 순서가 바뀌어,
+     * 사용자가 늘 같은 자리에서 같은 탭을 누를 수 없다.
+     */
+    List<Hashtag> findAllByOrderByIdAsc();
+
+    /**
      * 사용 수를 DB에서 직접 증감시킨다. 엔티티를 읽어 고쳐 쓰면 동시에 같은 태그를 쓴
      * 요청끼리 값이 어긋날 수 있다.
      */
@@ -33,15 +42,4 @@ public interface HashtagRepository extends JpaRepository<Hashtag, Long> {
             + "where hashtag.id in :ids and hashtag.postCount > 0")
     void decreasePostCount(@Param("ids") Collection<Long> ids);
 
-    /**
-     * 없을 때만 새 태그를 만든다. 같은 태그를 두 사람이 동시에 처음 쓰면 양쪽 다 없다고
-     * 읽어 이름 고유 제약에 걸리므로, 확인 후 저장하지 않고 DB 에 맡긴다.
-     */
-    @Modifying(flushAutomatically = true)
-    @Query(value = """
-            insert into hashtags (name, post_count)
-            values (:name, 0)
-            on conflict do nothing
-            """, nativeQuery = true)
-    void insertIfAbsent(@Param("name") String name);
 }

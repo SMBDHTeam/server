@@ -1,7 +1,6 @@
 package com.server.post.dto;
 
 import com.server.post.domain.PostPlaceTag;
-import java.math.BigDecimal;
 
 /**
  * 응답에 필요한 장소 태그 값만 담는 조회 전용 모델.
@@ -11,19 +10,17 @@ import java.math.BigDecimal;
  */
 public record PostPlaceTagView(
         Long postId,
+        Long mediaId,
         Long placeId,
-        String placeName,
-        BigDecimal latitude,
-        BigDecimal longitude
+        String placeName
 ) {
 
     /** 방금 저장해 이미 메모리에 있는 엔티티를 변환할 때 쓴다. */
     public static PostPlaceTagView from(PostPlaceTag tag) {
         return new PostPlaceTagView(
                 tag.getPost().getId(),
+                tag.getMedia() == null ? null : tag.getMedia().getId(),
                 tag.getPlace().getId(),
-                tag.getPlace().getName(),
-                tag.getLatitude(),
-                tag.getLongitude());
+                tag.getPlace().getName());
     }
 }

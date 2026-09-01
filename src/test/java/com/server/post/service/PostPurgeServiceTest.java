@@ -108,17 +108,17 @@ class PostPurgeServiceTest {
     void restoresHashtagPostCount() {
         Post expired = givenPost(LocalDateTime.now().minusDays(RETENTION_DAYS + 1));
         // 소프트 삭제 때 연결이 끊기지 않고 남아 있는 상황을 만든다.
-        hashtagService.attachFromContent(expired, "지운 글 #광안리");
+        hashtagService.attach(expired, List.of("맛집"));
         entityManager.flush();
         entityManager.clear();
 
-        long before = postCountOf("광안리");
+        long before = postCountOf("맛집");
         assertThat(postPurgeService.purgeExpired(RETENTION_DAYS)).isEqualTo(1);
         entityManager.flush();
         entityManager.clear();
 
         // 링크만 지우면 사용 수가 부풀어 자동완성 정렬이 틀어진다.
-        assertThat(postCountOf("광안리")).isEqualTo(before - 1);
+        assertThat(postCountOf("맛집")).isEqualTo(before - 1);
     }
 
     @Test

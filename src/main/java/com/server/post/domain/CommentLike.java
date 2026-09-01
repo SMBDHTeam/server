@@ -39,9 +39,6 @@ public class CommentLike {
         this.createdAt = LocalDateTime.now();
     }
 
-    public Comment getComment() {
-        return comment;
-    }
 
     public User getUser() {
         return user;

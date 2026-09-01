@@ -151,16 +151,17 @@ class PostServiceTest {
     }
 
     @Test
-    @DisplayName("본문을 수정하면 해시태그를 다시 계산한다")
-    void updateRecalculatesHashtags() {
+    @DisplayName("카테고리를 보내면 기존 연결을 교체한다")
+    void updateReplacesCategories() {
         Post post = givenPostWrittenBy(AUTHOR_ID);
         when(postMediaRepository.findByPostId(POST_ID)).thenReturn(List.of());
         when(postPlaceTagRepository.findViewsByPostId(POST_ID)).thenReturn(List.of());
 
-        postService.update(POST_ID, AUTHOR_ID, new PostUpdateRequest("고친 본문 #부산", null, null));
+        postService.update(POST_ID, AUTHOR_ID,
+                new PostUpdateRequest("고친 본문", null, List.of("맛집")));
 
-        assertThat(post.getContent()).isEqualTo("고친 본문 #부산");
-        verify(hashtagService).reattachFromContent(post, "고친 본문 #부산");
+        assertThat(post.getContent()).isEqualTo("고친 본문");
+        verify(hashtagService).reattach(post, List.of("맛집"));
     }
 
     @Test
@@ -207,27 +208,16 @@ class PostServiceTest {
         when(postMediaRepository.findByPostId(POST_ID)).thenReturn(List.of());
         when(postPlaceTagRepository.findViewsByPostId(POST_ID)).thenReturn(List.of());
         List<PostCreateRequest.Media> media = List.of(
-                new PostCreateRequest.Media("https://e.com/b.jpg", MediaType.IMAGE, 0));
+                new PostCreateRequest.Media("https://e.com/b.jpg", MediaType.IMAGE, 0, null));
 
         postService.update(POST_ID, AUTHOR_ID, new PostUpdateRequest(null, media, null));
 
+        // 장소는 사진에 붙으므로 사진을 교체하면 장소도 함께 지워진다.
+        verify(postPlaceTagRepository).deleteByPostId(POST_ID);
         verify(postMediaRepository).deleteByPostId(POST_ID);
         verify(postMediaRepository).saveAll(any());
-        // 본문을 안 보냈으므로 해시태그는 다시 계산하지 않는다.
-        verify(hashtagService, never()).reattachFromContent(eq(post), any());
-    }
-
-    @Test
-    @DisplayName("장소 태그를 빈 배열로 보내면 전부 없앤다")
-    void updateClearsPlaceTags() {
-        givenPostWrittenBy(AUTHOR_ID);
-        when(postMediaRepository.findByPostId(POST_ID)).thenReturn(List.of());
-        when(postPlaceTagRepository.findViewsByPostId(POST_ID)).thenReturn(List.of());
-
-        postService.update(POST_ID, AUTHOR_ID, new PostUpdateRequest(null, null, List.of()));
-
-        verify(postPlaceTagRepository).deleteByPostId(POST_ID);
-        verify(postPlaceTagRepository, never()).saveAll(any());
+        // 카테고리를 안 보냈으므로 기존 연결을 건드리지 않는다.
+        verify(hashtagService, never()).reattach(eq(post), any());
     }
 
     @Test
@@ -241,8 +231,8 @@ class PostServiceTest {
     }
 
     @Test
-    @DisplayName("복구하면 삭제 표시가 지워지고 해시태그를 다시 연결한다")
-    void restoreClearsDeletionAndReattachesHashtags() {
+    @DisplayName("복구하면 삭제 표시가 지워지고 카테고리 사용 수를 되돌린다")
+    void restoreClearsDeletionAndRestoresCategories() {
         Post post = givenDeletedPost(AUTHOR_ID, LocalDateTime.now().minusDays(3));
         when(postMediaRepository.findByPostId(POST_ID)).thenReturn(List.of());
         when(postPlaceTagRepository.findViewsByPostId(POST_ID)).thenReturn(List.of());
@@ -250,8 +240,8 @@ class PostServiceTest {
         postService.restore(POST_ID, AUTHOR_ID);
 
         assertThat(post.getDeletedAt()).isNull();
-        // 삭제할 때 연결을 지웠으므로 본문에서 다시 뽑지 않으면 태그 필터 피드에서 빠진다.
-        verify(hashtagService).attachFromContent(post, "본문");
+        // 연결은 삭제할 때 지우지 않았으므로 사용 수만 되돌린다.
+        verify(hashtagService).restoreForPost(POST_ID);
     }
 
     @Test
@@ -290,23 +280,35 @@ class PostServiceTest {
     @Test
     @DisplayName("인기 피드는 한 번에 50건까지만 준다")
     void popularFeedCapsPageSize() {
-        when(postRepository.findPopularFeed(any(), any(), any())).thenReturn(List.of());
+        when(postRepository.findPopularFeed(any(), any(), any(), any(), any(), any()))
+                .thenReturn(List.of());
         when(postSummaryAssembler.assemble(List.of(), null)).thenReturn(List.of());
 
-        postService.getPopularFeed(0, 500, null);
+        postService.getPopularFeed(0, 500, false, null, null, null);
 
         ArgumentCaptor<Pageable> pageable = ArgumentCaptor.forClass(Pageable.class);
-        verify(postRepository).findPopularFeed(any(), any(), pageable.capture());
+        verify(postRepository).findPopularFeed(any(), any(), any(), any(), any(), pageable.capture());
         assertThat(pageable.getValue().getPageSize()).isEqualTo(50);
+    }
+
+    @Test
+    @DisplayName("인기 피드도 팔로잉이면 요청자를 알아야 한다")
+    void popularFollowingFeedRequiresRequester() {
+        // 정렬만 다를 뿐 거르는 조건은 최신 피드와 같아야 한다.
+        assertThatThrownBy(() -> postService.getPopularFeed(0, 20, true, null, null, null))
+                .isInstanceOfSatisfying(BusinessException.class, exception ->
+                        assertThat(exception.getErrorCode())
+                                .isEqualTo(ErrorCode.INVALID_FEED_REQUEST));
     }
 
     @Test
     @DisplayName("인기 피드는 점수 순이라 이어받을 커서를 주지 않는다")
     void popularFeedHasNoCursor() {
-        when(postRepository.findPopularFeed(any(), any(), any())).thenReturn(List.of());
+        when(postRepository.findPopularFeed(any(), any(), any(), any(), any(), any()))
+                .thenReturn(List.of());
         when(postSummaryAssembler.assemble(List.of(), null)).thenReturn(List.of());
 
-        assertThat(postService.getPopularFeed(0, 20, null).nextCursor()).isNull();
+        assertThat(postService.getPopularFeed(0, 20, false, null, null, null).nextCursor()).isNull();
     }
 
     private Post givenDeletedPost(long userId, LocalDateTime deletedAt) {
