@@ -2089,7 +2089,7 @@ files: (파일)
 | 코드 | 상태 | 발생 상황 |
 | --- | --- | --- |
 | `INVALID_MEDIA_FILE` | 400 | `files` 가 없거나, 빈 파일이거나, 10건 초과 |
-| `MEDIA_FILE_TOO_LARGE` | 413 | 한 건이 10MB 초과 |
+| `MEDIA_FILE_TOO_LARGE` | 413 | 한 건이 10MB 초과. 요청 전체가 커서 서블릿이 먼저 막은 경우 `fieldErrors` 가 비어 있다 |
 | `UNSUPPORTED_MEDIA_FORMAT` | 415 | 허용하지 않는 형식이거나 내용이 확장자와 다름 |
 | `EXTERNAL_PROVIDER_UNAVAILABLE` | 503 | 저장소가 꺼져 있거나 응답하지 않음 |
 

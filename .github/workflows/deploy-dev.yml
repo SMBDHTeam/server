@@ -93,6 +93,13 @@ jobs:
           JWT_SECRET: ${{ secrets.JWT_SECRET }}
           GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
 
+          # 커뮤니티 사진 업로드(S3).
+          # 시크릿 이름에 COMMUNITY_MEDIA_ 를 붙여 배포용 AWS 자격 증명과 구분한다.
+          # 서버로 넘길 때만 AWS SDK 가 읽는 표준 이름으로 바꿔 적는다.
+          COMMUNITY_MEDIA_S3_BUCKET: ${{ secrets.COMMUNITY_MEDIA_S3_BUCKET }}
+          COMMUNITY_MEDIA_AWS_ACCESS_KEY_ID: ${{ secrets.COMMUNITY_MEDIA_AWS_ACCESS_KEY_ID }}
+          COMMUNITY_MEDIA_AWS_SECRET_ACCESS_KEY: ${{ secrets.COMMUNITY_MEDIA_AWS_SECRET_ACCESS_KEY }}
+
           # 외부 API 설정
           TOUR_API_KEY: ${{ secrets.TOUR_API_KEY }}
           KAKAO_REST_API_KEY: ${{ secrets.KAKAO_REST_API_KEY }}
@@ -234,6 +241,15 @@ jobs:
             # 지운 게시물의 본문과 사진 URL이 DB에 계속 남는다.
             printf 'COMMUNITY_POST_PURGE_ENABLED=true\n'
             printf 'TOUR_API_MAX_REQUESTS_PER_DAY=900\n'
+
+            # 커뮤니티 사진·영상 업로드(S3).
+            # 이 값이 없으면 기본값 false 로 기동해 POST /api/v1/media 가 503 을 반환한다.
+            # 나머지 API 는 그대로 동작하므로 서버가 뜨지 않는 일은 없다.
+            printf 'COMMUNITY_MEDIA_S3_ENABLED=true\n'
+            printf 'COMMUNITY_MEDIA_S3_BUCKET=%s\n' "$COMMUNITY_MEDIA_S3_BUCKET"
+            printf 'COMMUNITY_MEDIA_S3_REGION=ap-northeast-2\n'
+            printf 'AWS_ACCESS_KEY_ID=%s\n' "$COMMUNITY_MEDIA_AWS_ACCESS_KEY_ID"
+            printf 'AWS_SECRET_ACCESS_KEY=%s\n' "$COMMUNITY_MEDIA_AWS_SECRET_ACCESS_KEY"
 
             # Kakao 장소 검색 API
             printf 'KAKAO_REST_API_KEY=%s\n' "$KAKAO_REST_API_KEY"
