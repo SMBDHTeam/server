@@ -245,12 +245,11 @@ public class GlobalExceptionHandler {
             MaxUploadSizeExceededException exception,
             HttpServletRequest request
     ) {
+        // 이 예외는 어느 파트가 컸는지 알려주지 않는다. 필드명을 지어내면 다른 multipart
+        // 경로가 생겼을 때 있지도 않은 필드를 가리키게 되므로 코드와 메시지로만 알린다.
         return ResponseEntity
                 .status(ErrorCode.MEDIA_FILE_TOO_LARGE.getStatus())
-                .body(ErrorResponse.of(
-                        ErrorCode.MEDIA_FILE_TOO_LARGE,
-                        List.of(new ErrorResponse.FieldErrorResponse("files", "파일이 너무 큽니다.")),
-                        traceId(request)));
+                .body(ErrorResponse.of(ErrorCode.MEDIA_FILE_TOO_LARGE, List.of(), traceId(request)));
     }
 
     /** 존재하지 않는 경로. 오류 응답 형태를 나머지와 맞춘다. */
