@@ -34,5 +34,14 @@ public record MediaProperties(
      * @param minAge  이 시간이 지나지 않은 파일은 건드리지 않는다. 아직 글을 쓰는 중일 수 있다
      */
     public record OrphanCleanup(boolean enabled, Duration minAge) {
+
+        /** 설정에서 빠졌을 때 쓰는 값. 업로드부터 게시물 작성까지 하루가 걸리는 일은 없다. */
+        private static final Duration DEFAULT_MIN_AGE = Duration.ofHours(24);
+
+        public OrphanCleanup {
+            // 값이 비면 기준 시각이 없어 정리 도중 터진다. 빈 값을 "제한 없음" 으로 읽어
+            // 방금 올라온 파일까지 지우는 것보다, 안전한 쪽으로 채워 두는 편이 낫다.
+            minAge = minAge == null ? DEFAULT_MIN_AGE : minAge;
+        }
     }
 }
