@@ -5,6 +5,7 @@ import com.server.common.error.ErrorCode;
 import com.server.media.config.MediaProperties;
 import java.io.InputStream;
 import java.util.List;
+import java.util.function.Consumer;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.stereotype.Component;
 import software.amazon.awssdk.core.sync.RequestBody;
@@ -62,16 +63,21 @@ public class S3MediaStorage implements MediaStorage {
     }
 
     @Override
-    public List<StoredObject> listAll() {
+    public void forEachPage(Consumer<List<StoredObject>> pageConsumer) {
         ListObjectsV2Request request = ListObjectsV2Request.builder()
                 .bucket(properties.s3().bucket())
                 .prefix(properties.s3().keyPrefix() + "/")
                 .build();
         try {
-            // 페이지 단위로 나눠 받는다. 한 번에 1000건까지만 오므로 직접 이어 붙이지 않는다.
-            return s3Client.listObjectsV2Paginator(request).contents().stream()
-                    .map(object -> new StoredObject(publicUrl(object.key()), object.lastModified()))
-                    .toList();
+            // 한 응답에 최대 1000건이 온다. 페이지가 올 때마다 넘기고 들고 있지 않는다.
+            s3Client.listObjectsV2Paginator(request).stream().forEach(response -> {
+                List<StoredObject> page = response.contents().stream()
+                        .map(object -> new StoredObject(publicUrl(object.key()), object.lastModified()))
+                        .toList();
+                if (!page.isEmpty()) {
+                    pageConsumer.accept(page);
+                }
+            });
         } catch (SdkException exception) {
             throw new BusinessException(ErrorCode.EXTERNAL_PROVIDER_UNAVAILABLE, exception);
         }

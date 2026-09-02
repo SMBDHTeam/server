@@ -34,6 +34,12 @@ public class OrphanMediaCleanupService {
      */
     private static final int LOOKUP_BATCH_SIZE = 500;
 
+    /** 페이지 콜백 안에서 세야 해서 배열로 담는다. 람다는 지역 변수를 바꿀 수 없다. */
+    private static final int DELETED = 0;
+    private static final int FAILED = 1;
+    private static final int CHECKED = 2;
+    private static final int COUNT_SIZE = 3;
+
     private final PostMediaRepository postMediaRepository;
     private final ObjectProvider<MediaStorage> storageProvider;
     private final MediaProperties properties;
@@ -61,40 +67,40 @@ public class OrphanMediaCleanupService {
     /** 저장소와 기준 시간을 직접 받는다. 테스트가 가짜 저장소를 넣을 수 있게 열어 둔다. */
     int deleteOrphans(MediaStorage storage, Duration minAge) {
         Instant deadline = Instant.now().minus(minAge);
+        // 페이지마다 처리하고 버린다. 파일이 수만 건이어도 메모리 사용량이 늘지 않는다.
+        int[] counts = new int[COUNT_SIZE];
 
-        // 방금 올라온 파일은 아직 글이 쓰이는 중일 수 있다. 그것까지 지우면 작성하던 사람의
-        // 사진이 사라진다. 업로드부터 작성까지 하루가 걸리는 일은 없으므로 여유는 충분하다.
-        List<String> candidates = storage.listAll().stream()
-                .filter(object -> object.lastModified() != null
-                        && object.lastModified().isBefore(deadline))
-                .map(MediaStorage.StoredObject::url)
-                .toList();
-        if (candidates.isEmpty()) {
-            return 0;
-        }
-
-        Set<String> referenced = referenced(candidates);
-        List<String> orphans = candidates.stream()
-                .filter(url -> !referenced.contains(url))
-                .toList();
-        if (orphans.isEmpty()) {
-            log.info("저장소를 훑었지만 지울 파일이 없었다. 확인한 파일={}건", candidates.size());
-            return 0;
-        }
-
-        int failed = 0;
-        for (String url : orphans) {
-            try {
-                storage.delete(url);
-            } catch (RuntimeException exception) {
-                failed++;
-                log.warn("남은 파일을 지우지 못했다. url={}", url, exception);
+        storage.forEachPage(page -> {
+            // 방금 올라온 파일은 아직 글이 쓰이는 중일 수 있다. 그것까지 지우면 작성하던
+            // 사람의 사진이 사라진다. 업로드부터 작성까지 하루가 걸리는 일은 없다.
+            List<String> candidates = page.stream()
+                    .filter(object -> object.lastModified() != null
+                            && object.lastModified().isBefore(deadline))
+                    .map(MediaStorage.StoredObject::url)
+                    .toList();
+            counts[CHECKED] += candidates.size();
+            if (candidates.isEmpty()) {
+                return;
             }
-        }
-        int deleted = orphans.size() - failed;
+
+            Set<String> referenced = referenced(candidates);
+            for (String url : candidates) {
+                if (referenced.contains(url)) {
+                    continue;
+                }
+                try {
+                    storage.delete(url);
+                    counts[DELETED]++;
+                } catch (RuntimeException exception) {
+                    counts[FAILED]++;
+                    log.warn("남은 파일을 지우지 못했다. url={}", url, exception);
+                }
+            }
+        });
+
         log.info("게시물에 붙지 않은 파일 {}건을 지웠다. 확인한 파일={}건, 실패={}건",
-                deleted, candidates.size(), failed);
-        return deleted;
+                counts[DELETED], counts[CHECKED], counts[FAILED]);
+        return counts[DELETED];
     }
 
     /** 주어진 주소 중 게시물에 붙어 있는 것. */

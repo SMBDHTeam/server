@@ -241,8 +241,8 @@ class MediaServiceTest {
         }
 
         @Override
-        public List<StoredObject> listAll() {
-            return List.of();
+        public void forEachPage(java.util.function.Consumer<List<StoredObject>> pageConsumer) {
+            // 업로드 검증만 보는 테스트라 훑을 것이 없다.
         }
     }
 }

@@ -13,6 +13,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Consumer;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -102,6 +103,21 @@ class OrphanMediaCleanupServiceTest {
         assertThat(storage.deleted).containsExactly(BASE + "orphan.jpg");
     }
 
+    @Test
+    @DisplayName("여러 페이지에 걸쳐 있어도 붙지 않은 것만 지운다")
+    void worksAcrossPages() {
+        // 저장소는 목록을 나눠서 준다. 페이지마다 처리하므로 경계에서 새지 않아야 한다.
+        String used = BASE + "used.jpg";
+        givenPostWithMedia(used);
+        for (int index = 0; index < 5; index++) {
+            storage.put(BASE + "orphan" + index + ".jpg", daysAgo(3));
+        }
+        storage.put(used, daysAgo(3));
+
+        assertThat(cleanupService.deleteOrphans(storage, MIN_AGE)).isEqualTo(5);
+        assertThat(storage.deleted).hasSize(5).doesNotContain(used);
+    }
+
     private void givenPostWithMedia(String url) {
         User author = new User("작성자", null);
         entityManager.persist(author);
@@ -117,6 +133,8 @@ class OrphanMediaCleanupServiceTest {
 
     /** 저장소를 흉내 낸다. 지운 목록을 기록해 무엇이 사라졌는지 확인한다. */
     private static final class FakeStorage implements MediaStorage {
+
+        private static final int PAGE_SIZE = 2;
 
         private final List<StoredObject> objects = new ArrayList<>();
         private final List<String> deleted = new ArrayList<>();
@@ -139,9 +157,13 @@ class OrphanMediaCleanupServiceTest {
             deleted.add(url);
         }
 
+        /** 실제 S3 처럼 페이지를 나눠 넘긴다. 여기서는 두 건씩이다. */
         @Override
-        public List<StoredObject> listAll() {
-            return List.copyOf(objects);
+        public void forEachPage(Consumer<List<StoredObject>> pageConsumer) {
+            for (int start = 0; start < objects.size(); start += PAGE_SIZE) {
+                pageConsumer.accept(List.copyOf(
+                        objects.subList(start, Math.min(start + PAGE_SIZE, objects.size()))));
+            }
         }
     }
 }

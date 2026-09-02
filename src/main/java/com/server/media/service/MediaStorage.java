@@ -3,6 +3,7 @@ package com.server.media.service;
 import java.io.InputStream;
 import java.time.Instant;
 import java.util.List;
+import java.util.function.Consumer;
 
 /**
  * 파일을 어디에 두는지 감춘다. 지금 구현은 S3 하나뿐이지만, 저장소를 바꿀 때 서비스 계층이
@@ -24,11 +25,15 @@ public interface MediaStorage {
     void delete(String url);
 
     /**
-     * 우리가 올린 파일을 전부 훑는다. 게시물에 붙지 않고 남은 파일을 찾는 데 쓴다.
+     * 우리가 올린 파일을 페이지 단위로 훑는다. 게시물에 붙지 않고 남은 파일을 찾는 데 쓴다.
      *
-     * @return 업로드 시각과 함께, {@link #upload} 가 돌려주는 것과 같은 형태의 URL
+     * <p>목록을 통째로 돌려주지 않는 것은 파일이 수만 건으로 늘었을 때를 위해서다. 전부
+     * 메모리에 올리면 정리하다가 서버가 죽는다. 한 페이지를 처리하고 버리면 사용량이
+     * 파일 수와 무관하게 일정하다.
+     *
+     * @param pageConsumer 한 페이지분을 받는다. 비어 있는 페이지는 넘기지 않는다
      */
-    List<StoredObject> listAll();
+    void forEachPage(Consumer<List<StoredObject>> pageConsumer);
 
     /**
      * @param url          공개 URL
