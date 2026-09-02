@@ -183,7 +183,8 @@ class MediaServiceTest {
         return new MediaProperties(
                 DataSize.ofMegabytes(10),
                 MAX_FILE_COUNT,
-                new MediaProperties.S3(true, "test-bucket", "ap-northeast-2", "posts"));
+                new MediaProperties.S3(true, "test-bucket", "ap-northeast-2", "posts"),
+                new MediaProperties.OrphanCleanup(false, java.time.Duration.ofHours(24)));
     }
 
     private static byte[] jpegHeader() {
@@ -232,6 +233,16 @@ class MediaServiceTest {
         public String upload(String key, String contentType, InputStream content, long size) {
             keys.add(key);
             return "https://test-bucket.s3.ap-northeast-2.amazonaws.com/" + key;
+        }
+
+        @Override
+        public void delete(String url) {
+            keys.remove(url);
+        }
+
+        @Override
+        public void forEachPage(java.util.function.Consumer<List<StoredObject>> pageConsumer) {
+            // 업로드 검증만 보는 테스트라 훑을 것이 없다.
         }
     }
 }

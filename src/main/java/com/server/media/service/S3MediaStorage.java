@@ -4,10 +4,14 @@ import com.server.common.error.BusinessException;
 import com.server.common.error.ErrorCode;
 import com.server.media.config.MediaProperties;
 import java.io.InputStream;
+import java.util.List;
+import java.util.function.Consumer;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.stereotype.Component;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
+import software.amazon.awssdk.services.s3.model.ListObjectsV2Request;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 import software.amazon.awssdk.core.exception.SdkException;
 
@@ -40,6 +44,75 @@ public class S3MediaStorage implements MediaStorage {
             throw new BusinessException(ErrorCode.EXTERNAL_PROVIDER_UNAVAILABLE, exception);
         }
         return publicUrl(key);
+    }
+
+    @Override
+    public void delete(String url) {
+        String key = keyOf(url);
+        if (key == null) {
+            return;
+        }
+        try {
+            s3Client.deleteObject(DeleteObjectRequest.builder()
+                    .bucket(properties.s3().bucket())
+                    .key(key)
+                    .build());
+        } catch (SdkException exception) {
+            throw new BusinessException(ErrorCode.EXTERNAL_PROVIDER_UNAVAILABLE, exception);
+        }
+    }
+
+    @Override
+    public void forEachPage(Consumer<List<StoredObject>> pageConsumer) {
+        ListObjectsV2Request request = ListObjectsV2Request.builder()
+                .bucket(properties.s3().bucket())
+                .prefix(properties.s3().keyPrefix() + "/")
+                .build();
+        try {
+            // 한 응답에 최대 1000건이 온다. 페이지가 올 때마다 넘기고 들고 있지 않는다.
+            s3Client.listObjectsV2Paginator(request).stream().forEach(response -> {
+                List<StoredObject> page = response.contents().stream()
+                        .map(object -> new StoredObject(publicUrl(object.key()), object.lastModified()))
+                        .toList();
+                if (!page.isEmpty()) {
+                    pageConsumer.accept(page);
+                }
+            });
+        } catch (SdkException exception) {
+            throw new BusinessException(ErrorCode.EXTERNAL_PROVIDER_UNAVAILABLE, exception);
+        }
+    }
+
+    /**
+     * @return 우리 버킷의 주소면 객체 키, 아니면 {@code null}
+     */
+    private String keyOf(String url) {
+        if (url == null) {
+            return null;
+        }
+        // 우리가 돌려주는 주소는 https 지만, 손으로 적은 http 주소가 게시물에 들어올 수 있다.
+        // 프로토콜만 다르다고 남의 주소로 보면 게시물을 지워도 파일이 남는다.
+        String prefix = withoutScheme(publicUrl(""));
+        String target = withoutScheme(url);
+        if (!target.startsWith(prefix)) {
+            return null;
+        }
+        String key = target.substring(prefix.length());
+        return key.isBlank() ? null : key;
+    }
+
+    /** {@code https://} 와 {@code http://} 를 같은 주소로 보려고 앞을 떼어낸다. */
+    static String withoutScheme(String url) {
+        if (url == null) {
+            return "";
+        }
+        if (url.startsWith("https://")) {
+            return url.substring("https://".length());
+        }
+        if (url.startsWith("http://")) {
+            return url.substring("http://".length());
+        }
+        return url;
     }
 
     /**

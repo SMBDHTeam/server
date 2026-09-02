@@ -67,16 +67,23 @@ public class PostPurgeService {
      * 호출하는 쪽이 반환값을 보고 다시 부른다. 그러지 않으면 하루 만료량이 이 값을 넘을 때
      * 매일 조금씩 밀려 격차가 계속 벌어진다.
      *
-     * @return 이번에 지운 게시물 수. {@value #BATCH_SIZE} 이면 더 남아 있을 수 있다.
+     * @return 지운 게시물 수와 함께 지워야 할 파일 주소
      */
     @Transactional
-    public int purgeExpired(int retentionDays) {
+    public PurgeResult purgeExpired(int retentionDays) {
         LocalDateTime deadline = LocalDateTime.now().minusDays(retentionDays);
         List<Post> expired = postRepository.findDeletedBefore(
                 deadline, PageRequest.of(0, BATCH_SIZE));
         if (expired.isEmpty()) {
-            return 0;
+            return PurgeResult.empty();
         }
+
+        // 행을 지우기 전에 읽어야 한다. 지운 뒤에는 어떤 파일이 딸려 있었는지 알 수 없다.
+        List<String> mediaUrls = postMediaRepository
+                .findUrlsByPostIdIn(expired.stream().map(Post::getId).toList())
+                .stream()
+                .filter(url -> url != null && !url.isBlank())
+                .toList();
 
         expired.forEach(post -> purge(post.getId()));
         // deleteAllByIdInBatch 를 쓰면 안 된다. 벌크 삭제가 즉시 나가는 바람에 위에서 지운
@@ -84,7 +91,22 @@ public class PostPurgeService {
         postRepository.deleteAll(expired);
 
         log.info("복구 기한이 지난 게시물 {}건을 지웠다. 기준 시각={}", expired.size(), deadline);
-        return expired.size();
+        return new PurgeResult(expired.size(), mediaUrls);
+    }
+
+    /**
+     * @param purgedCount 이번에 지운 게시물 수. {@value #BATCH_SIZE} 이면 더 남아 있을 수 있다
+     * @param mediaUrls   저장소에서 지워야 할 파일 주소
+     */
+    public record PurgeResult(int purgedCount, List<String> mediaUrls) {
+
+        public PurgeResult {
+            mediaUrls = mediaUrls == null ? List.of() : List.copyOf(mediaUrls);
+        }
+
+        static PurgeResult empty() {
+            return new PurgeResult(0, List.of());
+        }
     }
 
     private void purge(Long postId) {
