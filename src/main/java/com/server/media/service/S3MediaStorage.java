@@ -83,17 +83,36 @@ public class S3MediaStorage implements MediaStorage {
         }
     }
 
-    /** @return 우리 버킷의 주소면 객체 키, 아니면 {@code null} */
+    /**
+     * @return 우리 버킷의 주소면 객체 키, 아니면 {@code null}
+     */
     private String keyOf(String url) {
         if (url == null) {
             return null;
         }
-        String prefix = publicUrl("");
-        if (!url.startsWith(prefix)) {
+        // 우리가 돌려주는 주소는 https 지만, 손으로 적은 http 주소가 게시물에 들어올 수 있다.
+        // 프로토콜만 다르다고 남의 주소로 보면 게시물을 지워도 파일이 남는다.
+        String prefix = withoutScheme(publicUrl(""));
+        String target = withoutScheme(url);
+        if (!target.startsWith(prefix)) {
             return null;
         }
-        String key = url.substring(prefix.length());
+        String key = target.substring(prefix.length());
         return key.isBlank() ? null : key;
+    }
+
+    /** {@code https://} 와 {@code http://} 를 같은 주소로 보려고 앞을 떼어낸다. */
+    static String withoutScheme(String url) {
+        if (url == null) {
+            return "";
+        }
+        if (url.startsWith("https://")) {
+            return url.substring("https://".length());
+        }
+        if (url.startsWith("http://")) {
+            return url.substring("http://".length());
+        }
+        return url;
     }
 
     /**

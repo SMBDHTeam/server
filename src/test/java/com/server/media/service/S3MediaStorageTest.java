@@ -44,6 +44,19 @@ class S3MediaStorageTest {
     }
 
     @Test
+    @DisplayName("http 로 적힌 우리 버킷 주소도 알아본다")
+    void deletesHttpVariant() {
+        // 우리가 돌려주는 주소는 https 지만 손으로 적은 http 가 게시물에 들어올 수 있다.
+        // 남의 주소로 보면 게시물을 지워도 파일이 남는다.
+        storage.delete("http://test-bucket.s3.ap-northeast-2.amazonaws.com/posts/a.jpg");
+
+        ArgumentCaptor<DeleteObjectRequest> request =
+                ArgumentCaptor.forClass(DeleteObjectRequest.class);
+        verify(s3Client).deleteObject(request.capture());
+        assertThat(request.getValue().key()).isEqualTo("posts/a.jpg");
+    }
+
+    @Test
     @DisplayName("우리 버킷이 아닌 주소는 건드리지 않는다")
     void ignoresForeignUrl() {
         storage.delete("https://example.com/media/1.jpg");

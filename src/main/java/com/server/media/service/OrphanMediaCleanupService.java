@@ -4,6 +4,7 @@ import com.server.media.config.MediaProperties;
 import com.server.post.repository.PostMediaRepository;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -85,7 +86,7 @@ public class OrphanMediaCleanupService {
 
             Set<String> referenced = referenced(candidates);
             for (String url : candidates) {
-                if (referenced.contains(url)) {
+                if (referenced.contains(S3MediaStorage.withoutScheme(url))) {
                     continue;
                 }
                 try {
@@ -103,14 +104,38 @@ public class OrphanMediaCleanupService {
         return counts[DELETED];
     }
 
-    /** 주어진 주소 중 게시물에 붙어 있는 것. */
+    /**
+     * 주어진 주소 중 게시물에 붙어 있는 것. 비교하기 쉽게 프로토콜을 뗀 형태로 돌려준다.
+     *
+     * <p>저장소가 주는 주소는 {@code https} 인데 게시물에는 {@code http} 로 적힌 값이
+     * 들어올 수 있다. 글자 그대로 맞대면 쓰이고 있는 파일을 고아로 보고 지운다. 그래서
+     * 양쪽 형태로 물어보고, 돌아온 값도 프로토콜을 떼어 맞춘다.
+     */
     private Set<String> referenced(List<String> urls) {
-        Set<String> referenced = new HashSet<>();
-        for (int start = 0; start < urls.size(); start += LOOKUP_BATCH_SIZE) {
-            List<String> batch = urls.subList(
-                    start, Math.min(start + LOOKUP_BATCH_SIZE, urls.size()));
-            referenced.addAll(postMediaRepository.findUrlsIn(batch));
+        List<String> lookups = new ArrayList<>(urls.size() * 2);
+        for (String url : urls) {
+            lookups.add(url);
+            lookups.add(otherScheme(url));
         }
-        return referenced;
+
+        Set<String> found = new HashSet<>();
+        for (int start = 0; start < lookups.size(); start += LOOKUP_BATCH_SIZE) {
+            List<String> batch = lookups.subList(
+                    start, Math.min(start + LOOKUP_BATCH_SIZE, lookups.size()));
+            postMediaRepository.findUrlsIn(batch)
+                    .forEach(url -> found.add(S3MediaStorage.withoutScheme(url)));
+        }
+        return found;
+    }
+
+    /** {@code https} 는 {@code http} 로, 반대도 마찬가지. 나머지는 그대로 둔다. */
+    private static String otherScheme(String url) {
+        if (url.startsWith("https://")) {
+            return "http://" + url.substring("https://".length());
+        }
+        if (url.startsWith("http://")) {
+            return "https://" + url.substring("http://".length());
+        }
+        return url;
     }
 }

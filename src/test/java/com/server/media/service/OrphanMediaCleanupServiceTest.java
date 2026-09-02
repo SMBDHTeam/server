@@ -104,6 +104,19 @@ class OrphanMediaCleanupServiceTest {
     }
 
     @Test
+    @DisplayName("게시물에 http 로 적혀 있어도 쓰이는 파일로 본다")
+    void keepsReferencedWithDifferentScheme() {
+        // 저장소는 https 로 주는데 게시물에는 http 로 적혀 있을 수 있다. 글자 그대로
+        // 맞대면 쓰이고 있는 사진을 지운다.
+        String https = BASE + "used.jpg";
+        givenPostWithMedia(https.replace("https://", "http://"));
+        storage.put(https, daysAgo(3));
+
+        assertThat(cleanupService.deleteOrphans(storage, MIN_AGE)).isZero();
+        assertThat(storage.deleted).isEmpty();
+    }
+
+    @Test
     @DisplayName("여러 페이지에 걸쳐 있어도 붙지 않은 것만 지운다")
     void worksAcrossPages() {
         // 저장소는 목록을 나눠서 준다. 페이지마다 처리하므로 경계에서 새지 않아야 한다.
