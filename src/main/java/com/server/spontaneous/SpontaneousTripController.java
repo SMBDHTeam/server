@@ -31,4 +31,17 @@ public class SpontaneousTripController {
 
         return ResponseEntity.ok(response);
     }
+
+    @PostMapping("/course")
+    public ResponseEntity<Map<String, Object>> recommendCourse(
+            @RequestBody Map<String, Object> request
+    ) {
+        Map<String, Object> response =
+                fastApiSpontaneousClient.recommendCourse(request);
+
+        return ResponseEntity.ok(response);
+    }
+
+
+
 }
