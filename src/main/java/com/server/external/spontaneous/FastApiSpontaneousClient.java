@@ -35,4 +35,20 @@ public class FastApiSpontaneousClient {
                 .retrieve()
                 .body(Map.class);
     }
+
+    public Map<String, Object> recommendCourse(
+            Map<String, Object> request
+    ) {
+        if (!properties.enabled()) {
+            throw new IllegalStateException(
+                    "Spontaneous FastAPI is disabled"
+            );
+        }
+
+        return restClient.post()
+                .uri("/api/v1/spontaneous-trips/course")
+                .body(request)
+                .retrieve()
+                .body(Map.class);
+    }
 }
