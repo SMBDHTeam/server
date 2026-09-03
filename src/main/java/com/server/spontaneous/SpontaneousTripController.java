@@ -1,9 +1,11 @@
 package com.server.spontaneous;
 
 import com.server.external.spontaneous.FastApiSpontaneousClient;
-
-import java.util.Map;
-
+import com.server.spontaneous.dto.SpontaneousCourseRequest;
+import com.server.spontaneous.dto.SpontaneousCourseResponse;
+import com.server.spontaneous.dto.SpontaneousDestinationRequest;
+import com.server.spontaneous.dto.SpontaneousDestinationResponse;
+import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -23,25 +25,22 @@ public class SpontaneousTripController {
     }
 
     @PostMapping("/destinations")
-    public ResponseEntity<Map<String, Object>> recommendDestinations(
-            @RequestBody Map<String, Object> request
+    public ResponseEntity<SpontaneousDestinationResponse> recommendDestinations(
+            @Valid @RequestBody SpontaneousDestinationRequest request
     ) {
-        Map<String, Object> response =
+        SpontaneousDestinationResponse response =
                 fastApiSpontaneousClient.recommendDestinations(request);
 
         return ResponseEntity.ok(response);
     }
 
     @PostMapping("/course")
-    public ResponseEntity<Map<String, Object>> recommendCourse(
-            @RequestBody Map<String, Object> request
+    public ResponseEntity<SpontaneousCourseResponse> recommendCourse(
+            @Valid @RequestBody SpontaneousCourseRequest request
     ) {
-        Map<String, Object> response =
+        SpontaneousCourseResponse response =
                 fastApiSpontaneousClient.recommendCourse(request);
 
         return ResponseEntity.ok(response);
     }
-
-
-
 }

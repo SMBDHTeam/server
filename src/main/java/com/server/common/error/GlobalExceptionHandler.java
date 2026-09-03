@@ -293,6 +293,9 @@ public class GlobalExceptionHandler {
         if (uri.startsWith("/api/v1/schedule-previews")) {
             return ErrorCode.INVALID_SCHEDULE_PREVIEW_REQUEST;
         }
+        if (uri.startsWith("/api/v1/spontaneous-trips")) {
+            return ErrorCode.INVALID_SPONTANEOUS_TRIP_REQUEST;
+        }
         if (uri.startsWith("/api/v1/places") || uri.startsWith("/api/v1/locations")) {
             return ErrorCode.INVALID_PLACE_SEARCH_REQUEST;
         }
