@@ -8,6 +8,7 @@ import com.server.common.error.ErrorCode;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;
+import java.math.BigDecimal;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
@@ -45,6 +46,29 @@ class KakaoLocalClientTest {
         assertThat(document.addressName()).isEqualTo("부산 동구 중앙대로 206");
         assertThat(document.x()).isEqualTo("129.0403");
         assertThat(document.y()).isEqualTo("35.1151");
+    }
+
+    @Test
+    @DisplayName("좌표를 행정구역 응답 DTO로 변환한다")
+    void searchRegionCodeConvertsKakaoLocalResponse() throws IOException {
+        server = HttpServer.create(new InetSocketAddress(0), 0);
+        server.createContext("/v2/local/geo/coord2regioncode.json", this::handleRegionCodeSearch);
+        server.start();
+
+        KakaoLocalClient client = createClient("test-api-key");
+
+        KakaoLocalRegionCodeResponse response = client.searchRegionCode(
+                new BigDecimal("129.0403"),
+                new BigDecimal("35.1151")
+        );
+
+        assertThat(response.documentsOrEmpty()).hasSize(1);
+        KakaoLocalRegionCodeResponse.Document document = response.documentsOrEmpty().get(0);
+        assertThat(document.regionType()).isEqualTo("H");
+        assertThat(document.region1DepthName()).isEqualTo("부산광역시");
+        assertThat(document.region2DepthName()).isEqualTo("동구");
+        assertThat(document.x()).isEqualTo(129.0403);
+        assertThat(document.y()).isEqualTo(35.1151);
     }
 
     @Test
@@ -87,6 +111,33 @@ class KakaoLocalClientTest {
                       "y": "35.1151",
                       "distance": "",
                       "place_url": "https://place.map.kakao.com/1"
+                    }
+                  ]
+                }
+                """.getBytes(StandardCharsets.UTF_8);
+        exchange.getResponseHeaders().add("Content-Type", "application/json");
+        exchange.sendResponseHeaders(200, responseBody.length);
+        exchange.getResponseBody().write(responseBody);
+        exchange.close();
+    }
+
+    private void handleRegionCodeSearch(HttpExchange exchange) throws IOException {
+        assertThat(exchange.getRequestHeaders().getFirst("Authorization")).isEqualTo("KakaoAK test-api-key");
+        assertThat(exchange.getRequestURI().getQuery()).contains("x=129.0403", "y=35.1151");
+
+        byte[] responseBody = """
+                {
+                  "documents": [
+                    {
+                      "region_type": "H",
+                      "address_name": "부산광역시 동구 초량제3동",
+                      "region_1depth_name": "부산광역시",
+                      "region_2depth_name": "동구",
+                      "region_3depth_name": "초량제3동",
+                      "region_4depth_name": "",
+                      "code": "2611056000",
+                      "x": 129.0403,
+                      "y": 35.1151
                     }
                   ]
                 }

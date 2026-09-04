@@ -3,6 +3,7 @@ package com.server.external.kakao;
 import com.server.common.error.BusinessException;
 import com.server.common.error.ErrorCode;
 import java.math.BigDecimal;
+import java.util.function.Supplier;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClient;
@@ -32,7 +33,8 @@ public class KakaoLocalClient {
                         .build())
                 .header("Authorization", authorizationHeader())
                 .retrieve()
-                .body(KakaoLocalSearchResponse.class));
+                .body(KakaoLocalSearchResponse.class),
+                () -> new KakaoLocalSearchResponse(null));
     }
 
     public KakaoLocalSearchResponse searchConvenienceStores(
@@ -51,16 +53,33 @@ public class KakaoLocalClient {
                         .build())
                 .header("Authorization", authorizationHeader())
                 .retrieve()
-                .body(KakaoLocalSearchResponse.class));
+                .body(KakaoLocalSearchResponse.class),
+                () -> new KakaoLocalSearchResponse(null));
     }
 
-    private KakaoLocalSearchResponse execute(KakaoRequest request) {
+    public KakaoLocalRegionCodeResponse searchRegionCode(
+            BigDecimal longitude,
+            BigDecimal latitude
+    ) {
+        return execute(() -> restClient.get()
+                .uri(uriBuilder -> uriBuilder
+                        .path("/v2/local/geo/coord2regioncode.json")
+                        .queryParam("x", longitude)
+                        .queryParam("y", latitude)
+                        .build())
+                .header("Authorization", authorizationHeader())
+                .retrieve()
+                .body(KakaoLocalRegionCodeResponse.class),
+                () -> new KakaoLocalRegionCodeResponse(null));
+    }
+
+    private <T> T execute(KakaoRequest<T> request, Supplier<T> emptyResponse) {
         if (properties.restApiKey().isBlank()) {
             throw new BusinessException(ErrorCode.EXTERNAL_PROVIDER_UNAVAILABLE);
         }
         try {
-            KakaoLocalSearchResponse response = request.get();
-            return response == null ? new KakaoLocalSearchResponse(null) : response;
+            T response = request.get();
+            return response == null ? emptyResponse.get() : response;
         } catch (RestClientResponseException | ResourceAccessException | IllegalArgumentException exception) {
             throw new BusinessException(ErrorCode.EXTERNAL_PROVIDER_UNAVAILABLE, exception);
         }
@@ -71,7 +90,7 @@ public class KakaoLocalClient {
     }
 
     @FunctionalInterface
-    private interface KakaoRequest {
-        KakaoLocalSearchResponse get();
+    private interface KakaoRequest<T> {
+        T get();
     }
 }

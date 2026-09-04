@@ -46,6 +46,7 @@ public enum ErrorCode {
     UNSUPPORTED_MEDIA_FORMAT(415, "지원하지 않는 파일 형식입니다."),
     TRANSIT_ROUTE_NOT_FOUND(422, "장소 사이 대중교통 경로를 찾지 못했습니다."),
     INVALID_SPONTANEOUS_TRIP_REQUEST(400, "Spontaneous trip request is invalid."),
+    SPONTANEOUS_START_LOCATION_OUTSIDE_BUSAN(400, "즉흥여행 출발지는 부산광역시 내에서 선택해 주세요."),
     SPONTANEOUS_DESTINATION_NOT_FOUND(404, "Spontaneous trip destination was not found."),
     SPONTANEOUS_DESTINATIONS_NOT_FOUND(404, "No spontaneous trip destinations are available."),
     SPONTANEOUS_COURSE_NOT_FEASIBLE(422, "A feasible spontaneous trip course could not be created."),

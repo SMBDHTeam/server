@@ -17,17 +17,22 @@ import org.springframework.web.bind.annotation.RestController;
 public class SpontaneousTripController {
 
     private final FastApiSpontaneousClient fastApiSpontaneousClient;
+    private final SpontaneousStartLocationValidator startLocationValidator;
 
     public SpontaneousTripController(
-            FastApiSpontaneousClient fastApiSpontaneousClient
+            FastApiSpontaneousClient fastApiSpontaneousClient,
+            SpontaneousStartLocationValidator startLocationValidator
     ) {
         this.fastApiSpontaneousClient = fastApiSpontaneousClient;
+        this.startLocationValidator = startLocationValidator;
     }
 
     @PostMapping("/destinations")
     public ResponseEntity<SpontaneousDestinationResponse> recommendDestinations(
             @Valid @RequestBody SpontaneousDestinationRequest request
     ) {
+        startLocationValidator.validateBusan(request.startLocation());
+
         SpontaneousDestinationResponse response =
                 fastApiSpontaneousClient.recommendDestinations(request);
 
@@ -38,6 +43,8 @@ public class SpontaneousTripController {
     public ResponseEntity<SpontaneousCourseResponse> recommendCourse(
             @Valid @RequestBody SpontaneousCourseRequest request
     ) {
+        startLocationValidator.validateBusan(request.startLocation());
+
         SpontaneousCourseResponse response =
                 fastApiSpontaneousClient.recommendCourse(request);
 
