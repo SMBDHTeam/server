@@ -78,6 +78,50 @@ class SpontaneousStartLocationValidatorTest {
                 .isEqualTo(ErrorCode.SPONTANEOUS_PROVIDER_UNAVAILABLE);
     }
 
+    @Test
+    @DisplayName("재사용 판정은 부산 밖 좌표에 예외 대신 false를 반환한다")
+    void isBusanReturnsFalseOutsideBusan() {
+        when(kakaoLocalClient.searchRegionCode(any(BigDecimal.class), any(BigDecimal.class)))
+                .thenReturn(regionResponse("경상남도"));
+
+        assertThat(validator.isBusan(new Coordinate(35.1151, 129.0403))).isFalse();
+    }
+
+    @Test
+    @DisplayName("행정구역 문서 중 하나라도 부산광역시면 true를 반환한다")
+    void isBusanChecksAllRegionDocuments() {
+        when(kakaoLocalClient.searchRegionCode(any(BigDecimal.class), any(BigDecimal.class)))
+                .thenReturn(new KakaoLocalRegionCodeResponse(List.of(
+                        regionResponse("경상남도").documentsOrEmpty().get(0),
+                        regionResponse("부산광역시").documentsOrEmpty().get(0))));
+
+        assertThat(validator.isBusan(new Coordinate(35.1151, 129.0403))).isTrue();
+    }
+
+    @Test
+    @DisplayName("행정구역 결과가 없으면 기존 검증은 부산 밖 오류를 유지한다")
+    void validateBusanRejectsEmptyRegionResponse() {
+        when(kakaoLocalClient.searchRegionCode(any(BigDecimal.class), any(BigDecimal.class)))
+                .thenReturn(new KakaoLocalRegionCodeResponse(null));
+
+        assertThatThrownBy(() -> validator.validateBusan(new Coordinate(35.1151, 129.0403)))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.SPONTANEOUS_START_LOCATION_OUTSIDE_BUSAN);
+    }
+
+    @Test
+    @DisplayName("좌표 누락에 대한 기존 입력 오류 계약을 유지한다")
+    void validateBusanRejectsMissingCoordinates() {
+        for (Coordinate coordinate : java.util.Arrays.asList(
+                null, new Coordinate(null, 129.0403), new Coordinate(35.1151, null))) {
+            assertThatThrownBy(() -> validator.validateBusan(coordinate))
+                    .isInstanceOf(BusinessException.class)
+                    .extracting("errorCode")
+                    .isEqualTo(ErrorCode.INVALID_SPONTANEOUS_TRIP_REQUEST);
+        }
+    }
+
     private KakaoLocalRegionCodeResponse regionResponse(String region1DepthName) {
         return new KakaoLocalRegionCodeResponse(List.of(new KakaoLocalRegionCodeResponse.Document(
                 "H",
