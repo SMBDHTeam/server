@@ -40,6 +40,21 @@ class SecurityConfigTest {
     }
 
     @Test
+    @DisplayName("즉흥여행 출발지 검색은 인증 없이 접근하고 입력 검증을 적용한다")
+    void spontaneousStartLocationSearchAllowsAnonymousRequests() throws Exception {
+        String path = "/api/v1/spontaneous-trips/start-locations/search";
+        mockMvc.perform(get(path).param("keyword", "부산역"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items").isEmpty());
+        mockMvc.perform(get(path).param("keyword", " "))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_SPONTANEOUS_TRIP_REQUEST"));
+        mockMvc.perform(get(path).param("keyword", "부산역").param("size", "0"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_SPONTANEOUS_TRIP_REQUEST"));
+    }
+
+    @Test
     @DisplayName("공유 링크로 들어온 게시물과 그 댓글은 로그인 없이 볼 수 있다")
     void sharedPostIsPublic() throws Exception {
         // 여기까지 막으면 공유 링크가 로그인 화면으로만 이어진다. 없는 게시물이라

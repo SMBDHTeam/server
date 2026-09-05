@@ -25,6 +25,7 @@
 | --- | --- | --- | --- |
 | 사전 질문 조회 | GET | `/trip-questions` | `200 OK` |
 | 출발지·도착지 검색 | GET | `/locations/search` | `200 OK` |
+| 즉흥여행 부산 출발지 검색 | GET | `/spontaneous-trips/start-locations/search` | `200 OK` |
 | 일정 Planner 생성 | POST | `/schedules` | `201 Created` |
 | 일정 목록 조회 | GET | `/schedules` | `200 OK` |
 | 일정 수정 | PATCH | `/schedules/{scheduleId}` | `200 OK` |
@@ -159,6 +160,45 @@
 ```
 
 Kakao Local 키워드 검색을 사용한다. 검색 결과 전체는 저장하지 않고 사용자가 선택한 이름과 좌표만 일정에 저장한다.
+
+### 2-1. 즉흥여행 부산 출발지 검색
+
+`GET /api/v1/spontaneous-trips/start-locations/search?keyword={keyword}&size={size}`
+
+즉흥여행 UI는 이 전용 API를 사용한다. 인증 없이 호출할 수 있다. 기존
+`GET /api/v1/locations/search`는 계획여행 등에서 사용하는 공용 검색이며 지역 제한 없이 기존 동작을 유지한다.
+
+| Query | 필수 | 설명 |
+| --- | :---: | --- |
+| `keyword` | O | 검색할 장소명. 빈 문자열과 공백만 있는 값은 허용하지 않는다 |
+| `size` | X | Kakao 키워드 검색에 전달할 결과 수. 기본 `10`, 최소 `1` |
+
+응답은 위 공용 검색과 같은 `LocationSearchResponse`다. `items`에는 부산광역시로 확인된 장소만
+원래 검색 순서대로 포함한다. 필터 적용 후 결과 수는 `size`보다 적을 수 있으며 추가 페이지를 조회하지 않는다.
+
+1. Kakao Local 키워드 검색과 기존 응답 변환을 재사용한다.
+2. `address_name`의 첫 시도명이 `부산` 또는 `부산광역시`인 후보만 남긴다. 주소가 없거나 다른 시도명이면 행정구역 조회를 생략한다.
+3. 각 후보 좌표를 Kakao `GET /v2/local/geo/coord2regioncode.json`으로 확인한다.
+   `documents[]` 중 `region_1depth_name`이 정확히 `부산광역시`인 문서가 있을 때만 포함한다.
+
+주소는 호출량을 줄이는 사전 필터이며 최종 판정 기준이 아니다. bounding box로 판정하지 않는다.
+서울역처럼 부산 외 장소만 검색되거나 부산으로 확인된 후보가 없으면 `200 OK`와 아래 응답을 반환한다.
+
+```json
+{"items": []}
+```
+
+| 상황 | HTTP | 오류 코드 |
+| --- | --- | --- |
+| `keyword` 누락·공백, `size < 1` 또는 정수가 아닌 `size` | `400` | `INVALID_SPONTANEOUS_TRIP_REQUEST` |
+| Kakao 키워드 검색 또는 행정구역 조회 장애 | `503` | `SPONTANEOUS_PROVIDER_UNAVAILABLE` |
+
+Provider 장애를 빈 배열이나 부분 검색 결과로 숨기지 않는다. 부산 밖의 검색 결과 자체는 오류가 아니다.
+
+검색 결과와 별개로 `POST /api/v1/spontaneous-trips/destinations` 및
+`POST /api/v1/spontaneous-trips/course`는 요청의 `startLocation`을 같은 행정구역 API로 다시 검증한다.
+부산 밖이면 기존 `400 SPONTANEOUS_START_LOCATION_OUTSIDE_BUSAN`, Provider 장애이면
+`503 SPONTANEOUS_PROVIDER_UNAVAILABLE` 계약을 유지한다.
 
 ## 일정 생성 V2 계약
 

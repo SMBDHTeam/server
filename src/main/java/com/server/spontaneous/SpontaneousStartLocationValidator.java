@@ -20,18 +20,20 @@ public class SpontaneousStartLocationValidator {
     }
 
     public void validateBusan(Coordinate startLocation) {
+        if (!isBusan(startLocation)) {
+            throw new BusinessException(ErrorCode.SPONTANEOUS_START_LOCATION_OUTSIDE_BUSAN);
+        }
+    }
+
+    public boolean isBusan(Coordinate startLocation) {
         if (startLocation == null || startLocation.latitude() == null || startLocation.longitude() == null) {
             throw new BusinessException(ErrorCode.INVALID_SPONTANEOUS_TRIP_REQUEST);
         }
 
         KakaoLocalRegionCodeResponse response = regionCodeResponse(startLocation);
-        boolean isBusan = response.documentsOrEmpty()
+        return response.documentsOrEmpty()
                 .stream()
                 .anyMatch(document -> BUSAN_REGION_1_DEPTH_NAME.equals(document.region1DepthName()));
-
-        if (!isBusan) {
-            throw new BusinessException(ErrorCode.SPONTANEOUS_START_LOCATION_OUTSIDE_BUSAN);
-        }
     }
 
     private KakaoLocalRegionCodeResponse regionCodeResponse(Coordinate startLocation) {

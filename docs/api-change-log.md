@@ -2,6 +2,20 @@
 
 API 계약이 변경될 때마다 최신 항목을 위에 추가한다.
 
+## 2026-09-05 (즉흥여행 부산 전용 출발지 검색 추가)
+
+- API: `GET /api/v1/spontaneous-trips/start-locations/search`
+- 구분: 엔드포인트 신설
+- 요청: 필수 `keyword`는 공백 불가, 선택 `size`는 기본 `10`, 최소 `1`
+- 응답: 기존 `LocationSearchResponse` 재사용. 주소 사전 필터 후 Kakao coord2regioncode의 `region_1depth_name=부산광역시`로 최종 확인한 결과만 반환한다. 부산 결과가 없으면 `200`과 `items=[]`다.
+- 오류: 입력 오류는 `400 INVALID_SPONTANEOUS_TRIP_REQUEST`, Kakao 키워드/행정구역 조회 장애는 `503 SPONTANEOUS_PROVIDER_UNAVAILABLE`. 장애 시 빈 배열이나 부분 결과를 반환하지 않는다.
+- 이유: 즉흥여행 검색 화면에 부산광역시 외 장소가 노출되지 않도록 서버에서 필터링한다.
+- 프론트 연동: 즉흥여행 출발지 검색에서 신규 경로를 사용한다. 기존 `/api/v1/locations/search`의 동작과 DTO는 유지한다.
+- 최종 검증: 공통 `isBusan()` 판정을 재사용하며 `/destinations`, `/course`의 `validateBusan()` 호출과 기존 오류 계약을 유지한다.
+- 호환성 파괴: 없음. 기존 공용 검색 및 여행 요청 API는 유지한다.
+- DB/ERD: 변경 없음
+- 관련 PR 또는 이슈: 없음
+
 ## 2026-09-02 (카테고리 목록에서 옛 해시태그를 지움)
 
 - API: `GET /api/v1/categories`, `GET /api/v1/categories/search`

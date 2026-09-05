@@ -54,6 +54,24 @@
 | `items[].externalId` | string | O | 카카오 장소 ID |
 | `items[].source` | string | O | `KAKAO_LOCAL` |
 
+### 2-1. 즉흥여행 부산 출발지 검색
+
+`GET /api/v1/spontaneous-trips/start-locations/search`
+
+| 요청 필드 | 위치 | 자료형 | 필수 | 의미 |
+| --- | --- | --- | :---: | --- |
+| `keyword` | Query | string | O | 검색할 장소명. 빈 문자열·공백만 있는 값 불가 |
+| `size` | Query | integer | X | Kakao 검색에 전달하는 결과 수. 기본 `10`, 최소 `1`. 부산 필터 후 더 적게 반환할 수 있음 |
+
+응답은 위 `LocationSearchResponse` 필드를 그대로 사용한다. `items`에는 주소의 첫 시도명이
+`부산`/`부산광역시`이고, 좌표의 Kakao 행정구역 `region_1depth_name`이 `부산광역시`로 확인된 장소만
+검색 순서대로 담긴다. 부산 후보가 없으면 `items=[]`이며 오류가 아니다.
+`items[].address`는 원래 Kakao `address_name`이다. 응답의 위도·경도, 장소 ID와 `KAKAO_LOCAL` 출처는 변경하지 않는다.
+
+입력 오류는 `400 INVALID_SPONTANEOUS_TRIP_REQUEST`, 검색/행정구역 Provider 장애는
+`503 SPONTANEOUS_PROVIDER_UNAVAILABLE`이다. 기존 공용 검색에는 이 부산 필터를 적용하지 않는다.
+실제 `/destinations`, `/course` 요청의 `startLocation`은 검색 단계와 별도로 다시 부산 검증한다.
+
 ## 일정 생성 V2 필드
 
 ### V2-1. 질문 조회 추가 필드
