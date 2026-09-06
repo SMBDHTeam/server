@@ -97,7 +97,19 @@ facility/      Kakao 기반 주변 편의시설 실시간 조회
 share/         공유 링크 생성, 조회, 폐기
 spontaneous/   즉흥 여행 목적지 추천 위임 (FastAPI)
 external/      Kakao, TourAPI, FastAPI(일정·즉흥) 클라이언트
+auth/          구글 로그인, 자체 토큰 발급·검증, 정지 계정 쓰기 차단
 common/        CORS, Security, trace ID, 예외 처리, Swagger 설정
+
+커뮤니티
+post/          게시물·댓글, 피드, 사진별 장소 태그, 만료 게시물 정리
+media/         사진·영상 S3 업로드, 붙지 않은 파일 정리
+user/          프로필, 닉네임, 사용자 검색
+follow/        팔로우·팔로워
+block/         차단
+bookmark/      저장
+hashtag/       카테고리 (테이블 이름만 hashtags 로 남아 있다)
+notification/  알림
+report/        신고
 ```
 
 일정 관련 클래스는 모두 얇은 위임 계층이다.
@@ -115,7 +127,8 @@ common/        CORS, Security, trace ID, 예외 처리, Swagger 설정
 
 ## 5. API 요약
 
-모든 경로는 `/api/v1` 아래에 있다. 1차 스프린트는 인증이 없다.
+모든 경로는 `/api/v1` 아래에 있다. 인증은 `Authorization: Bearer {accessToken}` 이며
+커뮤니티에만 걸려 있다. 일정·장소 경로는 아직 열려 있다.
 
 | 영역 | Method | Endpoint | 설명 |
 | --- | --- | --- | --- |
@@ -133,6 +146,7 @@ common/        CORS, Security, trace ID, 예외 처리, Swagger 설정
 | 지도 | `GET` | `/schedules/{id}/map?dayNo=` | 마커와 경로선 |
 | 공유 | `POST/GET/DELETE` | `/schedules/{id}/shares`, `/shared-schedules/{token}` | 공유 링크 lifecycle |
 | 즉흥 | `POST` | `/spontaneous-trips/destinations` | 즉흥 여행 목적지 추천 (FastAPI 위임) |
+| 커뮤니티 | 다수 | `/posts`, `/media`, `/users`, `/notifications`, `/reports`, `/categories` | 게시물·댓글·팔로우·알림 등. 목록은 `docs/API_SPEC.md` 의 `커뮤니티 계약` |
 
 ### V2 생성 계약
 
@@ -203,7 +217,7 @@ TourAPI 적재는 두 단계다.
 - `TOUR_API_PLACE_INGESTION_ENABLED`는 개발 서버 배포 시 `false`여야 한다. 스케줄러만 켜서 변경분을 동기화한다.
 - 배포 환경변수 파일은 `/opt/hackathon-dev/.env.server`다. FastAPI 저장소는 다른 파일을 쓴다. 예전에 두 저장소가 같은 파일을 써서 서로 덮어쓴 적이 있다.
 
-## 8. 현재 상태와 이어서 할 작업 (2026-08-24)
+## 8. 현재 상태와 이어서 할 작업 (일정 2026-08-24, 커뮤니티 2026-09-07)
 
 `main`이 기준 브랜치다. 원격에 브랜치가 20개 넘게 남아 있으나 대부분 병합이 끝난 잔재다.
 
@@ -249,6 +263,70 @@ uvicorn 로그에 `Unsupported upgrade request`와 `Invalid HTTP request receive
 - TourAPI 상세 보강 토글 추가 (`TOUR_API_ENRICHMENT_ENABLED`, 기본 `true`).
 
 전체 엔드포인트는 2026-08-24 dev에서 17/17 통과를 확인했다.
+
+### 커뮤니티 (2026-09-07)
+
+사진 기반 여행 후기 SNS다. 게시물·댓글·좋아요·저장·팔로우·차단·알림·신고가 있다.
+계약은 `docs/API_SPEC.md` 의 `커뮤니티 계약`(C-1 ~ C-18)이 단일 기준이다.
+
+**요청자는 토큰에서만 읽는다.** `X-User-Id` 헤더는 없어졌다. 헤더를 보내도 무시한다.
+컨트롤러는 `@AuthenticationPrincipal AuthenticatedUser` 로 받고 `LoginUser.require` 또는
+`LoginUser.idOrNull` 로 꺼낸다. 인가 규칙에서 경로가 빠져도 `null` 이 사용자 ID 로 흘러가지
+않게 컨트롤러에서 한 번 더 막는다.
+
+| 구분 | 대상 |
+| --- | --- |
+| 로그인 없이 | `GET /posts/{postId}`, `GET /posts/{postId}/comments`, 카테고리 |
+| 로그인 필요 | 나머지 전부. 피드 목록·인기 피드·프로필·검색 포함 |
+
+앱은 로그인해야 들어오는 구조라, 비로그인에게 여는 것은 공유 링크로 들어온 글 하나와
+그 댓글뿐이다. 열려 있는 경로도 토큰을 보내면 읽어 `liked`·`bookmarked` 를 채운다.
+
+`GET /posts?feed=following` 은 경로가 같고 파라미터로만 갈려 인가 규칙으로 구분할 수 없다.
+서비스에서 막아 `401` 을 준다.
+
+**카테고리는 여덟 개 고정이다.** 사용자가 만들 수 없고 등록된 이름만 붙는다.
+해시태그를 자유 입력으로 받던 시절의 잔재로 테이블 이름은 `hashtags`, `post_hashtags` 다.
+`AdminStatsService` 가 네이티브 SQL 로 이 테이블을 조회하므로 이름을 바꾸면 통계가 깨진다.
+
+**장소는 게시물이 아니라 사진에 붙는다.** `mediaList[].placeId` 로 보내고 응답에는
+`placeName` 이 함께 나간다. 사진마다 다른 곳을 다녀왔을 수 있어서다. 붙이지 않아도 된다.
+사용자는 자기 일정(`GET /schedules/{id}` 의 `days[].stops[].place`)에서 고르거나,
+없으면 `GET /places?scope=ALL` 로 검색하고 `POST /places/resolve` 로 내부 ID 를 얻는다.
+
+**사진은 S3 에 올린다.** `POST /api/v1/media` 가 파일을 받아 URL 을 돌려주고, 그 URL 을
+게시물 작성의 `mediaList[].url` 에 넣는다. 확장자와 파일 앞머리 바이트를 함께 보고,
+하나라도 어긋나면 아무것도 올리지 않는다. `COMMUNITY_MEDIA_S3_ENABLED` 가 꺼져 있으면
+업로드만 `503` 이고 나머지는 그대로 동작한다.
+
+버킷은 AWS 계정 마이그레이션에 맞춰 새 계정으로 옮겼다.
+값은 GitHub Secrets 에 있고 `deploy-dev.yml` 이 `.env.server` 로 옮겨 적는다.
+
+**파일 정리는 둘로 나뉜다.**
+
+| 대상 | 언제 | 켜져 있나 |
+| --- | --- | --- |
+| 지운 게시물의 사진 | 복구 기한(30일)이 지나 게시물이 사라질 때 | 켜져 있음 |
+| 올려놓고 글을 쓰지 않은 사진 | 매일 새벽, 24시간 지난 것 | **꺼져 있음** |
+
+뒤엣것은 `s3:ListBucket` 권한이 필요해 기본값이 꺼져 있다. 새 계정 IAM 정책에는 넣어 뒀으니
+`COMMUNITY_MEDIA_ORPHAN_CLEANUP_ENABLED=true` 로 켜면 된다.
+
+**알림은 별도 트랜잭션에서 남긴다.** 실패해도 팔로우나 댓글 작성이 롤백되지 않아야 하고,
+같은 트랜잭션에서는 예외를 잡아도 커밋이 안 되므로 `NotificationWriter` 로 빈을 나눴다.
+
+### 커뮤니티에서 남은 것
+
+- **저장 수와 댓글 수 응답이 아직 dev 에 없다.** `postCommentCount`·`bookmarkCount` 를 담는
+  변경이 리뷰 중이다. 프론트는 댓글을 달고 새로고침해야 수가 올라간다고 보고 있다.
+- **장소 태그가 실제로 붙은 게시물이 없다.** 서버는 받을 준비가 됐지만 프론트에 장소를
+  고르는 화면이 아직 없어 `placeId` 가 전부 `null` 이다.
+- **인기 장소 추천.** 카테고리별 장소를 뽑는 `GET /categories/{name}/places` 가 이미 있고,
+  같은 기준(장소가 한 곳뿐인 글만, 서로 다른 작성자 수로 정렬)에서 카테고리 조건만 빼면
+  전체 인기 장소가 된다. 데이터가 쌓인 뒤에 만든다.
+- **알림 `REQUIRES_NEW` 를 비동기로 바꾸는 건 접었다.** 리뷰에서 커넥션 고갈 위험을
+  지적받았으나 지금 규모에서 문제가 되지 않는다고 보고 미뤘다.
+- **`nearby-facilities` 미지원 유형에 `501` 대신 `400`.** 프론트 확인이 필요하다.
 
 ### 즉흥 여행 추천이 프로젝트 규약에서 벗어나 있다
 
@@ -302,10 +380,13 @@ FastAPI도 쓰지 않는다.
 - 장소 상세 화면을 카카오·네이버 지도로 넘기는 방향이 정해졌다. 전환이 끝나면
   `TOUR_API_ENRICHMENT_ENABLED=false`로 적재 보강을 끌 수 있다.
 
-### 인증 도입과 함께
+### 일정 API 인가는 아직 걸지 않았다
 
-`GET /schedules`에 페이징과 사용자 스코프가 없어 전체 사용자의 일정이 반환된다.
-`users` 테이블은 있으나 서비스·컨트롤러가 없는 사전 작업 상태다.
+커뮤니티에는 경로별 인가를 걸었지만 일정은 열어 뒀다. 인증 없이 만든 일정이 남아 있어
+사용자 범위를 함께 정해야 한다. `SecurityConfig` 주석에 남겼다.
+
+`GET /schedules` 는 토큰에서 읽은 사용자의 일정만 반환한다. 비로그인 호출은 빈 목록을 받는다.
+페이징은 아직 없다.
 
 ## 9. 검증과 완료 보고
 

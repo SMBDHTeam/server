@@ -16,8 +16,6 @@ public interface UserRepository extends JpaRepository<User, Long> {
 
     boolean existsByIdAndDeletedAtIsNull(Long id);
 
-    Optional<User> findByNicknameAndDeletedAtIsNull(String nickname);
-
     boolean existsByNicknameAndDeletedAtIsNull(String nickname);
 
     /** 닉네임 부분 일치 검색. 탈퇴한 사용자는 제외한다. */
