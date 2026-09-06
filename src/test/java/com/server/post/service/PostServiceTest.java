@@ -10,6 +10,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.server.bookmark.repository.BookmarkRepository;
 import com.server.common.error.BusinessException;
 import com.server.common.error.ErrorCode;
 import com.server.hashtag.service.HashtagService;
@@ -29,7 +30,9 @@ import com.server.user.domain.User;
 import com.server.user.repository.UserRepository;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -50,6 +53,7 @@ class PostServiceTest {
     private final PostPlaceTagRepository postPlaceTagRepository =
             Mockito.mock(PostPlaceTagRepository.class);
     private final PostLikeRepository postLikeRepository = Mockito.mock(PostLikeRepository.class);
+    private final BookmarkRepository bookmarkRepository = Mockito.mock(BookmarkRepository.class);
     private final UserRepository userRepository = Mockito.mock(UserRepository.class);
     private final PlaceRepository placeRepository = Mockito.mock(PlaceRepository.class);
     private final PostSummaryAssembler postSummaryAssembler =
@@ -63,6 +67,7 @@ class PostServiceTest {
             postMediaRepository,
             postPlaceTagRepository,
             postLikeRepository,
+            bookmarkRepository,
             userRepository,
             placeRepository,
             postSummaryAssembler,
@@ -304,6 +309,49 @@ class PostServiceTest {
         when(postSummaryAssembler.assemble(List.of(), null)).thenReturn(List.of());
 
         assertThat(postService.getPopularFeed(0, 20, false, null, null, null).nextCursor()).isNull();
+    }
+
+    @Test
+    @DisplayName("저장한 사람 수는 작성자에게만 보여준다")
+    void showsBookmarkCountToAuthorOnly() {
+        long authorId = 1L;
+        givenReadablePost(authorId);
+        when(bookmarkRepository.countByPostId(POST_ID)).thenReturn(12L);
+
+        assertThat(postService.get(POST_ID, authorId).bookmarkCount()).isEqualTo(12);
+    }
+
+    @Test
+    @DisplayName("남의 글에서는 저장한 사람 수를 주지 않는다")
+    void hidesBookmarkCountFromOthers() {
+        // 저장은 조용히 담아 두는 행동이라, 몇 명이 담았는지 서로에게 드러나지 않는다.
+        long authorId = 1L;
+        long viewerId = 2L;
+        givenReadablePost(authorId);
+
+        assertThat(postService.get(POST_ID, viewerId).bookmarkCount()).isNull();
+        verify(bookmarkRepository, never()).countByPostId(anyLong());
+    }
+
+    @Test
+    @DisplayName("로그인하지 않고 공유 링크로 들어와도 저장한 사람 수는 없다")
+    void hidesBookmarkCountFromAnonymous() {
+        givenReadablePost(1L);
+
+        assertThat(postService.get(POST_ID, null).bookmarkCount()).isNull();
+        verify(bookmarkRepository, never()).countByPostId(anyLong());
+    }
+
+    private Post givenReadablePost(long authorId) {
+        Post post = new Post(givenActiveUser(authorId), "본문");
+        ReflectionTestUtils.setField(post, "id", POST_ID);
+        when(postRepository.findReadableById(POST_ID)).thenReturn(Optional.of(post));
+        when(postMediaRepository.findByPostId(POST_ID)).thenReturn(List.of());
+        when(postPlaceTagRepository.findViewsByPostId(POST_ID)).thenReturn(List.of());
+        when(hashtagService.findNamesByPostIds(any())).thenReturn(Map.of());
+        when(postSummaryAssembler.likedPostIds(any(), any())).thenReturn(Set.of());
+        when(postSummaryAssembler.bookmarkedPostIds(any(), any())).thenReturn(Set.of());
+        return post;
     }
 
     private Post givenDeletedPost(long userId, LocalDateTime deletedAt) {

@@ -265,6 +265,39 @@ class CommentServiceTest {
         verify(commentRepository, never()).increaseLikeCount(anyLong());
     }
 
+    @Test
+    @DisplayName("댓글을 달면 게시물의 새 댓글 수를 함께 돌려준다")
+    void returnsUpdatedPostCommentCount() {
+        // 이 값이 없으면 화면이 게시물을 다시 조회해야 숫자가 갱신된다.
+        givenPost(POST_ID);
+        givenActiveUser(OTHER_USER_ID);
+        when(commentRepository.save(any(Comment.class))).thenAnswer(call -> call.getArgument(0));
+        when(postRepository.findCommentCountById(POST_ID)).thenReturn(5);
+
+        CommentResponse response = commentService.create(
+                POST_ID, OTHER_USER_ID, new CommentCreateRequest("좋네요", null));
+
+        assertThat(response.postCommentCount()).isEqualTo(5);
+    }
+
+    @Test
+    @DisplayName("증가한 값을 다시 읽는다. 들고 있던 값에 1 을 더하지 않는다")
+    void readsCountBackInsteadOfIncrementing() {
+        // 벌크 갱신이라 엔티티에는 반영되지 않는다. 같은 순간 다른 사람이 단 댓글이
+        // 빠지지 않도록 DB 에서 다시 읽어야 한다.
+        givenPost(POST_ID);
+        givenActiveUser(OTHER_USER_ID);
+        when(commentRepository.save(any(Comment.class))).thenAnswer(call -> call.getArgument(0));
+        when(postRepository.findCommentCountById(POST_ID)).thenReturn(9);
+
+        CommentResponse response = commentService.create(
+                POST_ID, OTHER_USER_ID, new CommentCreateRequest("좋네요", null));
+
+        assertThat(response.postCommentCount()).isEqualTo(9);
+        verify(postRepository).increaseCommentCount(POST_ID);
+        verify(postRepository).findCommentCountById(POST_ID);
+    }
+
     private Post givenPost(long postId) {
         Post post = new Post(user(AUTHOR_ID), "본문");
         ReflectionTestUtils.setField(post, "id", postId);

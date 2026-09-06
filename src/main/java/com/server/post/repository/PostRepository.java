@@ -170,6 +170,15 @@ public interface PostRepository extends JpaRepository<Post, Long> {
     @Query("update Post post set post.commentCount = post.commentCount + 1 where post.id = :postId")
     void increaseCommentCount(@Param("postId") Long postId);
 
+    /**
+     * 방금 올린 댓글 수를 다시 읽는다.
+     *
+     * <p>증가는 벌크 갱신이라 들고 있던 엔티티에는 반영되지 않는다. 거기에 1 을 더해
+     * 쓰면 같은 순간 다른 사람이 단 댓글이 빠져 화면 숫자가 어긋난다.
+     */
+    @Query("select post.commentCount from Post post where post.id = :postId")
+    int findCommentCountById(@Param("postId") Long postId);
+
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("update Post post set post.commentCount = post.commentCount - 1 "
             + "where post.id = :postId and post.commentCount > 0")

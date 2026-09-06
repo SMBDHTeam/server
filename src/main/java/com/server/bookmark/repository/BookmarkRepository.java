@@ -26,6 +26,15 @@ public interface BookmarkRepository extends JpaRepository<Bookmark, BookmarkId> 
     long deleteByUserIdAndPostId(Long userId, Long postId);
 
     /**
+     * 이 게시물을 저장한 사람 수. 작성자에게만 보여주므로 셀 때마다 조회한다.
+     *
+     * <p>좋아요·댓글처럼 컬럼에 세어 두지 않는 것은, 모두에게 보이는 값이 아니라 상세
+     * 화면에서 작성자 한 명에게만 나가는 값이기 때문이다. 컬럼을 두면 저장·해제마다
+     * 갱신해야 하고, 어긋나면 되돌릴 근거가 없다.
+     */
+    long countByPostId(Long postId);
+
+    /**
      * 최근 저장한 순으로 읽는다. 저장 시각 기준 정렬이라 커서로 삼을 단조 증가 값이 없어
      * 오프셋 페이징을 쓴다. 이 목록은 본인만 바꾸므로 조회 중 목록이 밀릴 위험이 낮다.
      *
