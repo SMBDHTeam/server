@@ -1,6 +1,7 @@
 package com.server.admin.controller;
 
 import com.server.admin.dto.AdminIngestionStatusResponse;
+import com.server.admin.dto.AdminPlaceListResponse;
 import com.server.admin.dto.AdminPlaceResponse;
 import com.server.admin.dto.PlaceHiddenUpdateRequest;
 import com.server.admin.service.AdminPlaceService;
@@ -16,17 +17,40 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/api/v1/admin/places")
-@Tag(name = "관리자 - 장소", description = "적재 상태 조회, 수동 적재, 장소 숨김")
+@Tag(name = "관리자 - 장소", description = "등록된 장소 검색·숨김, 적재 상태와 수동 적재")
 public class AdminPlaceController {
 
     private final AdminPlaceService adminPlaceService;
 
     public AdminPlaceController(AdminPlaceService adminPlaceService) {
         this.adminPlaceService = adminPlaceService;
+    }
+
+    @GetMapping
+    @Operation(
+            summary = "등록된 장소 검색",
+            description = "이름과 주소를 함께 본다. 가려 둔 장소도 결과에 포함한다. "
+                    + "공개 검색은 가린 것을 빼기 때문에 관리 화면에서는 쓸 수 없다."
+    )
+    public AdminPlaceListResponse getPlaces(
+            @Parameter(description = "이름 또는 주소 일부", example = "해운대")
+            @RequestParam(required = false) String keyword,
+
+            @Parameter(description = "생략하면 전부, true 면 가린 것만, false 면 노출 중인 것만")
+            @RequestParam(required = false) Boolean hidden,
+
+            @Parameter(description = "0부터 시작한다", example = "0")
+            @RequestParam(required = false) Integer page,
+
+            @Parameter(description = "기본 20, 최대 100", example = "20")
+            @RequestParam(required = false) Integer size
+    ) {
+        return adminPlaceService.getPlaces(keyword, hidden, page, size);
     }
 
     @GetMapping("/ingestion")
