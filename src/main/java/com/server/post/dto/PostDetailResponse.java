@@ -27,6 +27,10 @@ public record PostDetailResponse(
         boolean liked,
         @Schema(description = "요청자가 저장한 상태인지. 요청자를 알 수 없으면 false 다.", example = "false")
         boolean bookmarked,
+        @Schema(description = "이 게시물을 저장한 사람 수. **작성자 본인에게만** 채워지고 "
+                + "남이 보면 null 이다. 저장은 조용히 담아 두는 행동이라 누가 담았는지도, "
+                + "몇 명이 담았는지도 서로에게 드러나지 않는다.", example = "12")
+        Integer bookmarkCount,
         @Schema(example = "2026-08-11T17:30:00") LocalDateTime createdAt,
         @Schema(example = "2026-08-11T17:30:00") LocalDateTime updatedAt
 ) {
@@ -75,6 +79,19 @@ public record PostDetailResponse(
             boolean liked,
             boolean bookmarked
     ) {
+        return from(post, mediaList, placeTags, categories, liked, bookmarked, null);
+    }
+
+    /** @param bookmarkCount 작성자 본인이 볼 때만 채운다. 남이 보면 {@code null} */
+    public static PostDetailResponse from(
+            Post post,
+            List<PostMedia> mediaList,
+            List<PostPlaceTagView> placeTags,
+            List<String> categories,
+            boolean liked,
+            boolean bookmarked,
+            Integer bookmarkCount
+    ) {
         Map<Long, PostPlaceTagView> placeByMediaId = placeTags.stream()
                 .filter(tag -> tag.mediaId() != null)
                 .collect(Collectors.toMap(PostPlaceTagView::mediaId, tag -> tag, (a, b) -> a));
@@ -108,6 +125,7 @@ public record PostDetailResponse(
                 post.getCommentCount(),
                 liked,
                 bookmarked,
+                bookmarkCount,
                 post.getCreatedAt(),
                 post.getUpdatedAt());
     }

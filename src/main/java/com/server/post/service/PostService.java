@@ -1,5 +1,6 @@
 package com.server.post.service;
 
+import com.server.bookmark.repository.BookmarkRepository;
 import com.server.common.error.BusinessException;
 import com.server.common.error.ErrorCode;
 import com.server.common.error.FieldViolation;
@@ -49,6 +50,7 @@ public class PostService {
     private final PostMediaRepository postMediaRepository;
     private final PostPlaceTagRepository postPlaceTagRepository;
     private final PostLikeRepository postLikeRepository;
+    private final BookmarkRepository bookmarkRepository;
     private final UserRepository userRepository;
     private final PlaceRepository placeRepository;
     private final PostSummaryAssembler postSummaryAssembler;
@@ -65,6 +67,7 @@ public class PostService {
             PostMediaRepository postMediaRepository,
             PostPlaceTagRepository postPlaceTagRepository,
             PostLikeRepository postLikeRepository,
+            BookmarkRepository bookmarkRepository,
             UserRepository userRepository,
             PlaceRepository placeRepository,
             PostSummaryAssembler postSummaryAssembler,
@@ -76,6 +79,7 @@ public class PostService {
         this.postMediaRepository = postMediaRepository;
         this.postPlaceTagRepository = postPlaceTagRepository;
         this.postLikeRepository = postLikeRepository;
+        this.bookmarkRepository = bookmarkRepository;
         this.userRepository = userRepository;
         this.placeRepository = placeRepository;
         this.postSummaryAssembler = postSummaryAssembler;
@@ -115,7 +119,21 @@ public class PostService {
                 postPlaceTagRepository.findViewsByPostId(postId),
                 hashtagService.findNamesByPostIds(postIds).getOrDefault(postId, List.of()),
                 !postSummaryAssembler.likedPostIds(requesterId, postIds).isEmpty(),
-                !postSummaryAssembler.bookmarkedPostIds(requesterId, postIds).isEmpty());
+                !postSummaryAssembler.bookmarkedPostIds(requesterId, postIds).isEmpty(),
+                bookmarkCountForAuthor(post, requesterId));
+    }
+
+    /**
+     * 저장한 사람 수는 작성자에게만 보여준다. 저장은 조용히 담아 두는 행동이라, 남의 글에서
+     * 몇 명이 담았는지 보이면 담는 것 자체가 눈치 보이는 일이 된다.
+     *
+     * @return 요청자가 작성자면 저장 수, 아니면 {@code null}
+     */
+    private Integer bookmarkCountForAuthor(Post post, Long requesterId) {
+        if (requesterId == null || !requesterId.equals(post.getUser().getId())) {
+            return null;
+        }
+        return (int) bookmarkRepository.countByPostId(post.getId());
     }
 
     /**

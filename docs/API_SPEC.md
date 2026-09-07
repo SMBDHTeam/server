@@ -1531,10 +1531,15 @@ Provider 응답의 `distanceMeters`가 누락되거나 0 이하이면 서버는 
   "commentCount": 3,
   "liked": true,
   "bookmarked": false,
+  "bookmarkCount": 5,
   "createdAt": "2026-08-24T18:00:00",
   "updatedAt": "2026-08-24T18:00:00"
 }
 ```
+
+**`bookmarkCount`는 작성자 본인에게만 나간다.** 남이 보면 `null`이다. 저장은 조용히 담아 두는
+행동이라, 남의 글에서 몇 명이 담았는지 보이면 담는 것 자체가 눈치 보이는 일이 된다. 목록
+응답에는 아예 없다. 여러 사람 글이 섞인 화면에서 내 글에만 숫자가 뜨면 들쭉날쭉해 보인다.
 
 `categories`는 뽑아 저장해 둔 태그다. 본문을 다시 파싱하지 않고 이 값을 쓰면 되고,
 태그를 눌러 `GET /api/v1/posts?category=` 필터 피드로 넘길 때도 그대로 넘긴다.
@@ -1574,8 +1579,8 @@ Provider 응답의 `distanceMeters`가 누락되거나 0 이하이면 서버는 
 
 `content`를 보내면 해시태그를 다시 계산한다. 보내지 않으면 기존 태그를 그대로 둔다.
 
-**교체로 빠진 사진의 실제 파일은 지우지 않는다.** 저장소가 아직 정해지지 않아 지울 수단이
-없다. 저장소를 붙일 때 남은 파일을 정리하는 작업이 함께 필요하다.
+**교체로 빠진 사진의 실제 파일은 그 자리에서 지우지 않는다.** 하루 뒤 정리가 가져간다.
+`C-17`에 적었다.
 
 `DELETE /api/v1/posts/{postId}` — `204 No Content`
 
@@ -1666,6 +1671,30 @@ GET /api/v1/posts/popular?category=맛집      인기순
 
 `parentId`를 주면 답글이 된다. **답글에 다시 답글을 달면 `400 INVALID_COMMENT_REQUEST`다.**
 응답이 두 단계만 표현하기 때문이다.
+
+```json
+{
+  "id": 5,
+  "author": { "id": 1, "nickname": "감자", "profileImageUrl": null },
+  "content": "저도 여기 가봤는데 좋았어요",
+  "likeCount": 0,
+  "liked": false,
+  "createdAt": "2026-08-24T18:02:00",
+  "deleted": false,
+  "hiddenReason": null,
+  "replies": [],
+  "postCommentCount": 4
+}
+```
+
+**`postCommentCount`는 이 댓글이 달린 뒤 게시물의 전체 댓글 수다.** 화면이 게시물을 다시
+조회하지 않고 숫자를 갱신할 수 있게 담는다. 답글도 게시물 댓글 수에 포함된다.
+
+목록 조회에서는 `null`이다. 이미 게시물 응답에 `commentCount`가 있어 중복이고, 댓글마다
+같은 값을 반복해 담을 이유가 없다.
+
+**댓글 삭제 응답에는 없다.** `204 No Content`라 본문이 없다. 지운 댓글은 클라이언트가 화면에서
+이미 지우므로 숫자도 함께 줄이면 된다.
 
 `GET /api/v1/posts/{postId}/comments?cursor=&size=20`
 

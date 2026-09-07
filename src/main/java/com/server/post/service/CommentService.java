@@ -96,7 +96,9 @@ public class CommentService {
                     NotificationTargetType.COMMENT,
                     comment.getId());
         }
-        return CommentResponse.from(comment, false);
+        // 벌크 갱신이라 들고 있던 post 에는 반영되지 않는다. 화면이 게시물을 다시 조회하지
+        // 않고 숫자를 갱신할 수 있게 새 값을 읽어 담는다.
+        return CommentResponse.created(comment, postRepository.findCommentCountById(postId));
     }
 
     @Transactional(readOnly = true)

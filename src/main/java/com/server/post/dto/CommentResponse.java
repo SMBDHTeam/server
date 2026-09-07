@@ -26,7 +26,12 @@ public record CommentResponse(
                 + "화면 문구는 이 값을 보고 클라이언트가 정한다.", example = "WITHDRAWN")
         CommentHiddenReason hiddenReason,
         @Schema(description = "이 댓글에 달린 답글. 답글에는 다시 답글이 없으므로 항상 비어 있다.")
-        List<CommentResponse> replies
+        List<CommentResponse> replies,
+
+        @Schema(description = "이 댓글이 달린 뒤 게시물의 전체 댓글 수. 댓글·답글 작성 응답에만 "
+                + "채워지고 목록 조회에서는 null 이다. 화면이 게시물을 다시 조회하지 않고 "
+                + "숫자를 갱신할 수 있게 담는다.", example = "5")
+        Integer postCommentCount
 ) {
 
     public static CommentResponse from(Comment comment, boolean liked, List<CommentResponse> replies) {
@@ -35,7 +40,7 @@ public record CommentResponse(
             // 답글을 매달 자리만 남기고 작성자와 내용을 감춘다.
             return new CommentResponse(
                     comment.getId(), null, null, 0, false, comment.getCreatedAt(),
-                    true, hiddenReason, replies);
+                    true, hiddenReason, replies, null);
         }
         return new CommentResponse(
                 comment.getId(),
@@ -49,7 +54,24 @@ public record CommentResponse(
                 comment.getCreatedAt(),
                 false,
                 null,
-                replies);
+                replies,
+                null);
+    }
+
+    /** 댓글·답글 작성 응답. 게시물의 갱신된 댓글 수를 함께 담는다. */
+    public static CommentResponse created(Comment comment, int postCommentCount) {
+        CommentResponse response = from(comment, false);
+        return new CommentResponse(
+                response.id(),
+                response.author(),
+                response.content(),
+                response.likeCount(),
+                response.liked(),
+                response.createdAt(),
+                response.deleted(),
+                response.hiddenReason(),
+                response.replies(),
+                postCommentCount);
     }
 
     public static CommentResponse from(Comment comment, boolean liked) {
