@@ -1,6 +1,7 @@
 package com.server.admin.service;
 
 import com.server.admin.dto.AdminIngestionStatusResponse;
+import com.server.admin.dto.AdminPlaceListResponse;
 import com.server.admin.dto.AdminPlaceResponse;
 import com.server.common.error.BusinessException;
 import com.server.common.error.ErrorCode;
@@ -9,6 +10,7 @@ import com.server.place.ingestion.TourApiPlaceIngestionProperties;
 import com.server.place.ingestion.TourApiPlaceIngestionResult;
 import com.server.place.ingestion.TourApiPlaceIngestionService;
 import com.server.place.repository.PlaceRepository;
+import org.springframework.data.domain.PageRequest;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.LinkedHashMap;
@@ -32,6 +34,9 @@ public class AdminPlaceService {
     private static final Logger log = LoggerFactory.getLogger(AdminPlaceService.class);
 
     private static final ZoneId KOREA_ZONE = ZoneId.of("Asia/Seoul");
+
+    private static final int DEFAULT_PAGE_SIZE = 20;
+    private static final int MAX_PAGE_SIZE = 100;
 
     private final PlaceRepository placeRepository;
     private final TourApiPlaceIngestionService ingestionService;
@@ -72,6 +77,31 @@ public class AdminPlaceService {
                 used,
                 limit,
                 Math.max(0, limit - used));
+    }
+
+    /**
+     * 관리자 장소 검색.
+     *
+     * <p>공개 검색을 쓰지 않는 이유가 둘이다. 공개 검색은 가려 둔 장소를 결과에서 빼므로
+     * 관리 대상이 목록에서 사라지고, 이름만 보므로 주소로 찾을 수 없다.
+     *
+     * @param hidden null 이면 전부, true 면 가린 것만, false 면 노출 중인 것만
+     */
+    @Transactional(readOnly = true)
+    public AdminPlaceListResponse getPlaces(
+            String keyword, Boolean hidden, Integer page, Integer size) {
+        int resolvedPage = page == null || page < 0 ? 0 : page;
+        int resolvedSize = size == null || size <= 0
+                ? DEFAULT_PAGE_SIZE
+                : Math.min(size, MAX_PAGE_SIZE);
+        String normalized = keyword == null || keyword.isBlank() ? null : keyword.trim();
+
+        List<Place> places = placeRepository.searchForAdmin(
+                normalized, hidden, PageRequest.of(resolvedPage, resolvedSize));
+
+        return new AdminPlaceListResponse(
+                places.stream().map(AdminPlaceResponse::from).toList(),
+                placeRepository.countForAdmin(normalized, hidden));
     }
 
     @Transactional(readOnly = true)
