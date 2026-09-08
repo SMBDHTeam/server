@@ -2,6 +2,16 @@
 
 API 계약이 변경될 때마다 최신 항목을 위에 추가한다.
 
+## 2026-09-08 (즉흥여행 TMAP 호출 한도 초과 오류 매핑)
+
+- API: `POST /api/v1/spontaneous-trips/destinations`, `POST /api/v1/spontaneous-trips/course`
+- 구분: 변경 (Provider 오류 매핑 명시)
+- 처리: `TMAP HTTP 429 → DATA HTTP 503 / detail: TMAP_QUOTA_EXCEEDED → SERVER HTTP 503 / code: SPONTANEOUS_PROVIDER_UNAVAILABLE`
+- 이유: TMAP 호출 한도 초과 detail을 명시적으로 처리한다. 기존 DATA HTTP 503의 상태 기반 fallback과 같은 공개 오류를 반환한다.
+- 유지: `TOUR_API_NOT_CONFIGURED`, `ODSAY_AUTH_FAILED`, `ODSAY_QUOTA_EXCEEDED` 매핑, 현재 한국어 오류 메시지와 공통 응답 형식
+- 호환성 파괴: 없음. 요청·성공 응답과 기존 오류 코드를 유지한다.
+- DB/ERD: 변경 없음
+
 ## 2026-09-07 (댓글 수 즉시 반영, 저장 수 노출)
 
 - API: `POST /api/v1/posts/{postId}/comments`, `GET /api/v1/posts/{postId}`
@@ -25,7 +35,6 @@ API 계약이 변경될 때마다 최신 항목을 위에 추가한다.
 증가가 벌크 갱신이라 들고 있던 엔티티에는 반영되지 않는다. 거기에 1 을 더해 쓰면 같은 순간 다른 사람이 단 댓글이 빠져 화면 숫자가 어긋난다. 갱신 뒤 값을 다시 조회한다.
 
 삭제 응답에는 담지 않았다. `204 No Content` 라 본문이 없고, 지운 댓글은 클라이언트가 화면에서 이미 지우므로 숫자도 함께 줄이면 된다.
-
 ## 2026-09-05 (즉흥여행 부산 전용 출발지 검색 추가)
 
 - API: `GET /api/v1/spontaneous-trips/start-locations/search`

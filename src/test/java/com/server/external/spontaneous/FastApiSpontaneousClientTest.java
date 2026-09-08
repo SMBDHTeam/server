@@ -138,12 +138,46 @@ class FastApiSpontaneousClientTest {
     @Test
     @DisplayName("provider auth and quota are not exposed as user auth errors")
     void providerAuthAndQuotaMapToProviderUnavailable() {
+        assertCourseError("TOUR_API_NOT_CONFIGURED", HttpStatus.SERVICE_UNAVAILABLE,
+                ErrorCode.SPONTANEOUS_PROVIDER_UNAVAILABLE);
         assertCourseError("ODSAY_AUTH_FAILED", HttpStatus.SERVICE_UNAVAILABLE,
                 ErrorCode.SPONTANEOUS_PROVIDER_UNAVAILABLE);
         assertCourseError("ODSAY_QUOTA_EXCEEDED", HttpStatus.SERVICE_UNAVAILABLE,
                 ErrorCode.SPONTANEOUS_PROVIDER_UNAVAILABLE);
         assertCourseError("TOUR_API_ERROR", HttpStatus.BAD_GATEWAY,
                 ErrorCode.SPONTANEOUS_PROVIDER_ERROR);
+    }
+
+    @Test
+    @DisplayName("TMAP quota exceeded maps to provider unavailable")
+    void tmapQuotaExceededMapsToProviderUnavailable() {
+        assertCourseError("TMAP_QUOTA_EXCEEDED", HttpStatus.SERVICE_UNAVAILABLE,
+                ErrorCode.SPONTANEOUS_PROVIDER_UNAVAILABLE);
+    }
+
+    @Test
+    @DisplayName("TMAP quota detail takes precedence over the HTTP status fallback")
+    void tmapQuotaDetailTakesPrecedenceOverHttpStatus() {
+        assertCourseError("TMAP_QUOTA_EXCEEDED", HttpStatus.BAD_GATEWAY,
+                ErrorCode.SPONTANEOUS_PROVIDER_UNAVAILABLE);
+    }
+
+    @Test
+    @DisplayName("destination TMAP quota exceeded maps to provider unavailable")
+    void destinationTmapQuotaExceededMapsToProviderUnavailable() {
+        Fixture fixture = fixture();
+        fixture.server()
+                .expect(requestTo(BASE_URL + "/api/v1/spontaneous-trips/destinations"))
+                .andExpect(method(HttpMethod.POST))
+                .andRespond(withStatus(HttpStatus.SERVICE_UNAVAILABLE)
+                        .body("{\"detail\":\"TMAP_QUOTA_EXCEEDED\"}")
+                        .contentType(MediaType.APPLICATION_JSON));
+
+        assertThatThrownBy(() -> fixture.client().recommendDestinations(destinationRequest()))
+                .isInstanceOf(BusinessException.class)
+                .extracting(this::errorCodeOf)
+                .isEqualTo(ErrorCode.SPONTANEOUS_PROVIDER_UNAVAILABLE);
+        fixture.server().verify();
     }
 
     private void assertCourseError(String detail, HttpStatus status, ErrorCode expected) {
@@ -158,5 +192,6 @@ class FastApiSpontaneousClientTest {
                 .isInstanceOf(BusinessException.class)
                 .extracting(this::errorCodeOf)
                 .isEqualTo(expected);
+        fixture.server().verify();
     }
 }

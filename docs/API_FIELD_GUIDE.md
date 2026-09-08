@@ -72,6 +72,14 @@
 `503 SPONTANEOUS_PROVIDER_UNAVAILABLE`이다. 기존 공용 검색에는 이 부산 필터를 적용하지 않는다.
 실제 `/destinations`, `/course` 요청의 `startLocation`은 검색 단계와 별도로 다시 부산 검증한다.
 
+### 2-2. 즉흥여행 추천 Provider 오류
+
+`POST /api/v1/spontaneous-trips/destinations` 및 `POST /api/v1/spontaneous-trips/course`에서
+TMAP HTTP 429는 DATA의 `503 / detail: TMAP_QUOTA_EXCEEDED`를 거쳐 SERVER의
+`503 / code: SPONTANEOUS_PROVIDER_UNAVAILABLE`로 반환한다.
+`message`는 "여행 정보 제공 서비스를 현재 사용할 수 없습니다. 잠시 후 다시 시도해 주세요."이며,
+`fieldErrors=[]`와 `traceId`를 포함하는 공통 오류 형식을 유지한다. DATA의 `detail`은 공개 필드가 아니다.
+
 ## 일정 생성 V2 필드
 
 ### V2-1. 질문 조회 추가 필드
