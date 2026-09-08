@@ -1,6 +1,7 @@
 package com.server.post.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.tuple;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -11,6 +12,10 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.server.bookmark.repository.BookmarkRepository;
+import com.server.place.domain.Place;
+import com.server.post.domain.PostMedia;
+import com.server.post.domain.PostPlaceTag;
+import java.util.ArrayList;
 import com.server.common.error.BusinessException;
 import com.server.common.error.ErrorCode;
 import com.server.hashtag.service.HashtagService;
@@ -340,6 +345,81 @@ class PostServiceTest {
 
         assertThat(postService.get(POST_ID, null).bookmarkCount()).isNull();
         verify(bookmarkRepository, never()).countByPostId(anyLong());
+    }
+
+    @Test
+    @DisplayName("사진마다 다른 장소를 붙인다")
+    void tagsEachPhotoWithItsOwnPlace() {
+        // 사진 두 장을 서로 다른 곳에서 찍었을 수 있다. 게시물 단위로 묶으면 어느 사진이
+        // 어느 장소인지 알 수 없다. 저장한 사진과 요청의 순서가 어긋나면 사진과 장소가
+        // 뒤바뀌므로, 짝이 맞는지까지 본다.
+        long authorId = 1L;
+        givenActiveUser(authorId);
+        when(postRepository.save(any(Post.class))).thenAnswer(call -> call.getArgument(0));
+        when(postMediaRepository.saveAll(any())).thenAnswer(call -> {
+            List<PostMedia> saved = new ArrayList<>((List<PostMedia>) call.getArgument(0));
+            for (int index = 0; index < saved.size(); index++) {
+                ReflectionTestUtils.setField(saved.get(index), "id", (long) (index + 1));
+            }
+            return saved;
+        });
+        when(placeRepository.findAllById(any())).thenReturn(List.of(place(42L), place(77L)));
+        when(hashtagService.attach(any(), any())).thenReturn(List.of());
+        when(postPlaceTagRepository.findViewsByPostId(any())).thenReturn(List.of());
+
+        postService.create(authorId, new PostCreateRequest(
+                "두 곳을 다녀왔다",
+                List.of(
+                        new PostCreateRequest.Media("first.jpg", MediaType.IMAGE, 0, 42L),
+                        new PostCreateRequest.Media("second.jpg", MediaType.IMAGE, 1, 77L)),
+                List.of()));
+
+        ArgumentCaptor<List<PostPlaceTag>> tags = ArgumentCaptor.forClass(List.class);
+        verify(postPlaceTagRepository).saveAll(tags.capture());
+        assertThat(tags.getValue())
+                .extracting(tag -> tag.getMedia().getUrl(), tag -> tag.getPlace().getId())
+                .containsExactly(
+                        tuple("first.jpg", 42L),
+                        tuple("second.jpg", 77L));
+    }
+
+    @Test
+    @DisplayName("장소를 붙이지 않은 사진은 건너뛴다")
+    void skipsPhotosWithoutPlace() {
+        long authorId = 1L;
+        givenActiveUser(authorId);
+        when(postRepository.save(any(Post.class))).thenAnswer(call -> call.getArgument(0));
+        when(postMediaRepository.saveAll(any())).thenAnswer(call -> {
+            List<PostMedia> saved = new ArrayList<>((List<PostMedia>) call.getArgument(0));
+            for (int index = 0; index < saved.size(); index++) {
+                ReflectionTestUtils.setField(saved.get(index), "id", (long) (index + 1));
+            }
+            return saved;
+        });
+        when(placeRepository.findAllById(any())).thenReturn(List.of(place(77L)));
+        when(hashtagService.attach(any(), any())).thenReturn(List.of());
+        when(postPlaceTagRepository.findViewsByPostId(any())).thenReturn(List.of());
+
+        postService.create(authorId, new PostCreateRequest(
+                "한 장만 장소를 붙였다",
+                List.of(
+                        new PostCreateRequest.Media("first.jpg", MediaType.IMAGE, 0, null),
+                        new PostCreateRequest.Media("second.jpg", MediaType.IMAGE, 1, 77L)),
+                List.of()));
+
+        ArgumentCaptor<List<PostPlaceTag>> tags = ArgumentCaptor.forClass(List.class);
+        verify(postPlaceTagRepository).saveAll(tags.capture());
+        assertThat(tags.getValue())
+                .extracting(tag -> tag.getMedia().getUrl())
+                .containsExactly("second.jpg");
+    }
+
+    private static Place place(long id) {
+        Place place = new Place(
+                "TOUR_API", "external-" + id, "12", "장소" + id, "관광지", "부산",
+                new java.math.BigDecimal("129.0"), new java.math.BigDecimal("35.0"), null);
+        ReflectionTestUtils.setField(place, "id", id);
+        return place;
     }
 
     private Post givenReadablePost(long authorId) {
