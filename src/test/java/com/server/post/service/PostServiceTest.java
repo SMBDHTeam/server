@@ -374,13 +374,17 @@ class PostServiceTest {
                         new PostCreateRequest.Media("second.jpg", MediaType.IMAGE, 1, 77L)),
                 List.of()));
 
+        // 저장된 사진에 붙어야 한다. 새로 만든 PostMedia 를 붙이면 ID 가 없어 외래키에 걸린다.
         ArgumentCaptor<List<PostPlaceTag>> tags = ArgumentCaptor.forClass(List.class);
         verify(postPlaceTagRepository).saveAll(tags.capture());
         assertThat(tags.getValue())
-                .extracting(tag -> tag.getMedia().getUrl(), tag -> tag.getPlace().getId())
+                .extracting(
+                        tag -> tag.getMedia().getId(),
+                        tag -> tag.getMedia().getUrl(),
+                        tag -> tag.getPlace().getId())
                 .containsExactly(
-                        tuple("first.jpg", 42L),
-                        tuple("second.jpg", 77L));
+                        tuple(1L, "first.jpg", 42L),
+                        tuple(2L, "second.jpg", 77L));
     }
 
     @Test
@@ -410,8 +414,8 @@ class PostServiceTest {
         ArgumentCaptor<List<PostPlaceTag>> tags = ArgumentCaptor.forClass(List.class);
         verify(postPlaceTagRepository).saveAll(tags.capture());
         assertThat(tags.getValue())
-                .extracting(tag -> tag.getMedia().getUrl())
-                .containsExactly("second.jpg");
+                .extracting(tag -> tag.getMedia().getId(), tag -> tag.getMedia().getUrl())
+                .containsExactly(tuple(2L, "second.jpg"));
     }
 
     private static Place place(long id) {
