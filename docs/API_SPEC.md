@@ -1560,6 +1560,10 @@ Provider 응답의 `distanceMeters`가 누락되거나 0 이하이면 서버는 
 으로 나가고, 붙이지 않은 사진은 `null`이다. `placeTags`는 이 게시물에 붙은 장소를 모아 준다.
 지도에 표시할 좌표가 필요하면 `placeId`로 장소 상세를 조회한다.
 
+**`placeTags`는 같은 장소를 한 번만 담는다.** 장소는 사진마다 저장되므로 사진 여러 장을
+같은 곳에서 찍으면 같은 장소가 그 수만큼 있다. 글 아래 장소 목록에 같은 이름이 사진 수만큼
+뜨지 않도록 줄여서 보낸다. 사진에 따라다니는 `mediaList[].placeName`은 줄이지 않는다.
+
 ### C-5. 게시물 수정·삭제
 
 `PATCH /api/v1/posts/{postId}`
@@ -1568,9 +1572,8 @@ Provider 응답의 `distanceMeters`가 누락되거나 0 이하이면 서버는 
 {
   "content": "광안리 야경 진짜 좋았어요 #야경",
   "mediaList": [
-    { "url": "https://example.com/media/1.jpg", "mediaType": "IMAGE", "sortOrder": 0 }
-  ],
-  "placeTags": [{ "placeId": 42 }]
+    { "url": "https://example.com/media/1.jpg", "mediaType": "IMAGE", "sortOrder": 0, "placeId": 42 }
+  ]
 }
 ```
 
@@ -1581,7 +1584,7 @@ Provider 응답의 `distanceMeters`가 누락되거나 0 이하이면 서버는 
 | --- | --- |
 | 항목 생략 | 그대로 둔다 |
 | `mediaList` 배열 | 기존 사진을 전부 지우고 보낸 것으로 교체한다. 한 건 이상 열 건 이하 |
-
+| `categories` 배열 | 기존 카테고리를 교체한다. 빈 배열이면 모두 없앤다 |
 | 세 항목 모두 생략 | `400 INVALID_POST_REQUEST` |
 
 **배열은 통째로 교체한다.** 사진 세 장 중 하나를 빼려면 남길 두 장을 보낸다. 장소는 사진에
