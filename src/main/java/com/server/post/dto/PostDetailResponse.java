@@ -63,6 +63,8 @@ public record PostDetailResponse(
     /**
      * 응답용 장소 태그. 요청용 {@code PostCreateRequest.PlaceTag} 와 이름이 겹치면
      * OpenAPI 스키마가 하나로 합쳐져, 응답에만 있는 {@code placeName} 이 문서에서 사라진다.
+     *
+     * <p>record 라 {@code equals} 가 값 비교여서 그대로 중복 제거에 쓸 수 있다.
      */
     @Schema(name = "PostPlaceTag", description = "장소 태그 한 건")
     public record PlaceTag(
@@ -92,6 +94,9 @@ public record PostDetailResponse(
             boolean bookmarked,
             Integer bookmarkCount
     ) {
+        // 장소 태그는 사진마다 한 줄씩 저장된다. 사진 여러 장을 같은 곳에서 찍었으면 같은
+        // 장소가 그 수만큼 나오므로, 모아 보여주는 placeTags 에서는 한 번만 담는다.
+        // 사진에 따라다니는 mediaList[].placeName 은 사진마다 필요하므로 줄이지 않는다.
         Map<Long, PostPlaceTagView> placeByMediaId = placeTags.stream()
                 .filter(tag -> tag.mediaId() != null)
                 .collect(Collectors.toMap(PostPlaceTagView::mediaId, tag -> tag, (a, b) -> a));
@@ -119,6 +124,7 @@ public record PostDetailResponse(
                         .map(tag -> new PlaceTag(
                                 tag.placeId(),
                                 tag.placeName()))
+                        .distinct()
                         .toList(),
                 categories,
                 post.getLikeCount(),
