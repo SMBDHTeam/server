@@ -27,13 +27,17 @@ import com.server.spontaneous.dto.TransportSummary;
 import com.server.spontaneous.dto.TravelTheme;
 import java.time.OffsetDateTime;
 import java.util.List;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
-@DisplayName("즉흥여행 API 부산 출발지 경계 검증")
+@DisplayName("즉흥여행 API 부산 출발지 경계 검증과 오류 응답")
 class SpontaneousTripControllerTest {
 
     private final FastApiSpontaneousClient fastApiSpontaneousClient = mock(FastApiSpontaneousClient.class);
@@ -129,6 +133,71 @@ class SpontaneousTripControllerTest {
 
         verify(fastApiSpontaneousClient).recommendDestinations(any(SpontaneousDestinationRequest.class));
         verify(fastApiSpontaneousClient).recommendCourse(any(SpontaneousCourseRequest.class));
+    }
+
+    @ParameterizedTest
+    @MethodSource("spontaneousErrors")
+    @DisplayName("/destinations 오류는 공통 응답 형식과 현재 한국어 메시지를 유지한다")
+    void destinationsErrorResponseUsesKoreanMessage(
+            ErrorCode errorCode, int httpStatus, String message
+    ) throws Exception {
+        when(fastApiSpontaneousClient.recommendDestinations(any(SpontaneousDestinationRequest.class)))
+                .thenThrow(new BusinessException(errorCode));
+
+        mockMvc.perform(post("/api/v1/spontaneous-trips/destinations")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(destinationRequestJson(35.1151, 129.0403)))
+                .andExpect(status().is(httpStatus))
+                .andExpect(jsonPath("$.code").value(errorCode.name()))
+                .andExpect(jsonPath("$.message").value(message))
+                .andExpect(jsonPath("$.fieldErrors").isArray())
+                .andExpect(jsonPath("$.fieldErrors").isEmpty())
+                .andExpect(jsonPath("$.traceId").isNotEmpty())
+                .andExpect(jsonPath("$.detail").doesNotExist());
+
+        verify(fastApiSpontaneousClient).recommendDestinations(any(SpontaneousDestinationRequest.class));
+    }
+
+    @ParameterizedTest
+    @MethodSource("spontaneousErrors")
+    @DisplayName("/course 오류는 공통 응답 형식과 현재 한국어 메시지를 유지한다")
+    void courseErrorResponseUsesKoreanMessage(
+            ErrorCode errorCode, int httpStatus, String message
+    ) throws Exception {
+        when(fastApiSpontaneousClient.recommendCourse(any(SpontaneousCourseRequest.class)))
+                .thenThrow(new BusinessException(errorCode));
+
+        mockMvc.perform(post("/api/v1/spontaneous-trips/course")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(courseRequestJson(35.1151, 129.0403)))
+                .andExpect(status().is(httpStatus))
+                .andExpect(jsonPath("$.code").value(errorCode.name()))
+                .andExpect(jsonPath("$.message").value(message))
+                .andExpect(jsonPath("$.fieldErrors").isArray())
+                .andExpect(jsonPath("$.fieldErrors").isEmpty())
+                .andExpect(jsonPath("$.traceId").isNotEmpty())
+                .andExpect(jsonPath("$.detail").doesNotExist());
+
+        verify(fastApiSpontaneousClient).recommendCourse(any(SpontaneousCourseRequest.class));
+    }
+
+    private static Stream<Arguments> spontaneousErrors() {
+        return Stream.of(
+                Arguments.of(ErrorCode.INVALID_SPONTANEOUS_TRIP_REQUEST, 400,
+                        "즉흥여행 요청 조건이 올바르지 않습니다."),
+                Arguments.of(ErrorCode.SPONTANEOUS_DESTINATION_NOT_FOUND, 404,
+                        "선택한 즉흥여행 목적지를 찾을 수 없습니다."),
+                Arguments.of(ErrorCode.SPONTANEOUS_DESTINATIONS_NOT_FOUND, 404,
+                        "현재 조건에 맞는 즉흥여행 목적지를 찾을 수 없습니다. 여행 시간이나 테마를 변경해 주세요."),
+                Arguments.of(ErrorCode.SPONTANEOUS_COURSE_NOT_FEASIBLE, 422,
+                        "선택한 조건으로 가능한 즉흥여행 코스를 만들 수 없습니다. 여행 시간이나 테마를 변경해 주세요."),
+                Arguments.of(ErrorCode.SPONTANEOUS_ROUTE_NOT_FOUND, 422,
+                        "선택한 조건으로 이동 가능한 경로를 찾을 수 없습니다."),
+                Arguments.of(ErrorCode.SPONTANEOUS_PROVIDER_ERROR, 502,
+                        "여행 정보 제공 서비스 처리 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요."),
+                Arguments.of(ErrorCode.SPONTANEOUS_PROVIDER_UNAVAILABLE, 503,
+                        "여행 정보 제공 서비스를 현재 사용할 수 없습니다. 잠시 후 다시 시도해 주세요.")
+        );
     }
 
     private String destinationRequestJson(double latitude, double longitude) {

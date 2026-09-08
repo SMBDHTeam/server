@@ -200,6 +200,18 @@ Provider 장애를 빈 배열이나 부분 검색 결과로 숨기지 않는다.
 부산 밖이면 기존 `400 SPONTANEOUS_START_LOCATION_OUTSIDE_BUSAN`, Provider 장애이면
 `503 SPONTANEOUS_PROVIDER_UNAVAILABLE` 계약을 유지한다.
 
+### 2-2. 즉흥여행 추천 Provider 오류
+
+`POST /api/v1/spontaneous-trips/destinations` 및 `POST /api/v1/spontaneous-trips/course`에서
+TMAP 호출 한도 초과는 다음과 같이 변환한다.
+
+`TMAP HTTP 429 → DATA HTTP 503 / detail: TMAP_QUOTA_EXCEEDED → SERVER HTTP 503 / code: SPONTANEOUS_PROVIDER_UNAVAILABLE`
+
+공개 응답은 공통 오류 형식이며 `message`는
+"여행 정보 제공 서비스를 현재 사용할 수 없습니다. 잠시 후 다시 시도해 주세요."이다.
+기존 `TOUR_API_NOT_CONFIGURED`, `ODSAY_AUTH_FAILED`, `ODSAY_QUOTA_EXCEEDED`의
+`503 SPONTANEOUS_PROVIDER_UNAVAILABLE` 매핑은 유지한다.
+
 ## 일정 생성 V2 계약
 
 상세 제품 동작은 `docs/schedule-generation-v2-spec.md`, 프론트 연동 방식은 `docs/frontend-schedule-v2-handoff.md`를 따른다.

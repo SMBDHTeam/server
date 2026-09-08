@@ -120,7 +120,8 @@ public class FastApiSpontaneousClient {
             case "COURSE_NOT_FEASIBLE" -> ErrorCode.SPONTANEOUS_COURSE_NOT_FEASIBLE;
             case "NO_ROUTE" -> ErrorCode.SPONTANEOUS_ROUTE_NOT_FOUND;
             case "TOUR_API_ERROR", "EXTERNAL_ROUTING_API_ERROR" -> ErrorCode.SPONTANEOUS_PROVIDER_ERROR;
-            case "TOUR_API_NOT_CONFIGURED", "ODSAY_AUTH_FAILED", "ODSAY_QUOTA_EXCEEDED" ->
+            case "TOUR_API_NOT_CONFIGURED", "ODSAY_AUTH_FAILED", "ODSAY_QUOTA_EXCEEDED",
+                    "TMAP_QUOTA_EXCEEDED" ->
                     ErrorCode.SPONTANEOUS_PROVIDER_UNAVAILABLE;
             default -> fallbackErrorCodeFor(statusCode);
         };
