@@ -129,6 +129,21 @@ user/front --HTTP 80--> nginx --301--> HTTPS 443 --> nginx --> springboot_contai
 - CORS는 Nginx가 아닌 Spring Security에서 처리한다. GitHub Actions repository variable
   `CORS_ALLOWED_ORIGINS`에 쉼표로 구분한 Origin 목록을 설정하면 `.env.dev`로 전달한다.
   변수가 없으면 애플리케이션 기본 Origin 목록을 사용한다.
+- 커뮤니티 미디어 업로드는 Nginx에서 요청 전체 50MB까지 허용한다. Spring은 파일 1개
+  10MB, 게시글당 최대 10개를 검증하지만, 운영 UX 기준으로 전체 업로드 용량은 50MB로
+  제한한다.
+
+```bash
+echo 'client_max_body_size 50M;' | sudo tee /etc/nginx/conf.d/client-max-body-size.conf
+sudo nginx -t
+sudo systemctl daemon-reload
+sudo systemctl reload nginx
+sudo nginx -T | grep -i client_max_body_size
+```
+
+`sudo nginx -T | grep -i client_max_body_size` 결과가 없으면 Nginx 기본값 1MB가 적용될 수
+있어 8MB 수준의 사진 업로드도 실패할 수 있다. 새 EC2를 만들거나 Nginx 설정을 재구성할 때
+반드시 위 설정을 다시 적용한다.
 
 ---
 
