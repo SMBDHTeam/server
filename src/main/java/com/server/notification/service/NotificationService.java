@@ -8,6 +8,7 @@ import com.server.notification.domain.NotificationType;
 import com.server.notification.dto.NotificationListResponse;
 import com.server.notification.dto.NotificationResponse;
 import com.server.notification.repository.NotificationRepository;
+import com.server.post.repository.CommentRepository;
 import com.server.user.repository.UserRepository;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -36,15 +37,18 @@ public class NotificationService {
 
     private final NotificationRepository notificationRepository;
     private final NotificationWriter notificationWriter;
+    private final CommentRepository commentRepository;
     private final UserRepository userRepository;
 
     public NotificationService(
             NotificationRepository notificationRepository,
             NotificationWriter notificationWriter,
+            CommentRepository commentRepository,
             UserRepository userRepository
     ) {
         this.notificationRepository = notificationRepository;
         this.notificationWriter = notificationWriter;
+        this.commentRepository = commentRepository;
         this.userRepository = userRepository;
     }
 
@@ -86,7 +90,7 @@ public class NotificationService {
                 : notifications.get(notifications.size() - 1).getId();
 
         return new NotificationListResponse(
-                notifications.stream().map(NotificationResponse::from).toList(),
+                notifications.stream().map(this::toResponse).toList(),
                 nextCursor,
                 notificationRepository.countUnread(userId));
     }
@@ -107,7 +111,7 @@ public class NotificationService {
             throw new BusinessException(ErrorCode.NOTIFICATION_NOT_FOUND);
         }
         notification.markAsRead();
-        return NotificationResponse.from(notification);
+        return toResponse(notification);
     }
 
     /** 모두 읽음. 이미 다 읽은 상태에서 다시 불러도 아무 일도 일어나지 않는다. */
@@ -129,5 +133,27 @@ public class NotificationService {
             return DEFAULT_PAGE_SIZE;
         }
         return Math.min(size, MAX_PAGE_SIZE);
+    }
+
+    private NotificationResponse toResponse(Notification notification) {
+        return NotificationResponse.from(notification, resolveLinkUrl(notification));
+    }
+
+    private String resolveLinkUrl(Notification notification) {
+        if (notification.getTargetType() == NotificationTargetType.POST) {
+            return "/community/posts/" + notification.getTargetId();
+        }
+
+        if (notification.getTargetType() == NotificationTargetType.USER) {
+            return "/community/users/" + notification.getTargetId();
+        }
+
+        if (notification.getTargetType() == NotificationTargetType.COMMENT) {
+            return commentRepository.findPostIdById(notification.getTargetId())
+                    .map(postId -> "/community/posts/" + postId)
+                    .orElse(null);
+        }
+
+        return null;
     }
 }
