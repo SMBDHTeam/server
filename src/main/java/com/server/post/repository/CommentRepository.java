@@ -65,6 +65,10 @@ public interface CommentRepository extends JpaRepository<Comment, Long> {
     @Query("select comment.user.id from Comment comment where comment.id = :commentId")
     Long findAuthorIdById(@Param("commentId") Long commentId);
 
+    /** 댓글 알림을 눌렀을 때 게시물 상세로 보내기 위한 최소 정보만 읽는다. */
+    @Query("select comment.post.id from Comment comment where comment.id = :commentId")
+    Optional<Long> findPostIdById(@Param("commentId") Long commentId);
+
     @Query("select comment.likeCount from Comment comment where comment.id = :commentId")
     int findLikeCountById(@Param("commentId") Long commentId);
 

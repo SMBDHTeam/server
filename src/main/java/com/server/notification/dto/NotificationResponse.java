@@ -18,6 +18,9 @@ public record NotificationResponse(
         NotificationTargetType targetType,
         @Schema(description = "눌렀을 때 이동할 대상 ID. 대상이 지워졌을 수 있다.", example = "7")
         Long targetId,
+        @Schema(description = "클라이언트 이동 경로. 대상이 지워졌거나 확인할 수 없으면 null 이다.",
+                example = "/community/posts/7")
+        String linkUrl,
         @Schema(description = "읽었는지", example = "false") boolean read,
         @Schema(example = "2026-08-25T11:20:00") LocalDateTime createdAt
 ) {
@@ -34,13 +37,14 @@ public record NotificationResponse(
         }
     }
 
-    public static NotificationResponse from(Notification notification) {
+    public static NotificationResponse from(Notification notification, String linkUrl) {
         return new NotificationResponse(
                 notification.getId(),
                 notification.getType(),
                 notification.getActor() == null ? null : Actor.from(notification.getActor()),
                 notification.getTargetType(),
                 notification.getTargetId(),
+                linkUrl,
                 notification.getReadAt() != null,
                 notification.getCreatedAt());
     }

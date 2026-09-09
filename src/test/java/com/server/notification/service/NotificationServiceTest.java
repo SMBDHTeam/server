@@ -13,6 +13,7 @@ import com.server.notification.domain.Notification;
 import com.server.notification.domain.NotificationTargetType;
 import com.server.notification.domain.NotificationType;
 import com.server.notification.repository.NotificationRepository;
+import com.server.post.repository.CommentRepository;
 import com.server.user.domain.User;
 import com.server.user.repository.UserRepository;
 import java.time.LocalDateTime;
@@ -32,11 +33,16 @@ class NotificationServiceTest {
     private final NotificationRepository notificationRepository =
             Mockito.mock(NotificationRepository.class);
     private final UserRepository userRepository = Mockito.mock(UserRepository.class);
+    private final CommentRepository commentRepository = Mockito.mock(CommentRepository.class);
 
     private final NotificationWriter notificationWriter = Mockito.mock(NotificationWriter.class);
 
     private final NotificationService notificationService =
-            new NotificationService(notificationRepository, notificationWriter, userRepository);
+            new NotificationService(
+                    notificationRepository,
+                    notificationWriter,
+                    commentRepository,
+                    userRepository);
 
     @Test
     @DisplayName("저장이 실패해도 부르는 쪽 작업을 막지 않는다")
@@ -71,9 +77,29 @@ class NotificationServiceTest {
         ReflectionTestUtils.setField(notification, "readAt", firstReadAt);
         when(notificationRepository.findById(12L)).thenReturn(Optional.of(notification));
 
-        notificationService.markAsRead(12L, RECIPIENT_ID);
+        var response = notificationService.markAsRead(12L, RECIPIENT_ID);
 
         assertThat(notification.getReadAt()).isEqualTo(firstReadAt);
+        assertThat(response.linkUrl()).isEqualTo("/community/posts/" + POST_ID);
+    }
+
+    @Test
+    @DisplayName("댓글 알림은 댓글이 달린 게시물로 이동한다")
+    void commentNotificationLinksToPost() {
+        long commentId = 30L;
+        Notification notification = new Notification(
+                user(RECIPIENT_ID),
+                user(ACTOR_ID),
+                NotificationType.COMMENT,
+                NotificationTargetType.COMMENT,
+                commentId);
+        ReflectionTestUtils.setField(notification, "id", 12L);
+        when(notificationRepository.findById(12L)).thenReturn(Optional.of(notification));
+        when(commentRepository.findPostIdById(commentId)).thenReturn(Optional.of(POST_ID));
+
+        var response = notificationService.markAsRead(12L, RECIPIENT_ID);
+
+        assertThat(response.linkUrl()).isEqualTo("/community/posts/" + POST_ID);
     }
 
     private Notification notification(long recipientId) {
