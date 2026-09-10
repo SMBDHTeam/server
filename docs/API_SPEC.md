@@ -1509,7 +1509,8 @@ Provider 응답의 `distanceMeters`가 누락되거나 0 이하이면 서버는 
       "commentCount": 3,
       "liked": true,
       "bookmarked": false,
-      "createdAt": "2026-08-24T18:00:00"
+      "createdAt": "2026-08-24T18:00:00",
+      "createdAgo": "1시간 전"
     }
   ],
   "nextCursor": 7
@@ -1545,6 +1546,7 @@ Provider 응답의 `distanceMeters`가 누락되거나 0 이하이면 서버는 
   "bookmarked": false,
   "bookmarkCount": 5,
   "createdAt": "2026-08-24T18:00:00",
+  "createdAgo": "1시간 전",
   "updatedAt": "2026-08-24T18:00:00"
 }
 ```
@@ -1555,6 +1557,16 @@ Provider 응답의 `distanceMeters`가 누락되거나 0 이하이면 서버는 
 
 `categories`는 뽑아 저장해 둔 태그다. 본문을 다시 파싱하지 않고 이 값을 쓰면 되고,
 태그를 눌러 `GET /api/v1/posts?category=` 필터 피드로 넘길 때도 그대로 넘긴다.
+
+**`createdAgo`는 서버가 만든 문구다.** `"5분 전"`처럼 화면에 그대로 쓴다. 클라이언트가
+직접 계산하지 않는 것은 `createdAt`에 시간대가 없기 때문이다. `"2026-08-24T18:00:00"`이
+어느 지역 시각인지 적혀 있지 않아, 클라이언트가 자기 시계로 빼면 서버가 도는 시간대만큼
+통째로 어긋난다. 서버에서 같은 시계끼리 빼면 그 문제가 없다.
+
+단위는 1분 미만이면 초, 하루 미만이면 시간, 한 달 미만이면 일이고 그 위는 달과 해다.
+달과 해는 길이가 제각각이라 달력으로 센다. 한 달을 30일로 고정하면 1년에서 하루 빠진
+364일이 `"12달 전"`이 된다. `createdAt`은 그대로 함께 보낸다. 정확한 시각이 필요한
+화면이 쓴다.
 
 `mediaList`는 `sortOrder` 오름차순이다. 사진마다 붙은 장소는 `mediaList[].placeId`·`placeName`
 으로 나가고, 붙이지 않은 사진은 `null`이다. `placeTags`는 이 게시물에 붙은 장소를 모아 준다.
@@ -1695,6 +1707,7 @@ GET /api/v1/posts/popular?category=맛집      인기순
   "likeCount": 0,
   "liked": false,
   "createdAt": "2026-08-24T18:02:00",
+  "createdAgo": "58분 전",
   "deleted": false,
   "hiddenReason": null,
   "replies": [],
@@ -1723,6 +1736,7 @@ GET /api/v1/posts/popular?category=맛집      인기순
       "likeCount": 2,
       "liked": false,
       "createdAt": "2026-08-24T18:02:00",
+      "createdAgo": "58분 전",
       "deleted": false,
       "hiddenReason": null,
       "replies": [
@@ -1733,6 +1747,7 @@ GET /api/v1/posts/popular?category=맛집      인기순
           "likeCount": 0,
           "liked": false,
           "createdAt": "2026-08-24T18:03:00",
+          "createdAgo": "57분 전",
           "deleted": false,
           "hiddenReason": null,
           "replies": []
@@ -1757,6 +1772,7 @@ GET /api/v1/posts/popular?category=맛집      인기순
   "likeCount": 0,
   "liked": false,
   "createdAt": "2026-08-24T18:02:00",
+  "createdAgo": "58분 전",
   "deleted": true,
   "hiddenReason": "WITHDRAWN",
   "replies": [ { "id": 4, "author": { "id": 2, "nickname": "고구마" }, "content": "언제 가셨어요?" } ]

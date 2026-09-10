@@ -2,6 +2,16 @@
 
 API 계약이 변경될 때마다 최신 항목을 위에 추가한다.
 
+## 2026-09-08 (게시물·댓글 응답에 상대 시간 추가)
+
+- API: `GET /api/v1/posts`, `GET /api/v1/posts/{postId}`, `GET /api/v1/posts/{postId}/comments`, `POST /api/v1/posts/{postId}/comments`
+- 구분: 추가 (응답 필드)
+- 이전: `createdAt` 만 나갔다. 시간대가 없는 값이라 클라이언트가 자기 시계로 빼면 서버 시간대만큼 어긋난 "9시간 전" 이 뜬다.
+- 이후: `createdAgo` 를 함께 담는다. `"5분 전"` 처럼 화면에 그대로 쓰는 문구다. 단위는 초·분·시간·일·달·해이며 달과 해는 달력으로 센다.
+- 이유: 시간대 없는 시각을 클라이언트가 계산할 수 없다. 서버에서 같은 시계끼리 빼면 어긋나지 않는다.
+- 호환성 파괴: 없음. `createdAt` 은 그대로 함께 보낸다.
+- DB/ERD: 변경 없음
+
 ## 2026-09-08 (즉흥여행 TMAP 호출 한도 초과 오류 매핑)
 
 - API: `POST /api/v1/spontaneous-trips/destinations`, `POST /api/v1/spontaneous-trips/course`

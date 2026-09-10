@@ -1,5 +1,6 @@
 package com.server.post.dto;
 
+import com.server.common.support.RelativeTime;
 import com.server.post.domain.Comment;
 import io.swagger.v3.oas.annotations.media.Schema;
 
@@ -19,6 +20,9 @@ public record CommentResponse(
                 example = "false")
         boolean liked,
         @Schema(example = "2026-08-18T04:02:00") LocalDateTime createdAt,
+        @Schema(description = "작성 후 얼마나 지났는지. 화면에 그대로 쓰는 문구다.",
+                example = "5분 전")
+        String createdAgo,
         @Schema(description = "감춰진 댓글인지. 삭제됐거나 작성자가 탈퇴했지만 답글이 남아 "
                 + "자리만 유지하는 경우 true 다.", example = "false")
         boolean deleted,
@@ -40,6 +44,7 @@ public record CommentResponse(
             // 답글을 매달 자리만 남기고 작성자와 내용을 감춘다.
             return new CommentResponse(
                     comment.getId(), null, null, 0, false, comment.getCreatedAt(),
+                    RelativeTime.from(comment.getCreatedAt()),
                     true, hiddenReason, replies, null);
         }
         return new CommentResponse(
@@ -52,6 +57,7 @@ public record CommentResponse(
                 comment.getLikeCount(),
                 liked,
                 comment.getCreatedAt(),
+                RelativeTime.from(comment.getCreatedAt()),
                 false,
                 null,
                 replies,
@@ -68,6 +74,7 @@ public record CommentResponse(
                 response.likeCount(),
                 response.liked(),
                 response.createdAt(),
+                response.createdAgo(),
                 response.deleted(),
                 response.hiddenReason(),
                 response.replies(),
