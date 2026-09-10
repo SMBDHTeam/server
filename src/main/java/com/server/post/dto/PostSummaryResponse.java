@@ -1,5 +1,6 @@
 package com.server.post.dto;
 
+import com.server.common.support.RelativeTime;
 import com.server.post.domain.Post;
 import com.server.post.domain.PostMedia;
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -33,7 +34,10 @@ public record PostSummaryResponse(
         boolean liked,
         @Schema(description = "요청자가 저장한 상태인지. 요청자를 알 수 없으면 false 다.", example = "false")
         boolean bookmarked,
-        @Schema(example = "2026-08-11T17:30:00") LocalDateTime createdAt
+        @Schema(example = "2026-08-11T17:30:00") LocalDateTime createdAt,
+        @Schema(description = "작성 후 얼마나 지났는지. 화면에 그대로 쓰는 문구다.",
+                example = "5분 전")
+        String createdAgo
 ) {
 
     public static PostSummaryResponse from(
@@ -68,6 +72,7 @@ public record PostSummaryResponse(
                 post.getCommentCount(),
                 liked,
                 bookmarked,
-                post.getCreatedAt());
+                post.getCreatedAt(),
+                RelativeTime.from(post.getCreatedAt()));
     }
 }

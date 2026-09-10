@@ -1,5 +1,6 @@
 package com.server.post.dto;
 
+import com.server.common.support.RelativeTime;
 import com.server.post.domain.MediaType;
 import com.server.post.domain.Post;
 import com.server.post.domain.PostMedia;
@@ -32,6 +33,10 @@ public record PostDetailResponse(
                 + "몇 명이 담았는지도 서로에게 드러나지 않는다.", example = "12")
         Integer bookmarkCount,
         @Schema(example = "2026-08-11T17:30:00") LocalDateTime createdAt,
+        @Schema(description = "작성 후 얼마나 지났는지. 화면에 그대로 쓰는 문구다. "
+                + "응답의 시각에는 시간대가 없어 클라이언트가 직접 계산하면 서버 시간대와 "
+                + "어긋나므로 서버가 만들어 보낸다.", example = "5분 전")
+        String createdAgo,
         @Schema(example = "2026-08-11T17:30:00") LocalDateTime updatedAt
 ) {
 
@@ -133,6 +138,7 @@ public record PostDetailResponse(
                 bookmarked,
                 bookmarkCount,
                 post.getCreatedAt(),
+                RelativeTime.from(post.getCreatedAt()),
                 post.getUpdatedAt());
     }
 }
