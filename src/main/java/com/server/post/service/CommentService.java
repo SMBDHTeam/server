@@ -9,6 +9,7 @@ import com.server.notification.service.NotificationService;
 import com.server.post.domain.Comment;
 import com.server.post.domain.Post;
 import com.server.post.dto.CommentCreateRequest;
+import com.server.post.dto.CommentDeleteResponse;
 import com.server.post.dto.CommentLikeResponse;
 import com.server.post.dto.CommentListResponse;
 import com.server.post.dto.CommentResponse;
@@ -192,9 +193,11 @@ public class CommentService {
      * 목록에서는 작성자와 내용을 감춘 자리만 남는다.
      */
     @Transactional
-    public void delete(Long postId, Long commentId, Long userId) {
+    public CommentDeleteResponse delete(Long postId, Long commentId, Long userId) {
         findWritableComment(postId, commentId, userId).delete();
         postRepository.decreaseCommentCount(postId);
+        // 감소 질의가 영속성 컨텍스트를 비우므로 엔티티에서 읽지 않고 다시 센다.
+        return new CommentDeleteResponse(postRepository.findCommentCountById(postId));
     }
 
     /**

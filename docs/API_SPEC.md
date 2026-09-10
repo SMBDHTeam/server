@@ -81,7 +81,7 @@
 | 댓글 작성 | POST | `/posts/{postId}/comments` | `201 Created` | 필수 |
 | 댓글 목록 | GET | `/posts/{postId}/comments` | `200 OK` | 선택 |
 | 댓글 수정 | PATCH | `/posts/{postId}/comments/{commentId}` | `200 OK` | 필수 |
-| 댓글 삭제 | DELETE | `/posts/{postId}/comments/{commentId}` | `204 No Content` | 필수 |
+| 댓글 삭제 | DELETE | `/posts/{postId}/comments/{commentId}` | `200 OK` | 필수 |
 | 댓글 좋아요 | POST | `/posts/{postId}/comments/{commentId}/likes` | `200 OK` | 필수 |
 | 댓글 좋아요 취소 | DELETE | `/posts/{postId}/comments/{commentId}/likes` | `200 OK` | 필수 |
 | 팔로우 | POST | `/users/{userId}/follows` | `200 OK` | 필수 |
@@ -1721,8 +1721,9 @@ GET /api/v1/posts/popular?category=맛집      인기순
 목록 조회에서는 `null`이다. 이미 게시물 응답에 `commentCount`가 있어 중복이고, 댓글마다
 같은 값을 반복해 담을 이유가 없다.
 
-**댓글 삭제 응답에는 없다.** `204 No Content`라 본문이 없다. 지운 댓글은 클라이언트가 화면에서
-이미 지우므로 숫자도 함께 줄이면 된다.
+**댓글 삭제 응답에도 담는다.** 지운 뒤의 수만 담은 `{ "postCommentCount": 3 }`이다. 화면에서
+댓글 하나를 지웠다고 숫자를 1 줄이면 어긋난다. 답글이 함께 사라지지는 않지만, 같은 게시물에
+다른 사람이 그 사이 댓글을 달았을 수 있다. 서버가 다시 센 값을 쓴다.
 
 `GET /api/v1/posts/{postId}/comments?cursor=&size=20`
 
@@ -1797,7 +1798,12 @@ GET /api/v1/posts/popular?category=맛집      인기순
 
 내용만 바꾼다. 좋아요 수와 답글 관계는 그대로 둔다. 응답은 댓글 한 건이다.
 
-`DELETE /api/v1/posts/{postId}/comments/{commentId}` — `204 No Content`.
+`DELETE /api/v1/posts/{postId}/comments/{commentId}` — `200 OK`
+
+```json
+{ "postCommentCount": 3 }
+```
+
 작성자 본인이 아니면 `403 COMMENT_ACCESS_DENIED`다. 경로의 `postId`와 댓글의 소속이 다르면
 `404 COMMENT_NOT_FOUND`를 반환한다.
 
