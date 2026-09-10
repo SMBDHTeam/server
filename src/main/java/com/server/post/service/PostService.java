@@ -185,7 +185,6 @@ public class PostService {
         if (following && requesterId == null) {
             throw new BusinessException(ErrorCode.UNAUTHORIZED);
         }
-        int limit = Paging.size(size);
         List<Post> posts = postRepository.findPopularFeed(
                 LocalDateTime.now().minusDays(POPULAR_FEED_DAYS),
                 following ? requesterId : null,
