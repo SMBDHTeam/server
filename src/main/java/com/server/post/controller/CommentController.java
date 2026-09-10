@@ -3,6 +3,7 @@ package com.server.post.controller;
 import com.server.auth.service.AuthenticatedUser;
 import com.server.auth.web.LoginUser;
 import com.server.post.dto.CommentCreateRequest;
+import com.server.post.dto.CommentDeleteResponse;
 import com.server.post.dto.CommentLikeResponse;
 import com.server.post.dto.CommentListResponse;
 import com.server.post.dto.CommentResponse;
@@ -71,19 +72,19 @@ public class CommentController {
     }
 
     @DeleteMapping("/{commentId}")
-    @ResponseStatus(HttpStatus.NO_CONTENT)
     @Operation(
             summary = "댓글 삭제",
             description = "바로 지우지 않고 삭제 표시만 남긴다. 답글이 달려 있으면 답글은 그대로 보이고 "
-                    + "이 댓글은 작성자와 내용이 감춰진 자리로 남는다. 작성자 본인이 아니면 403 을 반환한다."
+                    + "이 댓글은 작성자와 내용이 감춰진 자리로 남는다. 작성자 본인이 아니면 403 을 반환한다. "
+                    + "갱신된 게시물 댓글 수를 담아 돌려주므로 화면이 게시물을 다시 조회하지 않아도 된다."
     )
-    public void delete(
+    public CommentDeleteResponse delete(
             @AuthenticationPrincipal AuthenticatedUser loginUser,
             @Parameter(example = "1") @PathVariable Long postId,
             @Parameter(example = "3") @PathVariable Long commentId
     ) {
         Long userId = LoginUser.require(loginUser);
-        commentService.delete(postId, commentId, userId);
+        return commentService.delete(postId, commentId, userId);
     }
 
     @GetMapping

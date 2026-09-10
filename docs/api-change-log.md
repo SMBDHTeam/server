@@ -2,6 +2,16 @@
 
 API 계약이 변경될 때마다 최신 항목을 위에 추가한다.
 
+## 2026-09-08 (댓글 삭제 응답에 댓글 수 추가)
+
+- API: `DELETE /api/v1/posts/{postId}/comments/{commentId}`
+- 구분: 변경 (응답 코드와 본문)
+- 이전: `204 No Content`. 본문이 없어 화면이 게시물을 다시 조회해야 댓글 수가 갱신됐다.
+- 이후: `200 OK` 와 `{ "postCommentCount": 3 }`. 작성 응답과 같은 필드다.
+- 이유: 작성할 때만 수를 주고 삭제할 때는 주지 않아 화면이 새로고침해야 숫자가 맞았다.
+- 호환성 파괴: 있음. 본문이 없던 응답에 본문이 생긴다. 상태 코드가 `204` 에서 `200` 으로 바뀐다.
+- DB/ERD: 변경 없음
+
 ## 2026-09-08 (게시물·댓글 응답에 상대 시간 추가)
 
 - API: `GET /api/v1/posts`, `GET /api/v1/posts/{postId}`, `GET /api/v1/posts/{postId}/comments`, `POST /api/v1/posts/{postId}/comments`

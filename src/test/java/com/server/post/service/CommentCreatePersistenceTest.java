@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.server.post.domain.Post;
 import com.server.post.dto.CommentCreateRequest;
+import com.server.post.dto.CommentDeleteResponse;
 import com.server.post.dto.CommentResponse;
 import com.server.post.repository.CommentRepository;
 import com.server.post.repository.PostRepository;
@@ -78,6 +79,20 @@ class CommentCreatePersistenceTest {
         assertThat(response.author()).isNotNull();
         assertThat(response.author().nickname()).isEqualTo("작성응답테스트작성자");
         assertThat(response.postCommentCount()).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("댓글을 지우면 줄어든 수를 돌려준다")
+    void returnsCountAfterDelete() {
+        // 삭제 응답이 비어 있으면 화면이 게시물을 다시 조회해야 숫자가 갱신된다.
+        CommentResponse first = commentService.create(
+                postId, authorId, new CommentCreateRequest("하나", null));
+        commentService.create(postId, authorId, new CommentCreateRequest("둘", null));
+
+        CommentDeleteResponse response = commentService.delete(postId, first.id(), authorId);
+
+        assertThat(response.postCommentCount()).isEqualTo(1);
+        assertThat(postRepository.findCommentCountById(postId)).isEqualTo(1);
     }
 
     @Test
