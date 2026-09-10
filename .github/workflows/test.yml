@@ -28,6 +28,12 @@ jobs:
     name: Run tests
     runs-on: ubuntu-latest
 
+    # 러너는 UTC 로 돈다. 통계는 한국 날짜로 자르고 데이터는 서버 시계로 저장돼서,
+    # 한국 시각 0~9시에 CI 가 돌면 하루가 어긋나 AdminStatsServiceTest 가 깨진다.
+    # 배포 이미지(Dockerfile)가 이미 Asia/Seoul 이므로 테스트도 같은 시계로 맞춘다.
+    env:
+      TZ: Asia/Seoul
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
