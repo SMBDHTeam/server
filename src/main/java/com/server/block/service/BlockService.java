@@ -1,5 +1,6 @@
 package com.server.block.service;
 
+import com.server.common.support.Paging;
 import com.server.block.dto.BlockResponse;
 import com.server.block.dto.BlockUserListResponse;
 import com.server.block.repository.BlockRepository;
@@ -10,15 +11,11 @@ import com.server.follow.repository.FollowRepository;
 import com.server.user.domain.User;
 import com.server.user.repository.UserRepository;
 import java.util.List;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class BlockService {
-
-    private static final int DEFAULT_PAGE_SIZE = 20;
-    private static final int MAX_PAGE_SIZE = 50;
 
     private final BlockRepository blockRepository;
     private final FollowRepository followRepository;
@@ -65,7 +62,7 @@ public class BlockService {
     public BlockUserListResponse getMyBlocks(Long userId, Integer page, Integer size) {
         findActiveUser(userId);
         List<FollowUserResponse> items = blockRepository
-                .findByBlockerIdOrderByCreatedAtDesc(userId, pageRequest(page, size)).stream()
+                .findByBlockerIdOrderByCreatedAtDesc(userId, Paging.of(page, size)).stream()
                 .map(block -> FollowUserResponse.from(block.getBlocked()))
                 .toList();
         return new BlockUserListResponse(items);
@@ -76,9 +73,4 @@ public class BlockService {
                 .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
     }
 
-    private PageRequest pageRequest(Integer page, Integer size) {
-        int resolvedPage = page == null || page < 0 ? 0 : page;
-        int resolvedSize = size == null || size <= 0 ? DEFAULT_PAGE_SIZE : Math.min(size, MAX_PAGE_SIZE);
-        return PageRequest.of(resolvedPage, resolvedSize);
-    }
 }
