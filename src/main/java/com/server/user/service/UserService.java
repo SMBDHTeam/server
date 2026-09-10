@@ -1,5 +1,6 @@
 package com.server.user.service;
 
+import com.server.common.support.Paging;
 import com.server.common.error.BusinessException;
 import com.server.common.error.ErrorCode;
 import com.server.follow.dto.FollowUserResponse;
@@ -12,15 +13,11 @@ import com.server.user.dto.UserProfileResponse;
 import com.server.user.dto.UserSearchListResponse;
 import com.server.user.repository.UserRepository;
 import java.util.List;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class UserService {
-
-    private static final int DEFAULT_PAGE_SIZE = 20;
-    private static final int MAX_PAGE_SIZE = 50;
 
     private final UserRepository userRepository;
     private final PostRepository postRepository;
@@ -44,7 +41,7 @@ public class UserService {
         }
         List<FollowUserResponse> items = userRepository
                 .findByNicknameContainingIgnoreCaseAndDeletedAtIsNullOrderByNicknameAsc(
-                        keyword.trim(), pageRequest(page, size))
+                        keyword.trim(), Paging.of(page, size))
                 .stream()
                 .map(FollowUserResponse::from)
                 .toList();
@@ -104,9 +101,4 @@ public class UserService {
                 .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
     }
 
-    private PageRequest pageRequest(Integer page, Integer size) {
-        int resolvedPage = page == null || page < 0 ? 0 : page;
-        int resolvedSize = size == null || size <= 0 ? DEFAULT_PAGE_SIZE : Math.min(size, MAX_PAGE_SIZE);
-        return PageRequest.of(resolvedPage, resolvedSize);
-    }
 }

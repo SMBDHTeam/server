@@ -1,5 +1,6 @@
 package com.server.follow.service;
 
+import com.server.common.support.Paging;
 import com.server.block.repository.BlockRepository;
 import com.server.common.error.BusinessException;
 import com.server.common.error.ErrorCode;
@@ -13,15 +14,11 @@ import com.server.notification.service.NotificationService;
 import com.server.user.domain.User;
 import com.server.user.repository.UserRepository;
 import java.util.List;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class FollowService {
-
-    private static final int DEFAULT_PAGE_SIZE = 20;
-    private static final int MAX_PAGE_SIZE = 50;
 
     private final FollowRepository followRepository;
     private final BlockRepository blockRepository;
@@ -84,7 +81,7 @@ public class FollowService {
     public FollowUserListResponse getFollowers(Long targetUserId, Integer page, Integer size) {
         findActiveUser(targetUserId);
         List<FollowUserResponse> items = followRepository
-                .findByFollowingIdOrderByCreatedAtDesc(targetUserId, pageRequest(page, size)).stream()
+                .findByFollowingIdOrderByCreatedAtDesc(targetUserId, Paging.of(page, size)).stream()
                 .map(follow -> FollowUserResponse.from(follow.getFollower()))
                 .toList();
         return new FollowUserListResponse(items, followRepository.countByFollowingId(targetUserId));
@@ -95,7 +92,7 @@ public class FollowService {
     public FollowUserListResponse getFollowings(Long targetUserId, Integer page, Integer size) {
         findActiveUser(targetUserId);
         List<FollowUserResponse> items = followRepository
-                .findByFollowerIdOrderByCreatedAtDesc(targetUserId, pageRequest(page, size)).stream()
+                .findByFollowerIdOrderByCreatedAtDesc(targetUserId, Paging.of(page, size)).stream()
                 .map(follow -> FollowUserResponse.from(follow.getFollowing()))
                 .toList();
         return new FollowUserListResponse(items, followRepository.countByFollowerId(targetUserId));
@@ -106,9 +103,4 @@ public class FollowService {
                 .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
     }
 
-    private PageRequest pageRequest(Integer page, Integer size) {
-        int resolvedPage = page == null || page < 0 ? 0 : page;
-        int resolvedSize = size == null || size <= 0 ? DEFAULT_PAGE_SIZE : Math.min(size, MAX_PAGE_SIZE);
-        return PageRequest.of(resolvedPage, resolvedSize);
-    }
 }

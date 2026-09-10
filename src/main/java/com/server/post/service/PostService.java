@@ -1,5 +1,6 @@
 package com.server.post.service;
 
+import com.server.common.support.Paging;
 import com.server.bookmark.repository.BookmarkRepository;
 import com.server.common.error.BusinessException;
 import com.server.common.error.ErrorCode;
@@ -38,9 +39,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class PostService {
-
-    private static final int DEFAULT_FEED_SIZE = 20;
-    private static final int MAX_FEED_SIZE = 50;
     /** 첫 페이지는 커서가 없으므로 어떤 게시물 ID보다 큰 값에서 시작한다. */
     private static final long FIRST_PAGE_CURSOR = Long.MAX_VALUE;
     /** 인기 피드가 다루는 기간. 지나치게 넓으면 예전 인기글이 상단을 계속 차지한다. */
@@ -155,7 +153,7 @@ public class PostService {
         if (following && requesterId == null) {
             throw new BusinessException(ErrorCode.UNAUTHORIZED);
         }
-        int limit = resolveFeedSize(size);
+        int limit = Paging.size(size);
         return toSummaryList(
                 postRepository.findFeed(
                         following ? requesterId : null,
@@ -187,15 +185,14 @@ public class PostService {
         if (following && requesterId == null) {
             throw new BusinessException(ErrorCode.UNAUTHORIZED);
         }
-        int resolvedPage = page == null || page < 0 ? 0 : page;
-        int limit = resolveFeedSize(size);
+        int limit = Paging.size(size);
         List<Post> posts = postRepository.findPopularFeed(
                 LocalDateTime.now().minusDays(POPULAR_FEED_DAYS),
                 following ? requesterId : null,
                 placeId,
                 normalizeCategory(category),
                 requesterId,
-                PageRequest.of(resolvedPage, limit));
+                Paging.of(page, size));
 
         // 점수 기준 정렬이라 이어받을 커서가 없다. 다음 페이지는 page 를 올려 요청한다.
         return new PostSummaryListResponse(
@@ -208,7 +205,7 @@ public class PostService {
         if (!userRepository.existsByIdAndDeletedAtIsNull(userId)) {
             throw new BusinessException(ErrorCode.USER_NOT_FOUND);
         }
-        int limit = resolveFeedSize(size);
+        int limit = Paging.size(size);
         return toSummaryList(
                 postRepository.findByUserIdAndDeletedAtIsNullAndIdLessThanOrderByIdDesc(
                         userId,
@@ -301,11 +298,10 @@ public class PostService {
         if (!userRepository.existsByIdAndDeletedAtIsNull(userId)) {
             throw new BusinessException(ErrorCode.USER_NOT_FOUND);
         }
-        int resolvedPage = page == null || page < 0 ? 0 : page;
         List<Post> posts = postRepository.findDeletedByUserId(
                 userId,
                 LocalDateTime.now().minusDays(restoreWindowDays),
-                PageRequest.of(resolvedPage, resolveFeedSize(size)));
+                Paging.of(page, size));
 
         // 삭제 시각 기준 정렬이라 이어받을 커서가 없다. 다음 페이지는 page 를 올려 요청한다.
         return new PostSummaryListResponse(postSummaryAssembler.assemble(posts, userId), null);
@@ -437,10 +433,4 @@ public class PostService {
         return category == null || category.isBlank() ? null : category.trim().toLowerCase();
     }
 
-    private int resolveFeedSize(Integer size) {
-        if (size == null || size <= 0) {
-            return DEFAULT_FEED_SIZE;
-        }
-        return Math.min(size, MAX_FEED_SIZE);
-    }
 }

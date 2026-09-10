@@ -1,5 +1,6 @@
 package com.server.bookmark.service;
 
+import com.server.common.support.Paging;
 import com.server.bookmark.domain.Bookmark;
 import com.server.bookmark.dto.BookmarkListResponse;
 import com.server.bookmark.dto.BookmarkResponse;
@@ -11,15 +12,11 @@ import com.server.post.repository.PostRepository;
 import com.server.post.service.PostSummaryAssembler;
 import com.server.user.repository.UserRepository;
 import java.util.List;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class BookmarkService {
-
-    private static final int DEFAULT_PAGE_SIZE = 20;
-    private static final int MAX_PAGE_SIZE = 50;
 
     private final BookmarkRepository bookmarkRepository;
     private final PostRepository postRepository;
@@ -67,16 +64,11 @@ public class BookmarkService {
             throw new BusinessException(ErrorCode.USER_NOT_FOUND);
         }
         List<Post> posts = bookmarkRepository
-                .findReadableByUserId(userId, pageRequest(page, size))
+                .findReadableByUserId(userId, Paging.of(page, size))
                 .stream()
                 .map(Bookmark::getPost)
                 .toList();
         return new BookmarkListResponse(postSummaryAssembler.assemble(posts, userId));
     }
 
-    private PageRequest pageRequest(Integer page, Integer size) {
-        int resolvedPage = page == null || page < 0 ? 0 : page;
-        int resolvedSize = size == null || size <= 0 ? DEFAULT_PAGE_SIZE : Math.min(size, MAX_PAGE_SIZE);
-        return PageRequest.of(resolvedPage, resolvedSize);
-    }
 }

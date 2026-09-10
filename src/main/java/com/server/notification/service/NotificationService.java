@@ -1,5 +1,6 @@
 package com.server.notification.service;
 
+import com.server.common.support.Paging;
 import com.server.common.error.BusinessException;
 import com.server.common.error.ErrorCode;
 import com.server.notification.domain.Notification;
@@ -27,9 +28,6 @@ import org.springframework.transaction.annotation.Transactional;
  */
 @Service
 public class NotificationService {
-
-    private static final int DEFAULT_PAGE_SIZE = 20;
-    private static final int MAX_PAGE_SIZE = 50;
     /** 첫 페이지는 커서가 없으므로 어떤 알림 ID보다 큰 값에서 시작한다. */
     private static final long FIRST_PAGE_CURSOR = Long.MAX_VALUE;
 
@@ -78,7 +76,7 @@ public class NotificationService {
     @Transactional(readOnly = true)
     public NotificationListResponse getMyNotifications(Long userId, Long cursor, Integer size) {
         requireActiveUser(userId);
-        int limit = resolvePageSize(size);
+        int limit = Paging.size(size);
         List<Notification> notifications = notificationRepository.findMine(
                 userId,
                 cursor == null ? FIRST_PAGE_CURSOR : cursor,
@@ -126,13 +124,6 @@ public class NotificationService {
         if (!userRepository.existsByIdAndDeletedAtIsNull(userId)) {
             throw new BusinessException(ErrorCode.USER_NOT_FOUND);
         }
-    }
-
-    private int resolvePageSize(Integer size) {
-        if (size == null || size <= 0) {
-            return DEFAULT_PAGE_SIZE;
-        }
-        return Math.min(size, MAX_PAGE_SIZE);
     }
 
     private NotificationResponse toResponse(Notification notification) {
