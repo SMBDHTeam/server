@@ -2,6 +2,25 @@
 
 API 계약이 변경될 때마다 최신 항목을 위에 추가한다.
 
+## 2026-09-11 (즉흥여행 Preview 명시적 저장과 공통 일정 통합)
+
+- API: `POST /api/v1/spontaneous-trips/course`, `POST /api/v1/spontaneous-trips/schedules`,
+  `GET /api/v1/schedules`, `GET /api/v1/schedules/{scheduleId}`,
+  `GET /api/v1/schedules/{scheduleId}/map`, `PATCH /api/v1/schedules/{scheduleId}`
+- 구분: 추가·확장. `/course`와 즉흥 저장은 Bearer 인증 필수다.
+- Preview: `/course`는 비즈니스 DB를 쓰지 않고 실제 stop/복귀 경로와 만료되는 사용자 귀속
+  HMAC `previewToken`을 반환한다.
+- 저장: 새 `/spontaneous-trips/schedules`는 `Idempotency-Key`, `previewId`, `previewToken`을
+  검증하고 Preview 결과를 다시 계획하지 않은 채 한 트랜잭션으로 저장한다.
+- 공통 응답: `scheduleType`, `transportMode`, `startAt`, `returnBy`, `estimatedReturnAt`,
+  `spontaneousMetadata`, stop/transit의 `*DateTime`, stop `role`, `themes`를 추가한다.
+- 장소: TourAPI `(source, external_content_id)`로만 재사용하며 숨김 행은 저장을 거부한다.
+- 수정: 즉흥 PATCH는 타입·소유자·귀환 조건·메타데이터를 보존하고 실제 경로를 재계산한다.
+- 호환성 파괴: 없음. 기존 일정은 `scheduleType=PLANNED`, LocalTime 필드도 유지한다.
+- DB/ERD: `V18__spontaneous_schedule_integration.sql`. 공통 일정 그래프 확장 및 사용자 범위
+  멱등성·Preview 중복 저장 인덱스를 추가한다.
+- 연동: `docs/spontaneous-schedule-handoff.md`
+
 ## 2026-09-08 (댓글 삭제 응답에 댓글 수 추가)
 
 - API: `DELETE /api/v1/posts/{postId}/comments/{commentId}`

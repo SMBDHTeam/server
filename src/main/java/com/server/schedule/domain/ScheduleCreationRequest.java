@@ -18,12 +18,21 @@ public class ScheduleCreationRequest {
     @Id
     private UUID id;
 
-    @Column(name = "idempotency_key", nullable = false, unique = true, length = 128)
+    @Column(name = "idempotency_key", nullable = false, length = 128)
     private String idempotencyKey;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "preview_id", nullable = false)
+    @JoinColumn(name = "preview_id")
     private SchedulePreview preview;
+
+    @Column(name = "user_id")
+    private Long userId;
+
+    @Column(name = "request_type", nullable = false)
+    private String requestType = "PLANNED";
+
+    @Column(name = "spontaneous_preview_id")
+    private UUID spontaneousPreviewId;
 
     @Column(name = "request_hash", nullable = false, length = 64)
     private String requestHash;

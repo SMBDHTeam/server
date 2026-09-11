@@ -13,6 +13,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -26,6 +27,24 @@ public class Schedule {
 
     @Column(nullable = false)
     private String status;
+
+    @Column(name = "schedule_type", nullable = false)
+    private String scheduleType = "PLANNED";
+
+    @Column(name = "transport_mode")
+    private String transportMode;
+
+    @Column(name = "start_at")
+    private OffsetDateTime startAt;
+
+    @Column(name = "return_by")
+    private OffsetDateTime returnBy;
+
+    @Column(name = "estimated_return_at")
+    private OffsetDateTime estimatedReturnAt;
+
+    @Column(name = "spontaneous_metadata_json", columnDefinition = "text")
+    private String spontaneousMetadataJson;
 
     /**
      * 소유자. FastAPI 가 채운다.
@@ -171,6 +190,12 @@ public class Schedule {
     public String getStatus() {
         return status;
     }
+    public String getScheduleType() { return scheduleType; }
+    public String getTransportMode() { return transportMode; }
+    public OffsetDateTime getStartAt() { return startAt; }
+    public OffsetDateTime getReturnBy() { return returnBy; }
+    public OffsetDateTime getEstimatedReturnAt() { return estimatedReturnAt; }
+    public String getSpontaneousMetadataJson() { return spontaneousMetadataJson; }
 
     public SchedulePreview getPreview() { return preview; }
     public String getTimeZone() { return timeZone; }

@@ -1,9 +1,11 @@
 package com.server.external.schedule;
 
+import tools.jackson.databind.json.JsonMapper;
 import java.net.http.HttpClient;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.client.JdkClientHttpRequestFactory;
+import org.springframework.http.converter.json.JacksonJsonHttpMessageConverter;
 import org.springframework.web.client.RestClient;
 
 @Configuration
@@ -26,7 +28,10 @@ public class FastApiScheduleConfig {
      * 422를 낸다. 본문이 있는 POST·PATCH가 전부 여기 걸린다.
      */
     @Bean
-    RestClient fastApiScheduleRestClient(FastApiScheduleProperties properties) {
+    RestClient fastApiScheduleRestClient(
+            FastApiScheduleProperties properties,
+            JsonMapper objectMapper
+    ) {
         HttpClient httpClient = HttpClient.newBuilder()
                 .version(HttpClient.Version.HTTP_1_1)
                 .connectTimeout(properties.connectTimeout())
@@ -37,6 +42,20 @@ public class FastApiScheduleConfig {
         return RestClient.builder()
                 .baseUrl(properties.baseUrl())
                 .requestFactory(requestFactory)
+                .messageConverters(converters -> {
+                    converters.removeIf(JacksonJsonHttpMessageConverter.class::isInstance);
+                    converters.add(new JacksonJsonHttpMessageConverter(objectMapper));
+                })
                 .build();
+    }
+
+    RestClient fastApiScheduleRestClient(FastApiScheduleProperties properties) {
+        JsonMapper objectMapper = JsonMapper.builder()
+                .findAndAddModules()
+                .disable(tools.jackson.databind.cfg.DateTimeFeature.WRITE_DATES_AS_TIMESTAMPS)
+                .disable(tools.jackson.databind.cfg.DateTimeFeature.WRITE_DATES_WITH_CONTEXT_TIME_ZONE)
+                .disable(tools.jackson.databind.cfg.DateTimeFeature.ADJUST_DATES_TO_CONTEXT_TIME_ZONE)
+                .build();
+        return fastApiScheduleRestClient(properties, objectMapper);
     }
 }

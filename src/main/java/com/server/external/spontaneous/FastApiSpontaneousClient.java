@@ -4,10 +4,12 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.server.common.error.BusinessException;
 import com.server.common.error.ErrorCode;
+import com.server.schedule.dto.ScheduleResponse;
 import com.server.spontaneous.dto.SpontaneousCourseRequest;
 import com.server.spontaneous.dto.SpontaneousCourseResponse;
 import com.server.spontaneous.dto.SpontaneousDestinationRequest;
 import com.server.spontaneous.dto.SpontaneousDestinationResponse;
+import com.server.spontaneous.dto.SpontaneousScheduleRequest;
 import java.util.function.Supplier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -22,6 +24,7 @@ import org.springframework.web.client.RestClientResponseException;
 public class FastApiSpontaneousClient {
 
     private static final Logger log = LoggerFactory.getLogger(FastApiSpontaneousClient.class);
+    private static final String OWNER_HEADER = "X-Auth-User-Id";
 
     private final RestClient restClient;
     private final FastApiSpontaneousProperties properties;
@@ -63,6 +66,13 @@ public class FastApiSpontaneousClient {
     public SpontaneousCourseResponse recommendCourse(
             SpontaneousCourseRequest request
     ) {
+        return recommendCourse(request, null);
+    }
+
+    public SpontaneousCourseResponse recommendCourse(
+            SpontaneousCourseRequest request,
+            Long ownerId
+    ) {
         ensureEnabled();
 
         try {
@@ -71,6 +81,11 @@ public class FastApiSpontaneousClient {
                     () -> restClient.post()
                             .uri("/api/v1/spontaneous-trips/course")
                             .contentType(MediaType.APPLICATION_JSON)
+                            .headers(headers -> {
+                                if (ownerId != null) {
+                                    headers.set(OWNER_HEADER, ownerId.toString());
+                                }
+                            })
                             .body(request)
                             .retrieve()
                             .body(SpontaneousCourseResponse.class)
@@ -79,6 +94,32 @@ public class FastApiSpontaneousClient {
             throw mapSpontaneousError(exception);
         } catch (ResourceAccessException exception) {
             log.warn("FastAPI spontaneous course access failure: {}", exception.getMessage());
+            throw new BusinessException(ErrorCode.SPONTANEOUS_PROVIDER_UNAVAILABLE, exception);
+        }
+    }
+
+    public ScheduleResponse saveSchedule(
+            SpontaneousScheduleRequest request,
+            String idempotencyKey,
+            Long ownerId
+    ) {
+        ensureEnabled();
+        try {
+            return executeWithLogging(
+                    "saveSchedule",
+                    () -> restClient.post()
+                            .uri("/api/v1/spontaneous-trips/schedules")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .header("Idempotency-Key", idempotencyKey)
+                            .header(OWNER_HEADER, ownerId.toString())
+                            .body(request)
+                            .retrieve()
+                            .body(ScheduleResponse.class)
+            );
+        } catch (RestClientResponseException exception) {
+            throw mapSpontaneousError(exception);
+        } catch (ResourceAccessException exception) {
+            log.warn("FastAPI spontaneous schedule access failure: {}", exception.getMessage());
             throw new BusinessException(ErrorCode.SPONTANEOUS_PROVIDER_UNAVAILABLE, exception);
         }
     }
@@ -123,6 +164,16 @@ public class FastApiSpontaneousClient {
             case "TOUR_API_NOT_CONFIGURED", "ODSAY_AUTH_FAILED", "ODSAY_QUOTA_EXCEEDED",
                     "TMAP_QUOTA_EXCEEDED" ->
                     ErrorCode.SPONTANEOUS_PROVIDER_UNAVAILABLE;
+            case "SPONTANEOUS_PREVIEW_INVALID" -> ErrorCode.SPONTANEOUS_PREVIEW_INVALID;
+            case "SPONTANEOUS_PREVIEW_OWNER_MISMATCH" -> ErrorCode.SPONTANEOUS_PREVIEW_OWNER_MISMATCH;
+            case "SPONTANEOUS_PREVIEW_EXPIRED" -> ErrorCode.SPONTANEOUS_PREVIEW_EXPIRED;
+            case "SPONTANEOUS_PREVIEW_ALREADY_SAVED" -> ErrorCode.SPONTANEOUS_PREVIEW_ALREADY_SAVED;
+            case "SPONTANEOUS_PLACE_HIDDEN" -> ErrorCode.SPONTANEOUS_PLACE_HIDDEN;
+            case "SPONTANEOUS_RETURN_TIME_EXCEEDED" -> ErrorCode.SPONTANEOUS_RETURN_TIME_EXCEEDED;
+            case "SCHEDULE_DATABASE_REQUIRED" -> ErrorCode.SPONTANEOUS_PROVIDER_UNAVAILABLE;
+            case "IDEMPOTENCY_KEY_REQUIRED" -> ErrorCode.IDEMPOTENCY_KEY_REQUIRED;
+            case "IDEMPOTENCY_KEY_REUSED" -> ErrorCode.IDEMPOTENCY_KEY_REUSED;
+            case "SCHEDULE_CREATION_IN_PROGRESS" -> ErrorCode.SCHEDULE_CREATION_IN_PROGRESS;
             default -> fallbackErrorCodeFor(statusCode);
         };
     }

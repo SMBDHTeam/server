@@ -2,6 +2,7 @@ package com.server.schedule.dto;
 
 import java.math.BigDecimal;
 import java.time.LocalTime;
+import java.time.OffsetDateTime;
 import java.util.List;
 
 public record ScheduleMapResponse(
@@ -28,8 +29,19 @@ public record ScheduleMapResponse(
             String subtitle,
             String riskLevel,
             BigDecimal longitude,
-            BigDecimal latitude
+            BigDecimal latitude,
+            OffsetDateTime arriveAtDateTime,
+            OffsetDateTime departAtDateTime
     ) {
+        public StopMarker(
+                int dayNo, int order, Long placeId, String name,
+                LocalTime arriveAt, LocalTime departAt, String subtitle,
+                String riskLevel, BigDecimal longitude, BigDecimal latitude
+        ) {
+            this(dayNo, order, placeId, name, arriveAt, departAt, subtitle,
+                    riskLevel, longitude, latitude, null, null);
+        }
+
         public StopMarker(
                 int dayNo,
                 int order,
@@ -38,7 +50,8 @@ public record ScheduleMapResponse(
                 BigDecimal longitude,
                 BigDecimal latitude
         ) {
-            this(dayNo, order, placeId, name, null, null, null, "NORMAL", longitude, latitude);
+            this(dayNo, order, placeId, name, null, null, null, "NORMAL",
+                    longitude, latitude, null, null);
         }
     }
 

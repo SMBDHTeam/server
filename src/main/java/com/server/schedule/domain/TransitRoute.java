@@ -12,6 +12,7 @@ import jakarta.persistence.OneToOne;
 import jakarta.persistence.OrderBy;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
+import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -63,6 +64,12 @@ public class TransitRoute {
 
     @Column(name = "raw_json", columnDefinition = "text")
     private String rawJson;
+
+    @Column(name = "depart_at_datetime")
+    private OffsetDateTime departAtDateTime;
+
+    @Column(name = "arrive_at_datetime")
+    private OffsetDateTime arriveAtDateTime;
 
     @OrderBy("segmentOrder ASC")
     @OneToMany(mappedBy = "transitRoute", cascade = CascadeType.ALL, orphanRemoval = true)
@@ -174,4 +181,6 @@ public class TransitRoute {
     public List<TransitRouteLine> getRouteLines() {
         return routeLines;
     }
+    public OffsetDateTime getDepartAtDateTime() { return departAtDateTime; }
+    public OffsetDateTime getArriveAtDateTime() { return arriveAtDateTime; }
 }

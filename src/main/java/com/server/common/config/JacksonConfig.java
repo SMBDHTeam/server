@@ -19,4 +19,14 @@ public class JacksonConfig {
                 .disable(DeserializationFeature.ADJUST_DATES_TO_CONTEXT_TIME_ZONE)
                 .build();
     }
+
+    @Bean
+    tools.jackson.databind.json.JsonMapper httpJsonMapper() {
+        return tools.jackson.databind.json.JsonMapper.builder()
+                .findAndAddModules()
+                .disable(tools.jackson.databind.cfg.DateTimeFeature.WRITE_DATES_AS_TIMESTAMPS)
+                .disable(tools.jackson.databind.cfg.DateTimeFeature.WRITE_DATES_WITH_CONTEXT_TIME_ZONE)
+                .disable(tools.jackson.databind.cfg.DateTimeFeature.ADJUST_DATES_TO_CONTEXT_TIME_ZONE)
+                .build();
+    }
 }

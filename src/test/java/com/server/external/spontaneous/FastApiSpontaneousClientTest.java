@@ -1,6 +1,9 @@
 package com.server.external.spontaneous;
 
+import tools.jackson.databind.cfg.DateTimeFeature;
+import tools.jackson.databind.json.JsonMapper;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.client.match.MockRestRequestMatchers.header;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.method;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo;
@@ -13,16 +16,19 @@ import com.server.common.error.ErrorCode;
 import com.server.spontaneous.dto.Coordinate;
 import com.server.spontaneous.dto.SpontaneousCourseRequest;
 import com.server.spontaneous.dto.SpontaneousDestinationRequest;
+import com.server.spontaneous.dto.SpontaneousScheduleRequest;
 import com.server.spontaneous.dto.TransportMode;
 import com.server.spontaneous.dto.TravelTheme;
 import java.time.Duration;
 import java.time.OffsetDateTime;
 import java.util.List;
+import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
+import org.springframework.http.converter.json.JacksonJsonHttpMessageConverter;
 import org.springframework.test.web.client.MockRestServiceServer;
 import org.springframework.web.client.RestClient;
 
@@ -36,7 +42,16 @@ class FastApiSpontaneousClientTest {
     private record Fixture(FastApiSpontaneousClient client, MockRestServiceServer server) { }
 
     private Fixture fixture() {
-        RestClient.Builder builder = RestClient.builder().baseUrl(BASE_URL);
+        var objectMapper = JsonMapper.builder()
+                .findAndAddModules()
+                .disable(DateTimeFeature.ADJUST_DATES_TO_CONTEXT_TIME_ZONE)
+                .build();
+        RestClient.Builder builder = RestClient.builder()
+                .baseUrl(BASE_URL)
+                .messageConverters(converters -> {
+                    converters.removeIf(JacksonJsonHttpMessageConverter.class::isInstance);
+                    converters.add(new JacksonJsonHttpMessageConverter(objectMapper));
+                });
         MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
         FastApiSpontaneousProperties properties = new FastApiSpontaneousProperties(
                 true, BASE_URL, Duration.ofSeconds(3), Duration.ofSeconds(15));
@@ -100,6 +115,7 @@ class FastApiSpontaneousClientTest {
         fixture.server()
                 .expect(requestTo(BASE_URL + "/api/v1/spontaneous-trips/course"))
                 .andExpect(method(HttpMethod.POST))
+                .andExpect(header("X-Auth-User-Id", "42"))
                 .andRespond(withSuccess("""
                         {"destinationId":"BUSAN_GWANGALLI","name":"Gwangalli","transportMode":"CAR",
                         "transport":{"mode":"CAR"},"returnTravelMinutes":19,"finalReturnMinutes":19,
@@ -115,12 +131,43 @@ class FastApiSpontaneousClientTest {
                         "themes":["SEA","WALK"],"score":0.8}]}
                         """, MediaType.APPLICATION_JSON));
 
-        var response = fixture.client().recommendCourse(courseRequest());
+        var response = fixture.client().recommendCourse(courseRequest(), 42L);
 
         assertThat(response.transportMode()).isEqualTo(TransportMode.CAR);
         assertThat(response.estimatedReturnAt()).isEqualTo(OffsetDateTime.parse("2026-09-03T21:30:00+09:00"));
         assertThat(response.course()).hasSize(1);
         assertThat(response.course().get(0).themes()).containsExactly(TravelTheme.SEA, TravelTheme.WALK);
+        fixture.server().verify();
+    }
+
+    @Test
+    @DisplayName("save forwards the token owner and idempotency key and reads common schedule DTO")
+    void saveForwardsTrustedHeadersAndReadsScheduleResponse() {
+        Fixture fixture = fixture();
+        UUID previewId = UUID.fromString("1c50fc08-3dce-49f6-9fd0-106e7308428a");
+        UUID scheduleId = UUID.fromString("f2536c52-69d1-4e6c-8ab6-2ede45dba2cd");
+        fixture.server()
+                .expect(requestTo(BASE_URL + "/api/v1/spontaneous-trips/schedules"))
+                .andExpect(method(HttpMethod.POST))
+                .andExpect(header("Idempotency-Key", "save-once"))
+                .andExpect(header("X-Auth-User-Id", "42"))
+                .andRespond(withSuccess("""
+                        {"id":"f2536c52-69d1-4e6c-8ab6-2ede45dba2cd","status":"CONFIRMED",
+                        "startDate":"2026-09-03","endDate":"2026-09-04",
+                        "dailyStartTime":"23:00:00","dailyEndTime":"01:30:00",
+                        "styleSummary":"spontaneous","days":[],"scheduleType":"SPONTANEOUS",
+                        "transportMode":"CAR","startAt":"2026-09-03T23:00:00+09:00",
+                        "returnBy":"2026-09-04T02:00:00+09:00",
+                        "estimatedReturnAt":"2026-09-04T01:30:00+09:00"}
+                        """, MediaType.APPLICATION_JSON));
+
+        var response = fixture.client().saveSchedule(
+                new SpontaneousScheduleRequest(previewId, "signed-preview-token-with-more-than-thirty-two-characters"),
+                "save-once", 42L);
+
+        assertThat(response.id()).isEqualTo(scheduleId);
+        assertThat(response.scheduleType()).isEqualTo("SPONTANEOUS");
+        assertThat(response.estimatedReturnAt().getDayOfMonth()).isEqualTo(4);
         fixture.server().verify();
     }
 

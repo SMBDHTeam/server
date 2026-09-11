@@ -13,6 +13,7 @@ import java.util.UUID;
 public record ScheduleSummaryResponse(
         @Schema(example = "f2536c52-69d1-4e6c-8ab6-2ede45dba2cd") UUID id,
         @Schema(example = "CONFIRMED") String status,
+        @Schema(example = "SPONTANEOUS", allowableValues = {"PLANNED", "SPONTANEOUS"}) String scheduleType,
         @Schema(example = "2026-09-20") LocalDate startDate,
         @Schema(example = "2026-09-21") LocalDate endDate,
         @Schema(example = "친구와 함께하는 여유로운 자연 중심 일정") String styleSummary,
@@ -44,6 +45,7 @@ public record ScheduleSummaryResponse(
         return new ScheduleSummaryResponse(
                 schedule.id(),
                 schedule.status(),
+                schedule.scheduleType(),
                 schedule.startDate(),
                 schedule.endDate(),
                 schedule.styleSummary(),

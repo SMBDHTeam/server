@@ -750,6 +750,57 @@ Preview의 고정 행사 제약이 실제 일정의 방문지로 배치된 결�
 - 고정 행사 시간은 일반 일정 수정으로 변경하지 않는다.
 - 행사 시간 변경은 새 Preview 기반 재생성 범위로 처리한다.
 
+## 즉흥여행 일정 통합 (V18)
+
+계획 일정과 즉흥 일정은 별도 일정 테이블로 나누지 않고 기존
+`schedules → schedule_days → schedule_stops → transit_routes → transit_segments / transit_route_lines`
+그래프를 공유한다. `V18__spontaneous_schedule_integration.sql`에서 다음 컬럼과 제약을 추가한다.
+
+### `schedules`
+
+| 컬럼 | 자료형 | 키·필수 | 의미 |
+| --- | --- | --- | --- |
+| `schedule_type` | varchar(32) | O, 기본 `PLANNED` | `PLANNED`, `SPONTANEOUS` |
+| `transport_mode` | varchar(32) | X | 즉흥 일정 이동수단 |
+| `start_at` | timestamptz | X | offset을 포함해 받은 출발 순간 |
+| `return_by` | timestamptz | X | 사용자 귀환 제한 순간 |
+| `estimated_return_at` | timestamptz | X | 저장된 마지막 경로의 예상 귀환 순간 |
+| `spontaneous_metadata_json` | text(JSON) | X | `schemaVersion=1`인 목적지·테마·출발/복귀 위치 스냅샷 |
+
+`schedule_type`은 CHECK로 두 값만 허용한다. `user_id`는 기존 소유자 컬럼을 사용한다.
+계획 일정의 기존 행은 migration 기본값으로 `PLANNED`가 된다.
+
+### `schedule_stops`와 `transit_routes`
+
+| 테이블 | 컬럼 | 자료형 | 의미 |
+| --- | --- | --- | --- |
+| `schedule_stops` | `arrive_at_datetime`, `depart_at_datetime` | timestamptz | 자정 경계를 보존하는 방문 도착·출발 순간 |
+| `schedule_stops` | `role` | varchar(32) | 즉흥 코스 역할 |
+| `schedule_stops` | `themes_json` | text(JSON), 기본 `[]` | 방문지가 충족한 테마 |
+| `transit_routes` | `depart_at_datetime`, `arrive_at_datetime` | timestamptz | 경로의 날짜·offset 포함 시작·종료 순간 |
+
+기존 LocalTime 컬럼은 호환용으로 유지한다. 즉흥 일반 방문의 실제 날짜·시간을 고정 행사
+컬럼 `fixed_starts_at`, `fixed_ends_at`에 저장하지 않는다.
+
+### `schedule_creation_requests` 재사용
+
+| 변경 컬럼 | 자료형 | 키·필수 | 의미 |
+| --- | --- | --- | --- |
+| `preview_id` | uuid | planned FK, X | 기존 계획 Preview. 즉흥 요청은 `null` |
+| `user_id` | bigint | users FK, spontaneous O | 멱등성 범위의 인증 사용자 |
+| `request_type` | varchar(32) | O, 기본 `PLANNED` | `PLANNED`, `SPONTANEOUS` |
+| `spontaneous_preview_id` | uuid | spontaneous O | 서명 토큰의 Preview ID |
+
+기존 전역 `idempotency_key` unique 제약은 부분 unique 인덱스로 바꾼다.
+
+- legacy 계획 요청: `idempotency_key` (`user_id IS NULL`)
+- 인증 요청: `(user_id, idempotency_key)`
+- 즉흥 Preview 중복 저장 방지: `(user_id, spontaneous_preview_id)`
+
+이 행의 선점, TourAPI 장소 resolve, 공통 일정 그래프 저장과 `COMPLETED` 전환은 한 DB
+트랜잭션에서 수행한다. 장소는 `places`의 기존 `(source, external_content_id)` unique 기준을
+사용하며, `source='TOUR_API'`인 숨김 행은 재사용하지 않는다.
+
 ## 관계
 
 | 관계 | 의미 |
@@ -768,6 +819,8 @@ Preview의 고정 행사 제약이 실제 일정의 방문지로 배치된 결�
 | `schedules` 1 : N `share_links` | 일정은 여러 공유 링크를 만들 수 있다 |
 | `schedule_previews` 1 : 0..1 `schedules` | Preview는 일정 생성에 최대 한 번 소비된다 |
 | `schedule_previews` 1 : N `schedule_creation_requests` | 한 Preview의 생성 시도와 멱등성 상태를 기록한다 |
+| `users` 1 : N `schedule_creation_requests` | 인증 사용자의 즉흥 저장 키를 사용자 범위로 기록한다 |
+| `schedules` 1 : N `schedule_creation_requests` | 재시도 시 완료된 공통 일정 응답을 가리킨다 |
 | `schedules` 1 : N `schedule_fixed_events` | 일정은 여러 고정 행사를 포함할 수 있다 |
 | `schedule_stops` 1 : 0..1 `schedule_fixed_events` | 방문 계획은 고정 행사와 최대 하나 연결된다 |
 | `users` 1 : N `posts` | 사용자는 여러 게시물을 쓴다 |
