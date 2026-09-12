@@ -1570,12 +1570,18 @@ Provider 응답의 `distanceMeters`가 누락되거나 0 이하이면 서버는 
 | --- | --- |
 | `cursor` | 이전 응답의 `nextCursor`. 첫 페이지는 생략 |
 | `size` | 1~50, 기본 20 |
-| `feed` | `following`이면 팔로우한 사람의 게시물만. 이때 로그인이 필요하다 |
+| `feed` | `following`이면 팔로우한 사람의 게시물만. 이때 로그인이 필요하다. 생략하면 전체다 |
 | `placeId` | 이 장소를 태그한 게시물만 |
 | `category` | 이 해시태그가 달린 게시물만. `#`은 빼고 보낸다 |
 
 `feed`, `placeId`, `category`는 함께 쓸 수 있으며 모두 만족하는 게시물만 반환한다.
 요청자가 차단한 사용자의 게시물은 제외한다.
+
+**`feed`에 쓸 수 있는 값은 `following` 하나다.** 그 밖의 값은 `400 INVALID_POST_REQUEST`이며
+`fieldErrors[].field`가 `feed`다. 대소문자는 가리지 않고, 빈 값(`?feed=`)은 보내지 않은 것과
+같게 본다. 예전에는 모르는 값을 조용히 무시하고 전체 피드를 돌려줬는데, 오타를 내도 목록이
+나와 잘못 부른 줄 모르는 일이 있었다. 인기 피드는 `GET /api/v1/posts/popular`로 경로가 따로
+있으므로 `?feed=popular`가 아니다.
 
 ```json
 {

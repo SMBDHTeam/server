@@ -1,5 +1,6 @@
 package com.server.post.controller;
 
+import com.server.post.domain.FeedScope;
 import com.server.auth.service.AuthenticatedUser;
 import com.server.auth.web.LoginUser;
 import com.server.post.dto.PostCreateRequest;
@@ -33,9 +34,6 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/v1/posts")
 @Tag(name = "커뮤니티 게시물", description = "여행 후기 게시물 작성과 조회")
 public class PostController {
-
-    /** 팔로우한 사람들의 게시물만 볼 때 feed 파라미터에 넣는 값. */
-    private static final String FOLLOWING_FEED = "following";
 
     private final PostService postService;
 
@@ -71,8 +69,8 @@ public class PostController {
             @Parameter(description = "한 번에 가져올 게시물 수. 1 이상 50 이하", example = "20")
             @RequestParam(defaultValue = "20") @Min(1) @Max(50) Integer size,
             @Parameter(description = "following 이면 팔로우한 사람들의 게시물만 반환한다. "
-                    + "이때 로그인이 필요하다.", example = "following")
-            @RequestParam(required = false) String feed,
+                    + "이때 로그인이 필요하다. 생략하면 전체다.", example = "following")
+            @RequestParam(required = false) FeedScope feed,
             @Parameter(description = "이 장소를 태그한 게시물만 반환한다.", example = "1")
             @RequestParam(required = false) Long placeId,
             @Parameter(description = "이 카테고리가 붙은 게시물만 반환한다. "
@@ -82,7 +80,7 @@ public class PostController {
     ) {
         Long requesterId = LoginUser.require(loginUser);
         return postService.getFeed(
-                cursor, size, FOLLOWING_FEED.equals(feed), placeId, category, requesterId);
+                cursor, size, isFollowing(feed), placeId, category, requesterId);
     }
 
     @GetMapping("/popular")
@@ -98,8 +96,8 @@ public class PostController {
             @Parameter(description = "한 번에 가져올 게시물 수. 1 이상 50 이하", example = "20")
             @RequestParam(defaultValue = "20") @Min(1) @Max(50) Integer size,
             @Parameter(description = "following 이면 팔로우한 사람들의 게시물만 반환한다. "
-                    + "이때 로그인이 필요하다.", example = "following")
-            @RequestParam(required = false) String feed,
+                    + "이때 로그인이 필요하다. 생략하면 전체다.", example = "following")
+            @RequestParam(required = false) FeedScope feed,
             @Parameter(description = "이 장소를 태그한 게시물만 반환한다.", example = "1")
             @RequestParam(required = false) Long placeId,
             @Parameter(description = "이 카테고리가 붙은 게시물만 반환한다. 최신 피드와 같은 "
@@ -109,7 +107,7 @@ public class PostController {
     ) {
         Long requesterId = LoginUser.require(loginUser);
         return postService.getPopularFeed(
-                page, size, FOLLOWING_FEED.equals(feed), placeId, category, requesterId);
+                page, size, isFollowing(feed), placeId, category, requesterId);
     }
 
     @GetMapping("/{postId}")
@@ -204,4 +202,10 @@ public class PostController {
         Long userId = LoginUser.require(loginUser);
         return postService.unlike(postId, userId);
     }
+
+    /** 값을 보내지 않으면 전체 피드다. */
+    private boolean isFollowing(FeedScope feed) {
+        return feed != null && feed.isFollowing();
+    }
+
 }

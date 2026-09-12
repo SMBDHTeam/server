@@ -41,6 +41,15 @@ class PagingTest {
     }
 
     @Test
+    @DisplayName("기본값과 상한을 따로 줄 수 있다")
+    void acceptsOwnBounds() {
+        // 자동완성처럼 화면이 짧게 보여주는 목록은 기본 10, 최대 30 이다.
+        assertThat(Paging.size(null, 10, 30)).isEqualTo(10);
+        assertThat(Paging.size(50, 10, 30)).isEqualTo(30);
+        assertThat(Paging.size(5, 10, 30)).isEqualTo(5);
+    }
+
+    @Test
     @DisplayName("음수나 0 은 기본값으로 되돌린다")
     void fallsBackOnInvalidValues() {
         // 화면을 비우는 것보다 20개를 보여주는 편이 낫다. 목록은 화면이 열릴 때마다 부른다.
