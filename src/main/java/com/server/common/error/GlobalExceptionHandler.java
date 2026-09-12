@@ -111,6 +111,17 @@ public class GlobalExceptionHandler {
                         exception.getErrorCode(), traceId(request), exception.getScheduleId()));
     }
 
+    @ExceptionHandler(SpontaneousPreviewAlreadySavedException.class)
+    public ResponseEntity<ErrorResponse> handleSpontaneousPreviewAlreadySaved(
+            SpontaneousPreviewAlreadySavedException exception,
+            HttpServletRequest request
+    ) {
+        return ResponseEntity
+                .status(exception.getErrorCode().getStatus())
+                .body(ErrorResponse.withScheduleId(
+                        exception.getErrorCode(), traceId(request), exception.getScheduleId()));
+    }
+
     /**
      * 본문 JSON이 깨졌거나 비어 있을 때. 예전에는 핸들러가 없어 Spring 기본 응답이 나가
      * code와 traceId가 없는 본문을 클라이언트가 받았다.

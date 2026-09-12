@@ -80,6 +80,57 @@ TMAP HTTP 429는 DATA의 `503 / detail: TMAP_QUOTA_EXCEEDED`를 거쳐 SERVER의
 `message`는 "여행 정보 제공 서비스를 현재 사용할 수 없습니다. 잠시 후 다시 시도해 주세요."이며,
 `fieldErrors=[]`와 `traceId`를 포함하는 공통 오류 형식을 유지한다. DATA의 `detail`은 공개 필드가 아니다.
 
+### 2-3. 즉흥 코스 Preview와 저장 필드
+
+`POST /api/v1/spontaneous-trips/course`는 인증된 사용자의 저장 가능한 계산 결과를 반환한다.
+
+| 응답 필드 | 자료형 | 필수 | 의미 |
+| --- | --- | :---: | --- |
+| `previewId` | string(UUID) | O | 저장 시 본문에 다시 전달할 Preview ID |
+| `previewToken` | string | O | 사용자·만료·결과가 서명된 불투명 토큰. 수정하거나 디코딩하지 않음 |
+| `previewExpiresAt` | string(datetime) | O | 토큰 만료시각 |
+| `startLocation` | object | O | 요청에서 검증된 출발·복귀 위치. `name`, `address`는 없을 수 있음 |
+| `startAt` | string(datetime) | O | offset이 포함된 출발시각 |
+| `estimatedReturnAt` | string(datetime) | O | 마지막 실제 복귀 경로까지 반영한 예상 귀환시각 |
+| `course[].place` | object | O | 공통 `ScheduleResponse.Place` 모양의 장소. 저장 전 `id`는 `null` |
+| `course[].inboundTransit` | object | O | 이전 지점에서 방문지로 들어오는 실제 경로 |
+| `finalTransit` | object | O | 마지막 방문지에서 복귀 위치로 가는 실제 경로 |
+| `routeLines` | array | O | 진입·복귀 경로의 지도선. 경로/선 순서를 함께 포함 |
+
+`POST /api/v1/spontaneous-trips/schedules` 요청은 Header `Idempotency-Key`와 Body
+`previewId`, `previewToken`이 모두 필수다. 성공 응답은 별도 즉흥 DTO가 아니라 공통
+`ScheduleResponse`다. 이미 저장된 Preview를 다른 키로 보내 받은
+`409 SPONTANEOUS_PREVIEW_ALREADY_SAVED` 오류에는 기존 `scheduleId`가 포함된다.
+
+공통 일정 응답에는 다음 필드가 추가된다. 계획 일정은 `scheduleType=PLANNED`이고 나머지
+즉흥 전용 필드는 `null` 또는 생략될 수 있다.
+
+| 응답 필드 | 자료형 | 필수 | 의미 |
+| --- | --- | :---: | --- |
+| `scheduleType` | string | O | `PLANNED`, `SPONTANEOUS` |
+| `transportMode` | string/null | X | 즉흥 코스 이동수단 `WALK`, `CAR`, `PUBLIC_TRANSIT` |
+| `startAt` | string(datetime)/null | X | 즉흥 일정 출발시각. 저장 조회는 `Asia/Seoul`(+09:00)로 정규화 |
+| `returnBy` | string(datetime)/null | X | 사용자가 지정한 귀환 제한시각. 저장 조회는 `Asia/Seoul`(+09:00)로 정규화 |
+| `estimatedReturnAt` | string(datetime)/null | X | 저장된 경로 기준 예상 귀환시각. 저장 조회는 `Asia/Seoul`(+09:00)로 정규화 |
+| `spontaneousMetadata.schemaVersion` | integer | 조건부 | 현재 `1` |
+| `spontaneousMetadata.previewId` | string(UUID) | 조건부 | 원본 즉흥 Preview |
+| `spontaneousMetadata.destinationId` | string | 조건부 | 추천 권역 ID |
+| `spontaneousMetadata.destinationName` | string | 조건부 | 추천 권역 표시명 |
+| `spontaneousMetadata.desiredThemes` | array | 조건부 | 요청 테마 스냅샷 |
+| `spontaneousMetadata.startLocation` | object | 조건부 | 출발 위치 스냅샷 |
+| `spontaneousMetadata.returnLocation` | object | 조건부 | 복귀 위치 스냅샷 |
+| `days[].stops[].arriveAtDateTime` | string(datetime)/null | X | 날짜와 offset을 포함한 도착시각 |
+| `days[].stops[].departAtDateTime` | string(datetime)/null | X | 날짜와 offset을 포함한 출발시각 |
+| `days[].stops[].role` | string/null | X | `ACTIVITY`, `MEAL`, `CAFE`, `NIGHT_VIEW` |
+| `days[].stops[].themes` | array | O | 해당 방문지가 충족한 즉흥 테마 |
+| `days[].stops[].inboundTransit.departAtDateTime` | string(datetime)/null | X | 이동 시작 날짜·시각·offset |
+| `days[].stops[].inboundTransit.arriveAtDateTime` | string(datetime)/null | X | 이동 종료 날짜·시각·offset |
+
+기존 `arriveAt`, `departAt` LocalTime 필드는 계획 일정과 구버전 클라이언트 호환용으로 함께
+유지한다. 즉흥 일정에서 날짜 경계를 판단할 때는 반드시 `*DateTime`을 사용한다. 저장된 즉흥
+일정의 stop/transit `*DateTime`도 조회 시 `Asia/Seoul`(+09:00)로 정규화한다.
+`fixedStartsAt`, `fixedEndsAt`은 고정 행사용이며 일반 즉흥 방문시각 저장에 사용하지 않는다.
+
 ## 일정 생성 V2 필드
 
 ### V2-1. 질문 조회 추가 필드

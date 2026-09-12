@@ -68,8 +68,8 @@ public class SecurityConfig {
         // 커뮤니티는 X-User-Id 를 걷어내면서 함께 걸었다. 공유 링크로 들어온 사람이 그 글
         // 하나는 볼 수 있게 열고, 나머지는 로그인을 요구한다.
         //
-        // 일정 API 는 아직 걸지 않는다. 인증 없이 만든 일정이 남아 있어 사용자 범위를
-        // 함께 정해야 한다.
+        // 기존 일정 API 는 인증 없이 만든 데이터의 사용자 범위를 정할 때까지 현행 정책을
+        // 유지한다. 다만 즉흥 코스 Preview와 저장은 서명 소유자 검증이 필요하므로 로그인 필수다.
         http.authorizeHttpRequests(authorize -> authorize
                 .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")
 
@@ -77,6 +77,9 @@ public class SecurityConfig {
                 .requestMatchers("/api/v1/notifications/**").authenticated()
                 .requestMatchers("/api/v1/users/me/**").authenticated()
                 .requestMatchers(HttpMethod.GET, "/api/v1/posts/me/deleted").authenticated()
+                .requestMatchers(HttpMethod.POST,
+                        "/api/v1/spontaneous-trips/course",
+                        "/api/v1/spontaneous-trips/schedules").authenticated()
 
                 // 공유 링크로 들어온 사람이 그 글과 댓글까지는 볼 수 있어야 한다. 여기만
                 // 열고 목록·프로필·검색은 막는다. 앱은 로그인해야 들어오는 구조라, 둘러보기는

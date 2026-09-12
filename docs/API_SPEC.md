@@ -26,6 +26,8 @@
 | 사전 질문 조회 | GET | `/trip-questions` | `200 OK` |
 | 출발지·도착지 검색 | GET | `/locations/search` | `200 OK` |
 | 즉흥여행 부산 출발지 검색 | GET | `/spontaneous-trips/start-locations/search` | `200 OK` |
+| 즉흥여행 코스 Preview | POST | `/spontaneous-trips/course` | `200 OK` |
+| 즉흥여행 일정 저장 | POST | `/spontaneous-trips/schedules` | `201 Created` |
 | 일정 Planner 생성 | POST | `/schedules` | `201 Created` |
 | 일정 목록 조회 | GET | `/schedules` | `200 OK` |
 | 일정 수정 | PATCH | `/schedules/{scheduleId}` | `200 OK` |
@@ -211,6 +213,86 @@ TMAP 호출 한도 초과는 다음과 같이 변환한다.
 "여행 정보 제공 서비스를 현재 사용할 수 없습니다. 잠시 후 다시 시도해 주세요."이다.
 기존 `TOUR_API_NOT_CONFIGURED`, `ODSAY_AUTH_FAILED`, `ODSAY_QUOTA_EXCEEDED`의
 `503 SPONTANEOUS_PROVIDER_UNAVAILABLE` 매핑은 유지한다.
+
+### 2-3. 즉흥여행 코스 Preview와 명시적 저장
+
+`POST /api/v1/spontaneous-trips/course`는 Bearer 인증이 필요한 계산 전용 Preview API다.
+기존 코스 요청에 대해 실제 stop별 장소·진입 경로, 마지막 복귀 경로와 지도선을 반환하고,
+저장에 사용할 불투명한 `previewToken`을 함께 발급한다.
+
+```json
+{
+  "destinationId": "BUSAN_GWANGALLI",
+  "startLocation": {"name": "부산역", "longitude": 129.0403, "latitude": 35.1151},
+  "startAt": "2026-09-11T20:30:00+09:00",
+  "returnBy": "2026-09-12T01:00:00+09:00",
+  "transportMode": "PUBLIC_TRANSIT",
+  "estimatedReturnAt": "2026-09-12T00:42:00+09:00",
+  "course": [
+    {
+      "order": 1,
+      "role": "MEAL",
+      "themes": ["FOOD"],
+      "arrivalAt": "2026-09-11T21:05:00+09:00",
+      "departureAt": "2026-09-11T22:05:00+09:00",
+      "place": {"id": null, "name": "예시 장소", "category": "39"},
+      "inboundTransit": {"routeType": "INBOUND", "routeOrder": 1, "segments": []}
+    }
+  ],
+  "finalTransit": {"routeType": "FINAL", "routeOrder": 2, "segments": []},
+  "routeLines": [],
+  "previewId": "preview-uuid",
+  "previewToken": "opaque-signed-token",
+  "previewExpiresAt": "2026-09-11T12:20:00Z"
+}
+```
+
+- `startAt`, `returnBy`, stop·transit의 `*DateTime`, `estimatedReturnAt`은 offset을 포함한다.
+  자정을 넘는 일정도 날짜와 offset을 그대로 보존한다.
+- 경로에는 Provider가 실제로 준 모드(`WALK`, `CAR`, `PUBLIC_TRANSIT`), 구간, 노선,
+  실시간 상태, fallback 여부와 경고만 담는다. 확인하지 못한 요금·역·좌표·안내를 만들지 않는다.
+- 이 호출은 `schedules`, `schedule_days`, `schedule_stops`, `transit_*`, `places`,
+  `place_images`를 포함한 비즈니스 테이블을 쓰지 않는다.
+- `previewToken`은 Preview ID, 만료시각, 인증 사용자와 계산 결과 전체를 HMAC으로 보호한다.
+  클라이언트는 내용을 해석하거나 수정하지 않고 그대로 보관한다.
+
+사용자가 저장을 확정할 때만 `POST /api/v1/spontaneous-trips/schedules`를 호출한다.
+Bearer 인증과 `Idempotency-Key` 헤더가 필수다.
+
+```http
+Authorization: Bearer <access-token>
+Idempotency-Key: 08bd0f0a-59c0-4ca5-bbda-c0fa73358ac9
+Content-Type: application/json
+```
+
+```json
+{
+  "previewId": "preview-uuid",
+  "previewToken": "opaque-signed-token"
+}
+```
+
+서버는 토큰의 서명·만료·사용자·Preview ID를 검증한 뒤 서명된 결과를 그대로 공통
+`ScheduleResponse`로 저장한다. Planner와 외부 API를 다시 실행하거나 방문지·경로를 조용히
+바꾸지 않는다. 장소 해석, 공통 일정 그래프 저장, 멱등성 완료 처리는 한 트랜잭션이며 커밋 뒤
+`201 Created`를 반환한다.
+
+- 같은 사용자·같은 키·같은 요청은 동시 요청을 포함해 같은 `scheduleId`를 반환한다.
+- 같은 사용자·같은 키에 다른 토큰을 쓰면 `409 IDEMPOTENCY_KEY_REUSED`다.
+- 같은 사용자가 이미 저장한 Preview를 다른 키로 다시 저장하면
+  `409 SPONTANEOUS_PREVIEW_ALREADY_SAVED`이며 공통 오류 응답의 `scheduleId`로 기존 일정을
+  바로 조회할 수 있다.
+- TourAPI 장소는 `(source='TOUR_API', external_content_id=contentId)`로만 식별한다. 이름으로
+  합치지 않으며 숨김 장소는 `422 SPONTANEOUS_PLACE_HIDDEN`, 없는 장소는 검증된
+  discovery `PENDING` 행으로 생성한다.
+- 변조·형식 오류는 `400 SPONTANEOUS_PREVIEW_INVALID`, 다른 사용자 토큰은
+  `403 SPONTANEOUS_PREVIEW_OWNER_MISMATCH`, 만료는 `410 SPONTANEOUS_PREVIEW_EXPIRED`다.
+- 저장된 즉흥 일정의 PATCH는 `scheduleType`, 소유자, 교통수단, 귀환 제한과 메타데이터를
+  보존한 채 실제 경로를 다시 계산한다. 귀환 제한을 넘으면
+  `422 SPONTANEOUS_RETURN_TIME_EXCEEDED`이며 변경을 저장하지 않는다.
+- 저장 뒤 목록·상세·PATCH 응답의 `startAt`, `returnBy`, `estimatedReturnAt`과 stop/transit
+  `*DateTime`은 동일 순간을 `Asia/Seoul`(+09:00)로 정규화한다. PostgreSQL 세션 시간대가
+  UTC여도 자정 경계가 전날로 바뀌지 않는다.
 
 ## 일정 생성 V2 계약
 

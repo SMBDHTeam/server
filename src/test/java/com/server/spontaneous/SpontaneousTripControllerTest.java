@@ -1,6 +1,8 @@
 package com.server.spontaneous;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
@@ -10,11 +12,14 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.server.auth.service.AuthenticatedUser;
 import com.server.common.error.BusinessException;
 import com.server.common.error.ErrorCode;
 import com.server.common.error.GlobalExceptionHandler;
+import com.server.common.error.SpontaneousPreviewAlreadySavedException;
 import com.server.common.web.TraceIdFilter;
 import com.server.external.spontaneous.FastApiSpontaneousClient;
+import com.server.schedule.dto.ScheduleResponse;
 import com.server.spontaneous.dto.CourseRole;
 import com.server.spontaneous.dto.CourseStop;
 import com.server.spontaneous.dto.DestinationRecommendation;
@@ -22,18 +27,25 @@ import com.server.spontaneous.dto.SpontaneousCourseRequest;
 import com.server.spontaneous.dto.SpontaneousCourseResponse;
 import com.server.spontaneous.dto.SpontaneousDestinationRequest;
 import com.server.spontaneous.dto.SpontaneousDestinationResponse;
+import com.server.spontaneous.dto.SpontaneousScheduleRequest;
 import com.server.spontaneous.dto.TransportMode;
 import com.server.spontaneous.dto.TransportSummary;
 import com.server.spontaneous.dto.TravelTheme;
+import com.server.user.domain.UserRole;
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.List;
+import java.util.UUID;
 import java.util.stream.Stream;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.springframework.http.MediaType;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
@@ -51,6 +63,11 @@ class SpontaneousTripControllerTest {
             .setControllerAdvice(new GlobalExceptionHandler())
             .addFilters(new TraceIdFilter())
             .build();
+
+    @AfterEach
+    void clearSecurityContext() {
+        SecurityContextHolder.clearContext();
+    }
 
     @Test
     @DisplayName("/destinations 부산 밖 출발지는 FastAPI 호출 없이 400으로 차단한다")
@@ -95,7 +112,8 @@ class SpontaneousTripControllerTest {
                         1200,
                         new TransportSummary(TransportMode.CAR, 12, 15, 260)
                 ))));
-        when(fastApiSpontaneousClient.recommendCourse(any(SpontaneousCourseRequest.class)))
+        when(fastApiSpontaneousClient.recommendCourse(
+                any(SpontaneousCourseRequest.class), isNull()))
                 .thenReturn(new SpontaneousCourseResponse(
                         "BUSAN_GWANGALLI",
                         "광안리·민락",
@@ -132,7 +150,107 @@ class SpontaneousTripControllerTest {
                 .andExpect(jsonPath("$.destinationId").value("BUSAN_GWANGALLI"));
 
         verify(fastApiSpontaneousClient).recommendDestinations(any(SpontaneousDestinationRequest.class));
-        verify(fastApiSpontaneousClient).recommendCourse(any(SpontaneousCourseRequest.class));
+        verify(fastApiSpontaneousClient).recommendCourse(
+                any(SpontaneousCourseRequest.class), isNull());
+    }
+
+    @Test
+    @DisplayName("/schedules는 토큰의 현재 사용자와 멱등성 키를 FastAPI에 전달한다")
+    void saveScheduleForwardsAuthenticatedOwnerAndIdempotencyKey() throws Exception {
+        UUID previewId = UUID.fromString("d9f1121a-33e1-4c77-9c96-e0ca35a268f0");
+        String previewToken = "signed-preview-token-with-more-than-thirty-two-characters";
+        ScheduleResponse saved = new ScheduleResponse(
+                UUID.fromString("b67b650a-4605-454d-859d-e434729ff3f2"),
+                "CONFIRMED",
+                LocalDate.of(2026, 9, 11),
+                LocalDate.of(2026, 9, 12),
+                null,
+                null,
+                "즉흥여행 · 광안리·민락",
+                List.of(),
+                null,
+                null,
+                null,
+                "SPONTANEOUS",
+                "PUBLIC_TRANSIT",
+                OffsetDateTime.parse("2026-09-11T20:30:00+09:00"),
+                OffsetDateTime.parse("2026-09-12T01:00:00+09:00"),
+                OffsetDateTime.parse("2026-09-12T00:42:00+09:00"),
+                java.util.Map.of("schemaVersion", 1)
+        );
+        when(fastApiSpontaneousClient.saveSchedule(
+                eq(new SpontaneousScheduleRequest(previewId, previewToken)),
+                eq("save-once"),
+                eq(42L))).thenReturn(saved);
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken(
+                        new AuthenticatedUser(42L, UserRole.USER), null, List.of()));
+
+        mockMvc.perform(post("/api/v1/spontaneous-trips/schedules")
+                        .header("Idempotency-Key", "save-once")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "previewId": "%s",
+                                  "previewToken": "%s"
+                                }
+                                """.formatted(previewId, previewToken)))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.id").value("b67b650a-4605-454d-859d-e434729ff3f2"))
+                .andExpect(jsonPath("$.scheduleType").value("SPONTANEOUS"));
+
+        verify(fastApiSpontaneousClient).saveSchedule(
+                new SpontaneousScheduleRequest(previewId, previewToken), "save-once", 42L);
+    }
+
+    @Test
+    @DisplayName("/schedules의 멱등성 키가 없으면 명시적인 400 오류를 반환한다")
+    void saveScheduleRequiresIdempotencyKey() throws Exception {
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken(
+                        new AuthenticatedUser(42L, UserRole.USER), null, List.of()));
+
+        mockMvc.perform(post("/api/v1/spontaneous-trips/schedules")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "previewId": "d9f1121a-33e1-4c77-9c96-e0ca35a268f0",
+                                  "previewToken": "signed-preview-token-with-more-than-thirty-two-characters"
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("IDEMPOTENCY_KEY_REQUIRED"));
+
+        verifyNoInteractions(fastApiSpontaneousClient);
+    }
+
+    @Test
+    @DisplayName("이미 저장된 Preview는 기존 scheduleId를 409 응답에 포함한다")
+    void alreadySavedPreviewReturnsExistingScheduleId() throws Exception {
+        UUID previewId = UUID.fromString("d9f1121a-33e1-4c77-9c96-e0ca35a268f0");
+        UUID scheduleId = UUID.fromString("b67b650a-4605-454d-859d-e434729ff3f2");
+        String previewToken = "signed-preview-token-with-more-than-thirty-two-characters";
+        when(fastApiSpontaneousClient.saveSchedule(
+                eq(new SpontaneousScheduleRequest(previewId, previewToken)),
+                eq("different-key"),
+                eq(42L)))
+                .thenThrow(new SpontaneousPreviewAlreadySavedException(scheduleId, null));
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken(
+                        new AuthenticatedUser(42L, UserRole.USER), null, List.of()));
+
+        mockMvc.perform(post("/api/v1/spontaneous-trips/schedules")
+                        .header("Idempotency-Key", "different-key")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "previewId": "%s",
+                                  "previewToken": "%s"
+                                }
+                                """.formatted(previewId, previewToken)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("SPONTANEOUS_PREVIEW_ALREADY_SAVED"))
+                .andExpect(jsonPath("$.scheduleId").value(scheduleId.toString()));
     }
 
     @ParameterizedTest
@@ -164,7 +282,8 @@ class SpontaneousTripControllerTest {
     void courseErrorResponseUsesKoreanMessage(
             ErrorCode errorCode, int httpStatus, String message
     ) throws Exception {
-        when(fastApiSpontaneousClient.recommendCourse(any(SpontaneousCourseRequest.class)))
+        when(fastApiSpontaneousClient.recommendCourse(
+                any(SpontaneousCourseRequest.class), isNull()))
                 .thenThrow(new BusinessException(errorCode));
 
         mockMvc.perform(post("/api/v1/spontaneous-trips/course")
@@ -178,7 +297,8 @@ class SpontaneousTripControllerTest {
                 .andExpect(jsonPath("$.traceId").isNotEmpty())
                 .andExpect(jsonPath("$.detail").doesNotExist());
 
-        verify(fastApiSpontaneousClient).recommendCourse(any(SpontaneousCourseRequest.class));
+        verify(fastApiSpontaneousClient).recommendCourse(
+                any(SpontaneousCourseRequest.class), isNull());
     }
 
     private static Stream<Arguments> spontaneousErrors() {

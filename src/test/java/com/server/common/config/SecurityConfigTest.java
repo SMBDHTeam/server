@@ -13,6 +13,7 @@ import com.server.location.service.LocationSearchService;
 import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.springframework.http.MediaType;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
@@ -37,6 +38,20 @@ class SecurityConfigTest {
         mockMvc.perform(get("/api/v1/locations/search").param("keyword", "부산역"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.items").isArray());
+    }
+
+    @Test
+    @DisplayName("즉흥 코스 생성과 저장은 로그인해야 한다")
+    void spontaneousCourseAndSaveRequireLogin() throws Exception {
+        mockMvc.perform(post("/api/v1/spontaneous-trips/course")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isUnauthorized());
+        mockMvc.perform(post("/api/v1/spontaneous-trips/schedules")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .header("Idempotency-Key", "save-once")
+                        .content("{}"))
+                .andExpect(status().isUnauthorized());
     }
 
     @Test

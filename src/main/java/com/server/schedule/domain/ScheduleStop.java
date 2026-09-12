@@ -11,6 +11,7 @@ import jakarta.persistence.OneToOne;
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
+import java.time.LocalTime;
 import java.util.UUID;
 import java.time.OffsetDateTime;
 
@@ -40,6 +41,24 @@ public class ScheduleStop {
 
     @Column(name = "stay_minutes", nullable = false)
     private int stayMinutes;
+
+    @Column(name = "arrive_at")
+    private LocalTime arriveAt;
+
+    @Column(name = "depart_at")
+    private LocalTime departAt;
+
+    @Column(name = "arrive_at_datetime")
+    private OffsetDateTime arriveAtDateTime;
+
+    @Column(name = "depart_at_datetime")
+    private OffsetDateTime departAtDateTime;
+
+    @Column(name = "role")
+    private String role;
+
+    @Column(name = "themes_json", nullable = false, columnDefinition = "text")
+    private String themesJson = "[]";
 
     @Column(name = "selection_reasons_json", nullable = false, columnDefinition = "text")
     private String selectionReasonsJson = "[]";
@@ -128,6 +147,12 @@ public class ScheduleStop {
     public int getStayMinutes() {
         return stayMinutes;
     }
+    public LocalTime getArriveAt() { return arriveAt; }
+    public LocalTime getDepartAt() { return departAt; }
+    public OffsetDateTime getArriveAtDateTime() { return arriveAtDateTime; }
+    public OffsetDateTime getDepartAtDateTime() { return departAtDateTime; }
+    public String getRole() { return role; }
+    public String getThemesJson() { return themesJson; }
 
     public String getSelectionReasonsJson() {
         return selectionReasonsJson;

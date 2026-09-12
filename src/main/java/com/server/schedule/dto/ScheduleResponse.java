@@ -5,7 +5,9 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalTime;
+import java.time.OffsetDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 public record ScheduleResponse(
@@ -21,8 +23,30 @@ public record ScheduleResponse(
         List<Day> days,
         @JsonInclude(JsonInclude.Include.NON_NULL) ScheduleEvaluationReport evaluation,
         @JsonInclude(JsonInclude.Include.NON_NULL) UUID previewId,
-        @JsonInclude(JsonInclude.Include.NON_NULL) PlanningAssumptions planningAssumptions
+        @JsonInclude(JsonInclude.Include.NON_NULL) PlanningAssumptions planningAssumptions,
+        String scheduleType,
+        @JsonInclude(JsonInclude.Include.NON_NULL) String transportMode,
+        @JsonInclude(JsonInclude.Include.NON_NULL) OffsetDateTime startAt,
+        @JsonInclude(JsonInclude.Include.NON_NULL) OffsetDateTime returnBy,
+        @JsonInclude(JsonInclude.Include.NON_NULL) OffsetDateTime estimatedReturnAt,
+        @JsonInclude(JsonInclude.Include.NON_NULL) Map<String, Object> spontaneousMetadata
 ) {
+    public ScheduleResponse {
+        scheduleType = scheduleType == null ? "PLANNED" : scheduleType;
+        spontaneousMetadata = spontaneousMetadata == null ? null : Map.copyOf(spontaneousMetadata);
+    }
+
+    public ScheduleResponse(
+            UUID id, String status, LocalDate startDate, LocalDate endDate,
+            LocalTime dailyStartTime, LocalTime dailyEndTime, String styleSummary,
+            List<Day> days, ScheduleEvaluationReport evaluation, UUID previewId,
+            PlanningAssumptions planningAssumptions
+    ) {
+        this(id, status, startDate, endDate, dailyStartTime, dailyEndTime,
+                styleSummary, days, evaluation, previewId, planningAssumptions,
+                "PLANNED", null, null, null, null, null);
+    }
+
     public ScheduleResponse(
             UUID id,
             String status,
@@ -139,8 +163,23 @@ public record ScheduleResponse(
             String mealTimeSlot,
             int waitingMinutesBefore,
             List<String> selectionReasons,
-            List<String> warnings
+            List<String> warnings,
+            OffsetDateTime arriveAtDateTime,
+            OffsetDateTime departAtDateTime,
+            String role,
+            List<String> themes
     ) {
+        public Stop(
+                UUID id, int order, LocalTime arriveAt, LocalTime departAt,
+                int stayMinutes, Place place, Transit inboundTransit,
+                String mealTimeSlot, int waitingMinutesBefore,
+                List<String> selectionReasons, List<String> warnings
+        ) {
+            this(id, order, arriveAt, departAt, stayMinutes, place, inboundTransit,
+                    mealTimeSlot, waitingMinutesBefore, selectionReasons, warnings,
+                    null, null, null, List.of());
+        }
+
         public Stop(
                 UUID id,
                 int order,
@@ -228,8 +267,24 @@ public record ScheduleResponse(
             String realtimeStatus,
             boolean fallbackUsed,
             List<Segment> segments,
-            List<String> warnings
+            List<String> warnings,
+            OffsetDateTime departAtDateTime,
+            OffsetDateTime arriveAtDateTime
     ) {
+        public Transit(
+                String routeType, int routeOrder, String originName,
+                String destinationName, String summary, LocalTime departAt,
+                LocalTime arriveAt, int totalMinutes, int walkMinutes,
+                int waitMinutes, int transferCount, Integer fareAmount,
+                String provider, String realtimeStatus, boolean fallbackUsed,
+                List<Segment> segments, List<String> warnings
+        ) {
+            this(routeType, routeOrder, originName, destinationName, summary,
+                    departAt, arriveAt, totalMinutes, walkMinutes, waitMinutes,
+                    transferCount, fareAmount, provider, realtimeStatus,
+                    fallbackUsed, segments, warnings, null, null);
+        }
+
         public Transit(
                 int totalMinutes,
                 Integer fareAmount,
