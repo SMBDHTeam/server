@@ -2,6 +2,17 @@
 
 API 계약이 변경될 때마다 최신 항목을 위에 추가한다.
 
+## 2026-09-13 (장소 위시리스트 추가)
+
+- API: `POST /api/v1/places/{placeId}/wishlists`, `DELETE /api/v1/places/{placeId}/wishlists`, `GET /api/v1/users/me/wishlists`
+- 구분: 추가
+- 이전: 가 보고 싶은 장소를 담아 둘 곳이 없었다. 게시물 저장(`bookmarks`)은 대상이 게시물이라 쓸 수 없다.
+- 이후: 장소를 담아 두고 일정을 만들 때 `mustVisitPlaceIds` 로 넘긴다. 일정 생성 계약은 그대로라 서버·FastAPI 변경이 없다.
+- 이유: 커뮤니티에서 본 인기 장소를 담아 두었다가 일정으로 잇는 흐름을 만든다.
+- 호환성 파괴: 없음. 새 경로다.
+- DB/ERD: `V19__create_place_wishlists.sql`. `place_wishlists (user_id, place_id, created_at)` 를 추가한다.
+- 인가: `SecurityConfig` 에 `/api/v1/places/*/wishlists` 를 로그인 필수로 더했다. 장소 조회는 열린 채로 둔다.
+
 ## 2026-09-12 (피드 feed 파라미터 검증)
 
 - API: `GET /api/v1/posts`, `GET /api/v1/posts/popular`
