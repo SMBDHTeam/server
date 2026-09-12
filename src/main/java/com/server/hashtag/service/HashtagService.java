@@ -1,14 +1,15 @@
 package com.server.hashtag.service;
 
+import com.server.common.support.Paging;
 import com.server.hashtag.domain.Hashtag;
 import com.server.hashtag.dto.HashtagPlaceListResponse;
 import com.server.hashtag.dto.HashtagPlaceResponse;
 import com.server.hashtag.dto.HashtagSuggestionListResponse;
 import com.server.hashtag.dto.HashtagSuggestionResponse;
+import com.server.hashtag.dto.PostHashtagNameView;
 import com.server.hashtag.repository.HashtagRepository;
 import com.server.hashtag.repository.PostHashtagRepository;
 import com.server.post.domain.Post;
-import java.math.BigDecimal;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
@@ -167,9 +168,7 @@ public class HashtagService {
         if (keyword == null || keyword.isBlank()) {
             return new HashtagSuggestionListResponse(List.of());
         }
-        int limit = size == null || size <= 0
-                ? DEFAULT_SUGGESTION_SIZE
-                : Math.min(size, MAX_SUGGESTION_SIZE);
+        int limit = Paging.size(size, DEFAULT_SUGGESTION_SIZE, MAX_SUGGESTION_SIZE);
 
         List<HashtagSuggestionResponse> items = hashtagRepository
                 .findByNameStartingWithOrderByPostCountDescNameAsc(
@@ -191,24 +190,22 @@ public class HashtagService {
         if (keyword == null || keyword.isBlank()) {
             return new HashtagPlaceListResponse(List.of());
         }
-        int limit = size == null || size <= 0
-                ? DEFAULT_PLACE_SIZE
-                : Math.min(size, MAX_PLACE_SIZE);
+        int limit = Paging.size(size, DEFAULT_PLACE_SIZE, MAX_PLACE_SIZE);
 
         List<HashtagPlaceResponse> items = postHashtagRepository.findPlacesByHashtag(
                         keyword.trim().toLowerCase(),
                         minAuthorsForPlace,
                         PageRequest.of(0, limit))
                 .stream()
-                .map(row -> new HashtagPlaceResponse(
-                        (Long) row[0],
-                        (String) row[1],
-                        (String) row[2],
-                        (String) row[3],
-                        (BigDecimal) row[4],
-                        (BigDecimal) row[5],
-                        (Long) row[6],
-                        (Long) row[7]))
+                .map(view -> new HashtagPlaceResponse(
+                        view.placeId(),
+                        view.name(),
+                        view.category(),
+                        view.address(),
+                        view.latitude(),
+                        view.longitude(),
+                        view.postCount(),
+                        view.authorCount()))
                 .toList();
         return new HashtagPlaceListResponse(items);
     }
@@ -221,8 +218,8 @@ public class HashtagService {
         }
         return postHashtagRepository.findPostIdAndNamePairs(postIds).stream()
                 .collect(Collectors.groupingBy(
-                        pair -> (Long) pair[0],
-                        Collectors.mapping(pair -> (String) pair[1], Collectors.toList())));
+                        PostHashtagNameView::postId,
+                        Collectors.mapping(PostHashtagNameView::name, Collectors.toList())));
     }
 
 }

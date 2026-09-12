@@ -53,6 +53,11 @@ public class BookmarkService {
         if (!postRepository.existsByIdAndDeletedAtIsNull(postId)) {
             throw new BusinessException(ErrorCode.POST_NOT_FOUND);
         }
+        // 저장·목록과 같은 조건으로 막는다. 지울 행이 없어 결과는 같지만, 한 자원의
+        // 세 동작 중 하나만 탈퇴한 사용자를 통과시키면 나중에 규칙을 바꿀 때 빠진다.
+        if (!userRepository.existsByIdAndDeletedAtIsNull(userId)) {
+            throw new BusinessException(ErrorCode.USER_NOT_FOUND);
+        }
         bookmarkRepository.deleteByUserIdAndPostId(userId, postId);
         return new BookmarkResponse(false);
     }

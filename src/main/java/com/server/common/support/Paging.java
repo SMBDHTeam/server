@@ -29,10 +29,20 @@ public final class Paging {
 
     /** 커서 방식이라 페이지 번호가 없는 목록에서 개수만 다듬을 때 쓴다. */
     public static int size(Integer size) {
+        return size(size, DEFAULT_SIZE, MAX_SIZE);
+    }
+
+    /**
+     * 기본값과 상한이 다른 목록에서 쓴다. 자동완성처럼 화면이 짧게 보여주는 곳이다.
+     *
+     * <p>숫자는 쓰는 쪽에 둔다. 자동완성이 10개인 것은 그 화면의 사정이지 페이징의
+     * 규칙이 아니라, 여기로 옮기면 어디에 쓰는 값인지 알 수 없게 된다.
+     */
+    public static int size(Integer size, int defaultSize, int maxSize) {
         if (size == null || size <= 0) {
-            return DEFAULT_SIZE;
+            return defaultSize;
         }
-        return Math.min(size, MAX_SIZE);
+        return Math.min(size, maxSize);
     }
 
     private static int page(Integer page) {

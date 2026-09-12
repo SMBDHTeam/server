@@ -1,6 +1,8 @@
 package com.server.hashtag.repository;
 
 import com.server.hashtag.domain.PostHashtag;
+import com.server.hashtag.dto.HashtagPlaceView;
+import com.server.hashtag.dto.PostHashtagNameView;
 import com.server.hashtag.domain.PostHashtagId;
 import java.util.Collection;
 import java.util.List;
@@ -36,11 +38,13 @@ public interface PostHashtagRepository extends JpaRepository<PostHashtag, PostHa
 
     /** 게시물 상세·목록에 태그 이름을 담을 때 쓴다. */
     @Query("""
-            select link.post.id, link.hashtag.name from PostHashtag link
+            select new com.server.hashtag.dto.PostHashtagNameView(
+                link.post.id, link.hashtag.name)
+            from PostHashtag link
             where link.post.id in :postIds
             order by link.hashtag.name asc
             """)
-    List<Object[]> findPostIdAndNamePairs(@Param("postIds") Collection<Long> postIds);
+    List<PostHashtagNameView> findPostIdAndNamePairs(@Param("postIds") Collection<Long> postIds);
 
     /**
      * 이 태그가 달린 게시물들이 가리키는 장소를, 언급한 사람 수가 많은 순으로 모은다.
@@ -57,9 +61,10 @@ public interface PostHashtagRepository extends JpaRepository<PostHashtag, PostHa
      * 사실이 아니라 사용자들이 붙인 값임을 알 수 있게 보여줘야 한다.
      */
     @Query("""
-            select place.id, place.name, place.category, place.address,
-                   place.latitude, place.longitude,
-                   count(distinct link.post.id), count(distinct link.post.user.id)
+            select new com.server.hashtag.dto.HashtagPlaceView(
+                place.id, place.name, place.category, place.address,
+                place.latitude, place.longitude,
+                count(distinct link.post.id), count(distinct link.post.user.id))
             from PostHashtag link
             join PostPlaceTag tag on tag.post = link.post
             join tag.place place
@@ -73,7 +78,7 @@ public interface PostHashtagRepository extends JpaRepository<PostHashtag, PostHa
             having count(distinct link.post.user.id) >= :minAuthors
             order by count(distinct link.post.user.id) desc, count(distinct link.post.id) desc
             """)
-    List<Object[]> findPlacesByHashtag(
+    List<HashtagPlaceView> findPlacesByHashtag(
             @Param("name") String name,
             @Param("minAuthors") long minAuthors,
             Pageable pageable);
