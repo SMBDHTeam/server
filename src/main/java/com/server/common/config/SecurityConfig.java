@@ -95,6 +95,10 @@ public class SecurityConfig {
                 .requestMatchers("/api/v1/posts/**", "/api/v1/users/**",
                         "/api/v1/media/**", "/api/v1/reports/**").authenticated()
 
+                // 장소 조회는 열어 두지만 위시리스트는 내 것이라 로그인이 필요하다.
+                // 별표는 한 칸만 맞으므로 /places/{id} 상세와 /places/resolve 는 걸리지 않는다.
+                .requestMatchers("/api/v1/places/*/wishlists").authenticated()
+
                 .requestMatchers("/api/v1/**", "/h2-console/**").permitAll()
                 .anyRequest().permitAll()
         );

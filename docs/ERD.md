@@ -598,6 +598,25 @@ DB에서 직접 증감시킨다. 동시에 들어온 요청이 같은 값을 읽
 
 `V14__create_notifications_table.sql`에서 추가한다.
 
+## 28. place_wishlists
+
+가 보고 싶은 장소를 담아 두는 곳이다. 담아 둔 장소는 일정을 만들 때 `mustVisitPlaceIds` 로
+넘어간다.
+
+| 컬럼 | 자료형 | 키·필수 | 의미 |
+| --- | --- | --- | --- |
+| `user_id` | bigint | PK 일부, FK, O | `users.id` |
+| `place_id` | bigint | PK 일부, FK, O | `places.id` |
+| `created_at` | datetime | O | 담은 시각 |
+
+`bookmarks`와 구조가 같지만 대상이 다르다. 저장은 게시물, 위시리스트는 장소다. 한 테이블에
+합치면 대상 종류 컬럼이 생기고 외래키를 걸 수 없어, 지워진 대상을 가리키는 행이 남는다.
+
+`bookmarks`처럼 `user_id`가 키 앞에 온다. 주 용도가 "내 위시리스트" 조회라 사용자 기준으로
+읽는 일이 많고, 이 순서 덕분에 별도 인덱스가 필요 없다.
+
+몇 명이 담았는지는 응답에 담지 않는다.
+
 ## 일정 생성 V2 변경
 
 ### V2-1. 기존 테이블 변경
@@ -835,6 +854,7 @@ Preview의 고정 행사 제약이 실제 일정의 방문지로 배치된 결�
 | `users` N : M `posts` (`post_likes`) | 좋아요. 같은 조합은 한 번만 |
 | `users` N : M `comments` (`comment_likes`) | 댓글 좋아요. 같은 조합은 한 번만 |
 | `users` N : M `posts` (`bookmarks`) | 저장. 같은 조합은 한 번만 |
+| `users` N : M `places` (`place_wishlists`) | 위시리스트. 같은 조합은 한 번만 |
 | `users` N : M `users` (`follows`) | 팔로우. 방향이 있다 |
 | `users` N : M `users` (`blocks`) | 차단. 방향이 있다 |
 | `posts` N : M `hashtags` (`post_hashtags`) | 게시물의 해시태그 |
