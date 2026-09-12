@@ -99,7 +99,8 @@ TMAP HTTP 429는 DATA의 `503 / detail: TMAP_QUOTA_EXCEEDED`를 거쳐 SERVER의
 
 `POST /api/v1/spontaneous-trips/schedules` 요청은 Header `Idempotency-Key`와 Body
 `previewId`, `previewToken`이 모두 필수다. 성공 응답은 별도 즉흥 DTO가 아니라 공통
-`ScheduleResponse`다.
+`ScheduleResponse`다. 이미 저장된 Preview를 다른 키로 보내 받은
+`409 SPONTANEOUS_PREVIEW_ALREADY_SAVED` 오류에는 기존 `scheduleId`가 포함된다.
 
 공통 일정 응답에는 다음 필드가 추가된다. 계획 일정은 `scheduleType=PLANNED`이고 나머지
 즉흥 전용 필드는 `null` 또는 생략될 수 있다.
@@ -108,9 +109,9 @@ TMAP HTTP 429는 DATA의 `503 / detail: TMAP_QUOTA_EXCEEDED`를 거쳐 SERVER의
 | --- | --- | :---: | --- |
 | `scheduleType` | string | O | `PLANNED`, `SPONTANEOUS` |
 | `transportMode` | string/null | X | 즉흥 코스 이동수단 `WALK`, `CAR`, `PUBLIC_TRANSIT` |
-| `startAt` | string(datetime)/null | X | 즉흥 일정 출발시각. 원래 offset 보존 |
-| `returnBy` | string(datetime)/null | X | 사용자가 지정한 귀환 제한시각 |
-| `estimatedReturnAt` | string(datetime)/null | X | 저장된 경로 기준 예상 귀환시각 |
+| `startAt` | string(datetime)/null | X | 즉흥 일정 출발시각. 저장 조회는 `Asia/Seoul`(+09:00)로 정규화 |
+| `returnBy` | string(datetime)/null | X | 사용자가 지정한 귀환 제한시각. 저장 조회는 `Asia/Seoul`(+09:00)로 정규화 |
+| `estimatedReturnAt` | string(datetime)/null | X | 저장된 경로 기준 예상 귀환시각. 저장 조회는 `Asia/Seoul`(+09:00)로 정규화 |
 | `spontaneousMetadata.schemaVersion` | integer | 조건부 | 현재 `1` |
 | `spontaneousMetadata.previewId` | string(UUID) | 조건부 | 원본 즉흥 Preview |
 | `spontaneousMetadata.destinationId` | string | 조건부 | 추천 권역 ID |
@@ -126,7 +127,8 @@ TMAP HTTP 429는 DATA의 `503 / detail: TMAP_QUOTA_EXCEEDED`를 거쳐 SERVER의
 | `days[].stops[].inboundTransit.arriveAtDateTime` | string(datetime)/null | X | 이동 종료 날짜·시각·offset |
 
 기존 `arriveAt`, `departAt` LocalTime 필드는 계획 일정과 구버전 클라이언트 호환용으로 함께
-유지한다. 즉흥 일정에서 날짜 경계를 판단할 때는 반드시 `*DateTime`을 사용한다.
+유지한다. 즉흥 일정에서 날짜 경계를 판단할 때는 반드시 `*DateTime`을 사용한다. 저장된 즉흥
+일정의 stop/transit `*DateTime`도 조회 시 `Asia/Seoul`(+09:00)로 정규화한다.
 `fixedStartsAt`, `fixedEndsAt`은 고정 행사용이며 일반 즉흥 방문시각 저장에 사용하지 않는다.
 
 ## 일정 생성 V2 필드

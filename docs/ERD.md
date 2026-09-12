@@ -769,6 +769,8 @@ Preview의 고정 행사 제약이 실제 일정의 방문지로 배치된 결�
 
 `schedule_type`은 CHECK로 두 값만 허용한다. `user_id`는 기존 소유자 컬럼을 사용한다.
 계획 일정의 기존 행은 migration 기본값으로 `PLANNED`가 된다.
+`timestamptz`는 순간을 저장하므로 DB 세션 offset에 의존하지 않는다. API로 다시 읽을 때는
+즉흥 일정의 달력 날짜가 유지되도록 `Asia/Seoul`(+09:00)로 변환한다.
 
 ### `schedule_stops`와 `transit_routes`
 

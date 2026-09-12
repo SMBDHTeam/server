@@ -260,6 +260,7 @@ TMAP 호출 한도 초과는 다음과 같이 변환한다.
 Bearer 인증과 `Idempotency-Key` 헤더가 필수다.
 
 ```http
+Authorization: Bearer <access-token>
 Idempotency-Key: 08bd0f0a-59c0-4ca5-bbda-c0fa73358ac9
 Content-Type: application/json
 ```
@@ -279,7 +280,8 @@ Content-Type: application/json
 - 같은 사용자·같은 키·같은 요청은 동시 요청을 포함해 같은 `scheduleId`를 반환한다.
 - 같은 사용자·같은 키에 다른 토큰을 쓰면 `409 IDEMPOTENCY_KEY_REUSED`다.
 - 같은 사용자가 이미 저장한 Preview를 다른 키로 다시 저장하면
-  `409 SPONTANEOUS_PREVIEW_ALREADY_SAVED`다.
+  `409 SPONTANEOUS_PREVIEW_ALREADY_SAVED`이며 공통 오류 응답의 `scheduleId`로 기존 일정을
+  바로 조회할 수 있다.
 - TourAPI 장소는 `(source='TOUR_API', external_content_id=contentId)`로만 식별한다. 이름으로
   합치지 않으며 숨김 장소는 `422 SPONTANEOUS_PLACE_HIDDEN`, 없는 장소는 검증된
   discovery `PENDING` 행으로 생성한다.
@@ -288,6 +290,9 @@ Content-Type: application/json
 - 저장된 즉흥 일정의 PATCH는 `scheduleType`, 소유자, 교통수단, 귀환 제한과 메타데이터를
   보존한 채 실제 경로를 다시 계산한다. 귀환 제한을 넘으면
   `422 SPONTANEOUS_RETURN_TIME_EXCEEDED`이며 변경을 저장하지 않는다.
+- 저장 뒤 목록·상세·PATCH 응답의 `startAt`, `returnBy`, `estimatedReturnAt`과 stop/transit
+  `*DateTime`은 동일 순간을 `Asia/Seoul`(+09:00)로 정규화한다. PostgreSQL 세션 시간대가
+  UTC여도 자정 경계가 전날로 바뀌지 않는다.
 
 ## 일정 생성 V2 계약
 

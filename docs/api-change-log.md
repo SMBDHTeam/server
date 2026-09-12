@@ -2,6 +2,14 @@
 
 API 계약이 변경될 때마다 최신 항목을 위에 추가한다.
 
+## 2026-09-12 (즉흥 일정 저장 검토 보완)
+
+- 저장된 즉흥 일정의 `startAt`, `returnBy`, `estimatedReturnAt`과 stop/transit `*DateTime`을
+  조회 시 `Asia/Seoul`(+09:00)로 정규화해 PostgreSQL 세션 시간대와 무관하게 자정 경계를 보존한다.
+- `SPONTANEOUS_PREVIEW_SECRET` 설정값은 UTF-8 기준 32바이트 이상이어야 한다.
+- data 검증 오류 본문에 포함될 수 있는 `previewToken` 원문을 Spring 경고 로그에 남기지 않는다.
+- 이미 저장된 즉흥 Preview의 409 오류 응답에 기존 `scheduleId`를 포함한다.
+
 ## 2026-09-11 (즉흥여행 Preview 명시적 저장과 공통 일정 통합)
 
 - API: `POST /api/v1/spontaneous-trips/course`, `POST /api/v1/spontaneous-trips/schedules`,

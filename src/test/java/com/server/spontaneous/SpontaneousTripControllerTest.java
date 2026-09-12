@@ -16,6 +16,7 @@ import com.server.auth.service.AuthenticatedUser;
 import com.server.common.error.BusinessException;
 import com.server.common.error.ErrorCode;
 import com.server.common.error.GlobalExceptionHandler;
+import com.server.common.error.SpontaneousPreviewAlreadySavedException;
 import com.server.common.web.TraceIdFilter;
 import com.server.external.spontaneous.FastApiSpontaneousClient;
 import com.server.schedule.dto.ScheduleResponse;
@@ -221,6 +222,35 @@ class SpontaneousTripControllerTest {
                 .andExpect(jsonPath("$.code").value("IDEMPOTENCY_KEY_REQUIRED"));
 
         verifyNoInteractions(fastApiSpontaneousClient);
+    }
+
+    @Test
+    @DisplayName("이미 저장된 Preview는 기존 scheduleId를 409 응답에 포함한다")
+    void alreadySavedPreviewReturnsExistingScheduleId() throws Exception {
+        UUID previewId = UUID.fromString("d9f1121a-33e1-4c77-9c96-e0ca35a268f0");
+        UUID scheduleId = UUID.fromString("b67b650a-4605-454d-859d-e434729ff3f2");
+        String previewToken = "signed-preview-token-with-more-than-thirty-two-characters";
+        when(fastApiSpontaneousClient.saveSchedule(
+                eq(new SpontaneousScheduleRequest(previewId, previewToken)),
+                eq("different-key"),
+                eq(42L)))
+                .thenThrow(new SpontaneousPreviewAlreadySavedException(scheduleId, null));
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken(
+                        new AuthenticatedUser(42L, UserRole.USER), null, List.of()));
+
+        mockMvc.perform(post("/api/v1/spontaneous-trips/schedules")
+                        .header("Idempotency-Key", "different-key")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "previewId": "%s",
+                                  "previewToken": "%s"
+                                }
+                                """.formatted(previewId, previewToken)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("SPONTANEOUS_PREVIEW_ALREADY_SAVED"))
+                .andExpect(jsonPath("$.scheduleId").value(scheduleId.toString()));
     }
 
     @ParameterizedTest

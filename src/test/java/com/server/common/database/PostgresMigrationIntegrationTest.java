@@ -126,6 +126,48 @@ class PostgresMigrationIntegrationTest {
                         + "'uk_schedule_creation_requests_spontaneous_preview')",
                 Integer.class
         );
+        Integer v18MigrationCount = jdbcTemplate.queryForObject(
+                "select count(*) from flyway_schema_history where version = '18' and success = true",
+                Integer.class
+        );
+        Integer spontaneousOffsetColumnCount = jdbcTemplate.queryForObject(
+                "select count(*) from information_schema.columns where table_schema = 'public' "
+                        + "and data_type = 'timestamp with time zone' and ("
+                        + "(table_name = 'schedules' and column_name in "
+                        + "('start_at', 'return_by', 'estimated_return_at')) or "
+                        + "(table_name = 'schedule_stops' and column_name in "
+                        + "('arrive_at_datetime', 'depart_at_datetime')) or "
+                        + "(table_name = 'transit_routes' and column_name in "
+                        + "('depart_at_datetime', 'arrive_at_datetime')))",
+                Integer.class
+        );
+        Integer spontaneousDefaultAndNullableCount = jdbcTemplate.queryForObject(
+                "select count(*) from information_schema.columns where table_schema = 'public' and ("
+                        + "(table_name = 'schedules' and column_name = 'schedule_type' "
+                        + "and is_nullable = 'NO' and column_default like '%PLANNED%') or "
+                        + "(table_name = 'schedule_creation_requests' and column_name = 'preview_id' "
+                        + "and is_nullable = 'YES'))",
+                Integer.class
+        );
+        Integer spontaneousCheckConstraintCount = jdbcTemplate.queryForObject(
+                "select count(*) from pg_constraint where conname in "
+                        + "('ck_schedules_schedule_type', 'ck_schedule_creation_request_type')",
+                Integer.class
+        );
+        Integer spontaneousRequestIndexDefinitionCount = jdbcTemplate.queryForObject(
+                "select count(*) from pg_indexes where schemaname = 'public' "
+                        + "and tablename = 'schedule_creation_requests' and ("
+                        + "(indexname = 'uk_schedule_creation_requests_legacy_key' "
+                        + "and indexdef like '%(idempotency_key)%' "
+                        + "and indexdef like '%user_id IS NULL%') or "
+                        + "(indexname = 'uk_schedule_creation_requests_user_key' "
+                        + "and indexdef like '%(user_id, idempotency_key)%' "
+                        + "and indexdef like '%user_id IS NOT NULL%') or "
+                        + "(indexname = 'uk_schedule_creation_requests_spontaneous_preview' "
+                        + "and indexdef like '%(user_id, spontaneous_preview_id)%' "
+                        + "and indexdef like '%spontaneous_preview_id IS NOT NULL%'))",
+                Integer.class
+        );
 
         // migration을 추가할 때마다 기대값을 고치지 않도록 실제 파일 수와 대조한다.
         // 예전에는 5로 고정돼 있어 V6가 들어온 뒤 이 테스트가 계속 실패했다.
@@ -146,6 +188,11 @@ class PostgresMigrationIntegrationTest {
         assertThat(spontaneousTransitColumnCount).isEqualTo(2);
         assertThat(spontaneousRequestColumnCount).isEqualTo(3);
         assertThat(spontaneousRequestIndexCount).isEqualTo(3);
+        assertThat(v18MigrationCount).isEqualTo(1);
+        assertThat(spontaneousOffsetColumnCount).isEqualTo(7);
+        assertThat(spontaneousDefaultAndNullableCount).isEqualTo(2);
+        assertThat(spontaneousCheckConstraintCount).isEqualTo(2);
+        assertThat(spontaneousRequestIndexDefinitionCount).isEqualTo(3);
     }
 
     /** classpath의 db/migration 아래 있는 실제 스크립트 수. */

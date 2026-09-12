@@ -30,6 +30,10 @@ public record ErrorResponse(
     }
 
     public static ErrorResponse consumed(ErrorCode errorCode, String traceId, UUID scheduleId) {
+        return withScheduleId(errorCode, traceId, scheduleId);
+    }
+
+    public static ErrorResponse withScheduleId(ErrorCode errorCode, String traceId, UUID scheduleId) {
         return new ErrorResponse(errorCode.name(), errorCode.getMessage(), List.of(), traceId, scheduleId);
     }
 

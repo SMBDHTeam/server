@@ -1,5 +1,8 @@
 package com.server.external.spontaneous;
 
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import tools.jackson.databind.cfg.DateTimeFeature;
 import tools.jackson.databind.json.JsonMapper;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -13,6 +16,7 @@ import static org.springframework.test.web.client.response.MockRestResponseCreat
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.server.common.error.BusinessException;
 import com.server.common.error.ErrorCode;
+import com.server.common.error.SpontaneousPreviewAlreadySavedException;
 import com.server.spontaneous.dto.Coordinate;
 import com.server.spontaneous.dto.SpontaneousCourseRequest;
 import com.server.spontaneous.dto.SpontaneousDestinationRequest;
@@ -25,6 +29,7 @@ import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -168,6 +173,69 @@ class FastApiSpontaneousClientTest {
         assertThat(response.id()).isEqualTo(scheduleId);
         assertThat(response.scheduleType()).isEqualTo("SPONTANEOUS");
         assertThat(response.estimatedReturnAt().getDayOfMonth()).isEqualTo(4);
+        fixture.server().verify();
+    }
+
+    @Test
+    @DisplayName("save validation failures do not log the rejected preview token")
+    void saveValidationFailureDoesNotLogPreviewToken() {
+        Fixture fixture = fixture();
+        UUID previewId = UUID.fromString("1c50fc08-3dce-49f6-9fd0-106e7308428a");
+        String previewToken = "signed-preview-token-that-must-never-appear-in-server-logs";
+        fixture.server()
+                .expect(requestTo(BASE_URL + "/api/v1/spontaneous-trips/schedules"))
+                .andRespond(withStatus(HttpStatus.UNPROCESSABLE_ENTITY)
+                        .body("""
+                                {"detail":[{"type":"string_too_short","loc":["body","previewToken"],
+                                "msg":"String should have at least 32 characters","input":"%s"}]}
+                                """.formatted(previewToken))
+                        .contentType(MediaType.APPLICATION_JSON));
+
+        Logger logger = (Logger) LoggerFactory.getLogger(FastApiSpontaneousClient.class);
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        logger.addAppender(appender);
+        try {
+            assertThatThrownBy(() -> fixture.client().saveSchedule(
+                    new SpontaneousScheduleRequest(previewId, previewToken), "save-once", 42L))
+                    .isInstanceOf(BusinessException.class)
+                    .extracting(this::errorCodeOf)
+                    .isEqualTo(ErrorCode.INVALID_SPONTANEOUS_TRIP_REQUEST);
+        } finally {
+            logger.detachAppender(appender);
+            appender.stop();
+        }
+
+        assertThat(appender.list)
+                .extracting(ILoggingEvent::getFormattedMessage)
+                .noneMatch(message -> message.contains(previewToken));
+        fixture.server().verify();
+    }
+
+    @Test
+    @DisplayName("already-saved preview exposes the existing schedule ID")
+    void alreadySavedPreviewExposesScheduleId() {
+        Fixture fixture = fixture();
+        UUID previewId = UUID.fromString("1c50fc08-3dce-49f6-9fd0-106e7308428a");
+        UUID scheduleId = UUID.fromString("f2536c52-69d1-4e6c-8ab6-2ede45dba2cd");
+        fixture.server()
+                .expect(requestTo(BASE_URL + "/api/v1/spontaneous-trips/schedules"))
+                .andRespond(withStatus(HttpStatus.CONFLICT)
+                        .header("X-Schedule-Id", scheduleId.toString())
+                        .body("""
+                                {"detail":"SPONTANEOUS_PREVIEW_ALREADY_SAVED"}
+                                """)
+                        .contentType(MediaType.APPLICATION_JSON));
+
+        assertThatThrownBy(() -> fixture.client().saveSchedule(
+                new SpontaneousScheduleRequest(
+                        previewId,
+                        "signed-preview-token-with-more-than-thirty-two-characters"),
+                "different-key",
+                42L))
+                .isInstanceOfSatisfying(
+                        SpontaneousPreviewAlreadySavedException.class,
+                        exception -> assertThat(exception.getScheduleId()).isEqualTo(scheduleId));
         fixture.server().verify();
     }
 

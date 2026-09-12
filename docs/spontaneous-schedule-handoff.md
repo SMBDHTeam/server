@@ -18,6 +18,8 @@
 - 일정 목록·상세에서 `scheduleType`으로 `PLANNED`와 `SPONTANEOUS`를 구분한다.
 - 즉흥 일정의 자정 경계는 stop/transit `arriveAtDateTime`, `departAtDateTime`으로 표시한다.
   기존 `arriveAt`, `departAt`만 조합해 날짜를 추측하지 않는다.
+- 저장된 즉흥 일정의 전체 날짜시간은 목록·상세·PATCH 응답에서 `Asia/Seoul`(+09:00)로
+  정규화된다. ISO-8601 문자열의 날짜와 offset을 함께 파싱한다.
 - `finalTransit`은 마지막 방문지에서 복귀 위치까지의 구간이다.
 - 지도는 공통 `/api/v1/schedules/{scheduleId}/map` 응답을 사용한다.
 - `fareAmount`, 역 이름, 지도선 등이 `null`/빈 배열이면 Provider가 확인하지 못한 사실이다.
@@ -30,7 +32,7 @@
 | `400 SPONTANEOUS_PREVIEW_INVALID` | 토큰을 버리고 코스를 다시 생성 |
 | `403 SPONTANEOUS_PREVIEW_OWNER_MISMATCH` | 현재 로그인 사용자가 바뀌었음을 안내 |
 | `409 IDEMPOTENCY_KEY_REUSED` | 새 키로 같은 요청을 반복하지 말고 요청 상태 확인 |
-| `409 SPONTANEOUS_PREVIEW_ALREADY_SAVED` | 일정 목록을 새로 조회해 기존 저장 결과로 이동 |
+| `409 SPONTANEOUS_PREVIEW_ALREADY_SAVED` | 오류 응답의 `scheduleId`로 기존 저장 결과 상세로 이동 |
 | `410 SPONTANEOUS_PREVIEW_EXPIRED` | 코스를 다시 생성 |
 | `422 SPONTANEOUS_PLACE_HIDDEN` | 코스를 다시 생성 |
 | `422 SPONTANEOUS_RETURN_TIME_EXCEEDED` | 수정 전 상태를 유지하고 시간/방문지를 조정 |
@@ -41,7 +43,8 @@ Spring은 외부 클라이언트가 보낸 사용자 ID 헤더를 신뢰하지 �
 사용자 ID만 내부 `X-Auth-User-Id`로 data 서비스에 전달한다. 브라우저 CORS에는
 `Authorization`, `Idempotency-Key`가 허용되어야 한다.
 
-모든 data 인스턴스에 같은 고엔트로피 `SPONTANEOUS_PREVIEW_SECRET`을 설정한다. 기본 토큰
+모든 data 인스턴스에 같은 32바이트 이상의 고엔트로피 `SPONTANEOUS_PREVIEW_SECRET`을
+설정한다. 기본 토큰
 수명은 20분이며 필요하면 `SPONTANEOUS_PREVIEW_TTL_SECONDS`로 조정한다. 키를 바꾸면 기존
 미저장 Preview는 모두 무효가 되므로 배포 중 인스턴스별 키가 달라지지 않게 한다.
 
