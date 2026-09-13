@@ -96,6 +96,16 @@ app:
     # 없어 그 기준으로는 아무 장소도 뜨지 않는다. 글이 쌓이면 올린다.
     hashtag-place:
       min-authors: ${COMMUNITY_HASHTAG_PLACE_MIN_AUTHORS:3}
+    # 커뮤니티 장소 태그로 뽑는 인기 장소.
+    #
+    # 기간을 두는 것은 "지금" 인기 있는 곳을 보여주기 위해서다. 기간이 없으면 작년에 반짝
+    # 유행한 곳이 계속 위에 남는다.
+    #
+    # 최소 인원 2는 혼자 붙인 것만 걸러내는 수준이다. 신뢰할 만한 기준이 아니라 데이터가
+    # 없어서 낮춰 둔 값이며, 글이 쌓이면 올린다.
+    popular-place:
+      days: ${COMMUNITY_POPULAR_PLACE_DAYS:30}
+      min-authors: ${COMMUNITY_POPULAR_PLACE_MIN_AUTHORS:2}
     # 지운 게시물은 retention-days 동안 복구할 수 있고, 그 뒤 이 스케줄러가 실제로 지운다.
     # 끄면 지운 게시물이 영원히 쌓이고 본문과 사진 URL 이 DB 에 남는다.
     post-purge:
