@@ -214,6 +214,20 @@ TMAP 호출 한도 초과는 다음과 같이 변환한다.
 기존 `TOUR_API_NOT_CONFIGURED`, `ODSAY_AUTH_FAILED`, `ODSAY_QUOTA_EXCEEDED`의
 `503 SPONTANEOUS_PROVIDER_UNAVAILABLE` 매핑은 유지한다.
 
+목적지 추천 후보가 모두 탈락하면 DATA가 실제 라우팅 후보의 실패 원인을 집계하고 SERVER가
+다음 `404` 공통 오류로 변환한다. 일부 후보가 성공하면 실패 후보가 있어도 정상 추천 결과를 반환한다.
+
+| DATA detail / SERVER code | 사용자 메시지 |
+| --- | --- |
+| `SPONTANEOUS_DESTINATION_ROUTE_NOT_FOUND` | 선택한 시간과 이동수단으로 왕복 가능한 경로가 없습니다. |
+| `SPONTANEOUS_DESTINATION_TIME_TOO_SHORT` | 왕복 이동시간과 최소 체류시간이 부족합니다. 복귀 시간을 늦춰주세요. |
+| `SPONTANEOUS_DESTINATION_TRANSPORT_CONSTRAINT` | 선택한 이동수단과 여행 시간으로 왕복 가능한 목적지가 없습니다. 시간이나 이동수단을 변경해주세요. |
+| `SPONTANEOUS_DESTINATION_CANDIDATES_NOT_FOUND` | 선택한 테마에 맞는 추천 목적지가 없습니다. 테마를 변경하거나 선택을 줄여주세요. |
+
+라우팅 전에 장소·테마 조건을 만족하는 후보가 없을 때만
+`SPONTANEOUS_DESTINATION_CANDIDATES_NOT_FOUND`를 사용한다. TMAP·ODsay 오류가 포함된 전체 실패는
+위 추천 조건 오류보다 기존 Provider 오류 매핑을 우선한다.
+
 ### 2-3. 즉흥여행 코스 Preview와 명시적 저장
 
 `POST /api/v1/spontaneous-trips/course`는 Bearer 인증이 필요한 계산 전용 Preview API다.

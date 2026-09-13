@@ -2,6 +2,16 @@
 
 API 계약이 변경될 때마다 최신 항목을 위에 추가한다.
 
+## 2026-09-14 (즉흥여행 목적지 추천 실패 원인 구분)
+
+- API: `POST /api/v1/spontaneous-trips/destinations`
+- 구분: 변경 (실패 오류 코드 세분화)
+- 이전: 라우팅 후보가 모두 `NO_ROUTE` 또는 최소 체류시간 부족으로 탈락하거나, 장소·테마 후보가 없어도 대부분 `404 SPONTANEOUS_DESTINATIONS_NOT_FOUND`로 합쳐졌다.
+- 이후: 전체 실패 원인을 각각 `SPONTANEOUS_DESTINATION_ROUTE_NOT_FOUND`, `SPONTANEOUS_DESTINATION_TIME_TOO_SHORT`, `SPONTANEOUS_DESTINATION_TRANSPORT_CONSTRAINT`, `SPONTANEOUS_DESTINATION_CANDIDATES_NOT_FOUND`로 구분하고 사용자에게 시간·이동수단·테마 조정 방법을 안내한다.
+- 유지: 일부 후보 성공 시 정상 결과, 기존 TMAP·ODsay·TourAPI 및 외부 라우팅 오류의 502/503 상태와 공개 오류 코드
+- 호환성 파괴: 있음. 요청·성공 응답과 HTTP 404 상태는 그대로지만, 기존 일반 실패를 분기하던 클라이언트는 새 오류 코드를 처리해야 한다.
+- DB/ERD: 변경 없음
+
 ## 2026-09-13 (인기 장소 추가)
 
 - API: `GET /api/v1/places/popular`

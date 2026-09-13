@@ -251,6 +251,19 @@ class FastApiSpontaneousClientTest {
     }
 
     @Test
+    @DisplayName("destination failure details map to distinct spontaneous ErrorCodes")
+    void destinationFailureDetailsMapToDistinctErrorCodes() {
+        assertDestinationError("SPONTANEOUS_DESTINATION_ROUTE_NOT_FOUND",
+                ErrorCode.SPONTANEOUS_DESTINATION_ROUTE_NOT_FOUND);
+        assertDestinationError("SPONTANEOUS_DESTINATION_TIME_TOO_SHORT",
+                ErrorCode.SPONTANEOUS_DESTINATION_TIME_TOO_SHORT);
+        assertDestinationError("SPONTANEOUS_DESTINATION_TRANSPORT_CONSTRAINT",
+                ErrorCode.SPONTANEOUS_DESTINATION_TRANSPORT_CONSTRAINT);
+        assertDestinationError("SPONTANEOUS_DESTINATION_CANDIDATES_NOT_FOUND",
+                ErrorCode.SPONTANEOUS_DESTINATION_CANDIDATES_NOT_FOUND);
+    }
+
+    @Test
     @DisplayName("provider auth and quota are not exposed as user auth errors")
     void providerAuthAndQuotaMapToProviderUnavailable() {
         assertCourseError("TOUR_API_NOT_CONFIGURED", HttpStatus.SERVICE_UNAVAILABLE,
@@ -304,6 +317,21 @@ class FastApiSpontaneousClientTest {
                         .contentType(MediaType.APPLICATION_JSON));
 
         assertThatThrownBy(() -> fixture.client().recommendCourse(courseRequest()))
+                .isInstanceOf(BusinessException.class)
+                .extracting(this::errorCodeOf)
+                .isEqualTo(expected);
+        fixture.server().verify();
+    }
+
+    private void assertDestinationError(String detail, ErrorCode expected) {
+        Fixture fixture = fixture();
+        fixture.server()
+                .expect(requestTo(BASE_URL + "/api/v1/spontaneous-trips/destinations"))
+                .andRespond(withStatus(HttpStatus.NOT_FOUND)
+                        .body("{\"detail\":\"%s\"}".formatted(detail))
+                        .contentType(MediaType.APPLICATION_JSON));
+
+        assertThatThrownBy(() -> fixture.client().recommendDestinations(destinationRequest()))
                 .isInstanceOf(BusinessException.class)
                 .extracting(this::errorCodeOf)
                 .isEqualTo(expected);
