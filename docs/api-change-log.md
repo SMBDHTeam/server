@@ -2,6 +2,17 @@
 
 API 계약이 변경될 때마다 최신 항목을 위에 추가한다.
 
+## 2026-09-13 (인기 장소 추가)
+
+- API: `GET /api/v1/places/popular`
+- 구분: 추가
+- 이전: 홈의 "지금 인기 여행지" 는 클라이언트가 들고 있는 고정 값이었다.
+- 이후: 최근 30일 커뮤니티 장소 태그를 언급한 사람 수로 집계해 준다. 로그인 없이 볼 수 있다.
+- 이유: 관광 데이터에는 인기 여부를 가릴 값이 없다. 사용자가 붙인 장소 태그가 유일한 단서다.
+- 기준: 장소를 하나만 태그한 글만, 서로 다른 사람 2명 이상, 가려진 장소 제외. 동점이면 최근에 태그된 순. 기간·인원은 설정(`COMMUNITY_POPULAR_PLACE_DAYS`, `COMMUNITY_POPULAR_PLACE_MIN_AUTHORS`)이다.
+- 호환성 파괴: 없음. 새 경로다.
+- DB/ERD: 변경 없음. `post_place_tags` 를 집계만 한다.
+
 ## 2026-09-13 (장소 위시리스트 추가)
 
 - API: `POST /api/v1/places/{placeId}/wishlists`, `DELETE /api/v1/places/{placeId}/wishlists`, `GET /api/v1/users/me/wishlists`
