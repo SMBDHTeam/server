@@ -63,22 +63,24 @@ public interface PostPlaceTagRepository extends JpaRepository<PostPlaceTag, Long
             select new com.server.popularplace.dto.PopularPlaceView(
                 place.id, place.name, place.category, place.address,
                 place.latitude, place.longitude, place.primaryImageUrl,
-                count(distinct tag.post.id), count(distinct tag.post.user.id),
-                max(tag.post.createdAt))
+                count(distinct post.id), count(distinct author.id),
+                max(post.createdAt))
             from PostPlaceTag tag
             join tag.place place
-            where tag.post.deletedAt is null
-              and tag.post.user.deletedAt is null
+            join tag.post post
+            join post.user author
+            where post.deletedAt is null
+              and author.deletedAt is null
               and place.hiddenAt is null
-              and tag.post.createdAt >= :since
+              and post.createdAt >= :since
               and (select count(distinct other.place.id) from PostPlaceTag other
-                   where other.post = tag.post) = 1
+                   where other.post = post) = 1
             group by place.id, place.name, place.category, place.address,
                      place.latitude, place.longitude, place.primaryImageUrl
-            having count(distinct tag.post.user.id) >= :minAuthors
-            order by count(distinct tag.post.user.id) desc,
-                     count(distinct tag.post.id) desc,
-                     max(tag.post.createdAt) desc
+            having count(distinct author.id) >= :minAuthors
+            order by count(distinct author.id) desc,
+                     count(distinct post.id) desc,
+                     max(post.createdAt) desc
             """)
     List<PopularPlaceView> findPopularPlaces(
             @Param("since") LocalDateTime since,
