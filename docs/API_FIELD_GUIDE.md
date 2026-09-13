@@ -80,6 +80,15 @@ TMAP HTTP 429는 DATA의 `503 / detail: TMAP_QUOTA_EXCEEDED`를 거쳐 SERVER의
 `message`는 "여행 정보 제공 서비스를 현재 사용할 수 없습니다. 잠시 후 다시 시도해 주세요."이며,
 `fieldErrors=[]`와 `traceId`를 포함하는 공통 오류 형식을 유지한다. DATA의 `detail`은 공개 필드가 아니다.
 
+`/destinations`의 모든 실제 라우팅 후보가 실패하면 DATA detail과 SERVER의 공개 `code`는
+원인에 따라 `SPONTANEOUS_DESTINATION_ROUTE_NOT_FOUND`,
+`SPONTANEOUS_DESTINATION_TIME_TOO_SHORT`,
+`SPONTANEOUS_DESTINATION_TRANSPORT_CONSTRAINT` 중 하나다. 장소 또는 테마 필터 단계에서
+라우팅 후보가 없으면 `SPONTANEOUS_DESTINATION_CANDIDATES_NOT_FOUND`다. 네 코드는 모두 `404`이며
+공통 오류 응답의 `message`로 사용자가 바꿀 수 있는 시간·이동수단·테마 조건을 안내한다.
+일부 후보가 성공하면 정상 `destinations` 응답을 반환하고, 외부 Provider 오류가 포함된 전체 실패는
+기존 502/503 매핑을 우선한다.
+
 ### 2-3. 즉흥 코스 Preview와 저장 필드
 
 `POST /api/v1/spontaneous-trips/course`는 인증된 사용자의 저장 가능한 계산 결과를 반환한다.
