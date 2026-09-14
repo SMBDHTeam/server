@@ -1,5 +1,6 @@
 package com.server.notification.domain;
 
+import com.server.common.support.ServerClock;
 import com.server.user.domain.User;
 import jakarta.persistence.*;
 
@@ -55,7 +56,7 @@ public class Notification {
         this.type = type;
         this.targetType = targetType;
         this.targetId = targetId;
-        this.createdAt = LocalDateTime.now();
+        this.createdAt = ServerClock.now();
     }
 
     public Long getId() {
@@ -94,7 +95,7 @@ public class Notification {
     /** 이미 읽은 알림을 다시 읽어도 처음 읽은 시각을 유지한다. */
     public void markAsRead() {
         if (readAt == null) {
-            readAt = LocalDateTime.now();
+            readAt = ServerClock.now();
         }
     }
 }

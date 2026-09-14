@@ -1,5 +1,6 @@
 package com.server.post.domain;
 
+import com.server.common.support.ServerClock;
 import com.server.user.domain.User;
 import jakarta.persistence.*;
 
@@ -49,7 +50,7 @@ public class Post {
     public Post(User user, String content) {
         this.user = user;
         this.content = content;
-        this.createdAt = LocalDateTime.now();
+        this.createdAt = ServerClock.now();
         this.updatedAt = this.createdAt;
     }
 
@@ -92,12 +93,12 @@ public class Post {
 
     public void updateContent(String content) {
         this.content = content;
-        this.updatedAt = LocalDateTime.now();
+        this.updatedAt = ServerClock.now();
     }
 
     /** 물리 삭제하지 않는다. 기획상 삭제 후 30일간 복구할 수 있어야 한다. */
     public void delete() {
-        this.deletedAt = LocalDateTime.now();
+        this.deletedAt = ServerClock.now();
         this.updatedAt = this.deletedAt;
         this.deletedByAdmin = false;
     }
@@ -109,7 +110,7 @@ public class Post {
      * 분쟁이 붙었을 때 원문이 근거가 되기 때문이다. 다만 작성자는 되살릴 수 없다.
      */
     public void deleteByAdmin() {
-        this.deletedAt = LocalDateTime.now();
+        this.deletedAt = ServerClock.now();
         this.updatedAt = this.deletedAt;
         this.deletedByAdmin = true;
     }
@@ -120,7 +121,7 @@ public class Post {
      */
     public void restore() {
         this.deletedAt = null;
-        this.updatedAt = LocalDateTime.now();
+        this.updatedAt = ServerClock.now();
         this.deletedByAdmin = false;
     }
 
@@ -131,6 +132,6 @@ public class Post {
 
     /** 삭제한 지 {@code days} 일이 지났는지. 지난 글은 복구할 수 없다. */
     public boolean isRestorableWithin(int days) {
-        return deletedAt != null && deletedAt.isAfter(LocalDateTime.now().minusDays(days));
+        return deletedAt != null && deletedAt.isAfter(ServerClock.now().minusDays(days));
     }
 }

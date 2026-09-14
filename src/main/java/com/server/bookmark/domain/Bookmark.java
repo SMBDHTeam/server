@@ -1,5 +1,6 @@
 package com.server.bookmark.domain;
 
+import com.server.common.support.ServerClock;
 import com.server.post.domain.Post;
 import com.server.user.domain.User;
 import jakarta.persistence.Column;
@@ -37,7 +38,7 @@ public class Bookmark {
     public Bookmark(User user, Post post) {
         this.user = user;
         this.post = post;
-        this.createdAt = LocalDateTime.now();
+        this.createdAt = ServerClock.now();
     }
 
     public User getUser() {

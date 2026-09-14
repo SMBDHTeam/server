@@ -23,7 +23,7 @@ public final class RelativeTime {
     }
 
     public static String from(LocalDateTime time) {
-        return from(time, LocalDateTime.now());
+        return from(time, ServerClock.now());
     }
 
     /** @param now 테스트에서 기준 시각을 고정할 때 쓴다. */

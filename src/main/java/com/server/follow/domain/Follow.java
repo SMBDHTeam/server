@@ -1,5 +1,6 @@
 package com.server.follow.domain;
 
+import com.server.common.support.ServerClock;
 import com.server.user.domain.User;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -40,7 +41,7 @@ public class Follow {
     public Follow(User follower, User following) {
         this.follower = follower;
         this.following = following;
-        this.createdAt = LocalDateTime.now();
+        this.createdAt = ServerClock.now();
     }
 
     public User getFollower() {

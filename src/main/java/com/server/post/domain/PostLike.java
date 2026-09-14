@@ -1,5 +1,6 @@
 package com.server.post.domain;
 
+import com.server.common.support.ServerClock;
 import com.server.user.domain.User;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -36,7 +37,7 @@ public class PostLike {
     public PostLike(Post post, User user) {
         this.post = post;
         this.user = user;
-        this.createdAt = LocalDateTime.now();
+        this.createdAt = ServerClock.now();
     }
 
     public Post getPost() {

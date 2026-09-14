@@ -1,5 +1,6 @@
 package com.server.user.domain;
 
+import com.server.common.support.ServerClock;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -63,7 +64,7 @@ public class User {
     public User(String nickname, String profileImageUrl) {
         this.nickname = nickname;
         this.profileImageUrl = profileImageUrl;
-        this.createdAt = LocalDateTime.now();
+        this.createdAt = ServerClock.now();
     }
 
     /** 소셜 로그인으로 처음 들어온 사용자. */

@@ -1,10 +1,10 @@
 package com.server.popularplace.service;
 
+import com.server.common.support.ServerClock;
 import com.server.common.support.Paging;
 import com.server.popularplace.dto.PopularPlaceListResponse;
 import com.server.popularplace.dto.PopularPlaceResponse;
 import com.server.post.repository.PostPlaceTagRepository;
-import java.time.LocalDateTime;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -49,7 +49,7 @@ public class PopularPlaceService {
     public PopularPlaceListResponse findPopularPlaces(Integer size) {
         return new PopularPlaceListResponse(
                 postPlaceTagRepository.findPopularPlaces(
-                                LocalDateTime.now().minusDays(days),
+                                ServerClock.now().minusDays(days),
                                 minAuthors,
                                 Paging.of(0, size))
                         .stream()
