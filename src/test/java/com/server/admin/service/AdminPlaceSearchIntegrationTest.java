@@ -4,6 +4,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.server.place.domain.Place;
 import com.server.place.repository.PlaceRepository;
+import com.server.user.repository.UserRepository;
+import com.server.user.domain.UserRole;
+import com.server.user.domain.User;
+import com.server.user.domain.AuthProvider;
 import java.math.BigDecimal;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -37,18 +41,29 @@ class AdminPlaceSearchIntegrationTest {
 
     @Autowired
     private PlaceRepository placeRepository;
+    @Autowired
+    private UserRepository userRepository;
 
     private Place visible;
     private Place covered;
 
+    private User admin;
+
     @BeforeEach
     void setUp() {
+        // 이 테스트는 트랜잭션으로 감싸지 않아 사용자가 메서드 사이에 남는다.
+        // 매번 만들면 닉네임 유일 제약에 걸리므로 있으면 재사용한다.
+        admin = userRepository
+                .findByProviderAndProviderIdAndDeletedAtIsNull(AuthProvider.GOOGLE, "place-admin")
+                .orElseGet(() -> userRepository.saveAndFlush(User.ofOAuth(
+                        AuthProvider.GOOGLE, "place-admin", "place-admin@example.com",
+                        "장소관리자", null, UserRole.ADMIN)));
         placeRepository.deleteAll();
         visible = placeRepository.saveAndFlush(
                 newPlace("검색노출장소", "부산광역시 해운대구 우동 1"));
         covered = placeRepository.saveAndFlush(
                 newPlace("검색가림장소", "부산광역시 수영구 광안동 2"));
-        adminPlaceService.updateHidden(covered.getId(), true, "좌표 오류");
+        adminPlaceService.updateHidden(covered.getId(), true, "좌표 오류", admin.getId());
     }
 
     private Place newPlace(String name, String address) {

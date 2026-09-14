@@ -37,6 +37,15 @@ class AdminUserSuspensionTokenTest {
     private PostRepository postRepository;
     @Autowired
     private ReportRepository reportRepository;
+    @Autowired
+    private AdminActionRecorder adminActionRecorder;
+
+    /** 조치 기록이 관리자 ID 를 요구한다. 대상마다 다른 sub 로 하나씩 만든다. */
+    private User admin(String suffix) {
+        return userRepository.saveAndFlush(User.ofOAuth(
+                AuthProvider.GOOGLE, "token-admin-" + suffix, "admin-" + suffix + "@example.com",
+                "토큰관리자" + suffix, null, UserRole.ADMIN));
+    }
 
     private RefreshTokenStore store() {
         return new RefreshTokenStore(new InMemoryStringRedisTemplate(), new AuthProperties(
@@ -51,14 +60,14 @@ class AdminUserSuspensionTokenTest {
         // 액세스 토큰은 무상태라 남은 수명 동안 유효하다. 갱신을 막아야 그 뒤로 이어갈 수 없다.
         RefreshTokenStore store = store();
         AdminUserService service = new AdminUserService(
-                userRepository, postRepository, reportRepository, store);
+                userRepository, postRepository, reportRepository, store, adminActionRecorder);
         User user = userRepository.saveAndFlush(User.ofOAuth(
                 AuthProvider.GOOGLE, "sub-x", "x@example.com", "정지대상", null, UserRole.USER));
 
         String phone = store.issue(user.getId());
         String laptop = store.issue(user.getId());
 
-        service.updateStatus(user.getId(), true, 7, "광고성");
+        service.updateStatus(user.getId(), true, 7, "광고성", admin("a").getId());
 
         assertThat(store.consume(user.getId(), phone)).isFalse();
         assertThat(store.consume(user.getId(), laptop)).isFalse();
@@ -81,11 +90,11 @@ class AdminUserSuspensionTokenTest {
                         new AuthProperties.Jwt("test-secret-key-long-enough-0123456789abcdef",
                                 null, null, Duration.ofDays(14))));
         AdminUserService service = new AdminUserService(
-                userRepository, postRepository, reportRepository, failing);
+                userRepository, postRepository, reportRepository, failing, adminActionRecorder);
         User user = userRepository.saveAndFlush(User.ofOAuth(
                 AuthProvider.GOOGLE, "sub-y", "y@example.com", "정지대상2", null, UserRole.USER));
 
-        var result = service.updateStatus(user.getId(), true, 7, "광고성");
+        var result = service.updateStatus(user.getId(), true, 7, "광고성", admin("b").getId());
 
         assertThat(result.writeBlocked()).isTrue();
     }

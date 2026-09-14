@@ -3,8 +3,10 @@ package com.server.admin.controller;
 import com.server.admin.dto.AdminUserDetailResponse;
 import com.server.admin.dto.AdminUserListResponse;
 import com.server.admin.dto.AdminUserResponse;
+import com.server.admin.dto.UserRoleUpdateRequest;
 import com.server.admin.dto.UserStatusUpdateRequest;
 import com.server.admin.service.AdminUserService;
+import com.server.auth.web.CurrentUser;
 import com.server.user.domain.UserStatus;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -70,6 +72,20 @@ public class AdminUserController {
             @Valid @RequestBody UserStatusUpdateRequest request
     ) {
         return adminUserService.updateStatus(
-                userId, request.suspended(), request.days(), request.reason());
+                userId, request.suspended(), request.days(), request.reason(), CurrentUser.idOrNull());
+    }
+
+    @PatchMapping("/{userId}/role")
+    @Operation(
+            summary = "역할 변경",
+            description = "USER 와 ADMIN 사이를 바꾼다. 이 API 가 없어 지금까지 운영 DB 에 "
+                    + "직접 붙어야 했다. 역할은 액세스 토큰에 담기므로 바꾼 뒤 재로그인해야 "
+                    + "반영된다. 리프레시 토큰을 폐기해 재로그인을 강제한다."
+    )
+    public AdminUserResponse changeRole(
+            @Parameter(example = "3") @PathVariable Long userId,
+            @Valid @RequestBody UserRoleUpdateRequest request
+    ) {
+        return adminUserService.changeRole(userId, request.role(), CurrentUser.idOrNull());
     }
 }

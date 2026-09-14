@@ -8,6 +8,10 @@ import com.server.common.error.ErrorCode;
 import com.server.place.domain.Place;
 import com.server.place.dto.PlaceSearchResponse;
 import com.server.place.repository.PlaceRepository;
+import com.server.user.repository.UserRepository;
+import com.server.user.domain.UserRole;
+import com.server.user.domain.User;
+import com.server.user.domain.AuthProvider;
 import com.server.place.service.PlaceService;
 import java.math.BigDecimal;
 import org.junit.jupiter.api.BeforeEach;
@@ -30,11 +34,18 @@ class AdminPlaceServiceTest {
     private PlaceService placeService;
     @Autowired
     private PlaceRepository placeRepository;
+    @Autowired
+    private UserRepository userRepository;
 
     private Place place;
 
+    private User admin;
+
     @BeforeEach
     void setUp() {
+        admin = userRepository.saveAndFlush(User.ofOAuth(
+                AuthProvider.GOOGLE, "place-admin", "place-admin@example.com",
+                "장소관리자", null, UserRole.ADMIN));
         place = placeRepository.saveAndFlush(newPlace("숨김테스트장소"));
     }
 
@@ -58,7 +69,7 @@ class AdminPlaceServiceTest {
                 "숨김테스트장소", null, null, null, "INTERNAL", 20);
         assertThat(before.items()).isNotEmpty();
 
-        adminPlaceService.updateHidden(place.getId(), true, "좌표가 실제 위치와 다름");
+        adminPlaceService.updateHidden(place.getId(), true, "좌표가 실제 위치와 다름", admin.getId());
 
         PlaceSearchResponse after = placeService.search(
                 "숨김테스트장소", null, null, null, "INTERNAL", 20);
@@ -69,7 +80,7 @@ class AdminPlaceServiceTest {
     @DisplayName("숨긴 장소는 상세 조회도 404 다")
     void hiddenPlaceIsNotVisibleInDetail() {
         // 검색에서만 빼고 상세를 열어 두면 예전 링크로 그대로 들어올 수 있다.
-        adminPlaceService.updateHidden(place.getId(), true, "잘못된 정보");
+        adminPlaceService.updateHidden(place.getId(), true, "잘못된 정보", admin.getId());
 
         assertThatThrownBy(() -> placeService.getDetail(place.getId()))
                 .isInstanceOf(BusinessException.class)
@@ -79,8 +90,8 @@ class AdminPlaceServiceTest {
     @Test
     @DisplayName("숨김을 풀면 다시 검색된다")
     void unhideRestoresSearch() {
-        adminPlaceService.updateHidden(place.getId(), true, "잘못된 정보");
-        adminPlaceService.updateHidden(place.getId(), false, null);
+        adminPlaceService.updateHidden(place.getId(), true, "잘못된 정보", admin.getId());
+        adminPlaceService.updateHidden(place.getId(), false, null, admin.getId());
 
         assertThat(placeService.search("숨김테스트장소", null, null, null, "INTERNAL", 20).items())
                 .isNotEmpty();
@@ -89,7 +100,7 @@ class AdminPlaceServiceTest {
     @Test
     @DisplayName("숨김 사유와 시각을 남긴다")
     void recordsHiddenReason() {
-        var result = adminPlaceService.updateHidden(place.getId(), true, "좌표 오류");
+        var result = adminPlaceService.updateHidden(place.getId(), true, "좌표 오류", admin.getId());
 
         assertThat(result.hidden()).isTrue();
         assertThat(result.hiddenReason()).isEqualTo("좌표 오류");
@@ -99,7 +110,7 @@ class AdminPlaceServiceTest {
     @Test
     @DisplayName("가려 둔 장소 목록에 나온다")
     void listsHiddenPlaces() {
-        adminPlaceService.updateHidden(place.getId(), true, "좌표 오류");
+        adminPlaceService.updateHidden(place.getId(), true, "좌표 오류", admin.getId());
 
         assertThat(adminPlaceService.getHiddenPlaces())
                 .extracting(com.server.admin.dto.AdminPlaceResponse::id)
@@ -109,7 +120,7 @@ class AdminPlaceServiceTest {
     @Test
     @DisplayName("없는 장소를 숨기려 하면 404 다")
     void rejectsUnknownPlace() {
-        assertThatThrownBy(() -> adminPlaceService.updateHidden(999999L, true, "사유"))
+        assertThatThrownBy(() -> adminPlaceService.updateHidden(999999L, true, "사유", admin.getId()))
                 .isInstanceOf(BusinessException.class)
                 .hasFieldOrPropertyWithValue("errorCode", ErrorCode.PLACE_NOT_FOUND);
     }

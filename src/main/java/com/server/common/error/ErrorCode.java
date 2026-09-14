@@ -35,6 +35,7 @@ public enum ErrorCode {
     INVALID_FEED_REQUEST(400, "피드 조회 조건이 올바르지 않습니다."),
     POST_ACCESS_DENIED(403, "본인의 게시물만 수정·삭제·복구할 수 있습니다."),
     POST_RESTORE_WINDOW_EXPIRED(410, "복구할 수 있는 기간이 지난 게시물입니다."),
+    POST_DELETED_BY_ADMIN(403, "관리자가 삭제한 게시물은 복구할 수 없습니다."),
     COMMENT_ACCESS_DENIED(403, "본인의 댓글만 수정·삭제할 수 있습니다."),
     NICKNAME_ALREADY_USED(409, "이미 사용 중인 닉네임입니다."),
     ALREADY_REPORTED(409, "이미 신고한 대상입니다."),

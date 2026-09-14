@@ -68,7 +68,7 @@ class AdminPlaceQuotaIntegrationTest {
         // 시작해 봐야 예약 단계에서 막혀 아무것도 하지 못하고, 관리자는 왜 안 되는지 알 수 없다.
         useQuota(adminPlaceService.getIngestionStatus().dailyLimit());
 
-        assertThatThrownBy(() -> adminPlaceService.runIngestion())
+        assertThatThrownBy(() -> adminPlaceService.runIngestion(1L))
                 .isInstanceOf(BusinessException.class)
                 .hasFieldOrPropertyWithValue("errorCode", ErrorCode.TOUR_API_QUOTA_EXHAUSTED);
     }

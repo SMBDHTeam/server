@@ -42,6 +42,7 @@ public interface PostRepository extends JpaRepository<Post, Long> {
             select post from Post post
             where post.user.id = :userId
               and post.deletedAt is not null
+              and post.deletedByAdmin = false
               and post.deletedAt >= :restorableFrom
             order by post.deletedAt desc
             """)

@@ -1,5 +1,7 @@
 package com.server.admin.service;
 
+import com.server.admin.domain.AdminActionTargetType;
+import com.server.admin.domain.AdminActionType;
 import com.server.admin.dto.AdminIngestionStatusResponse;
 import com.server.admin.dto.AdminPlaceListResponse;
 import com.server.admin.dto.AdminPlaceResponse;
@@ -42,17 +44,20 @@ public class AdminPlaceService {
     private final TourApiPlaceIngestionService ingestionService;
     private final TourApiPlaceIngestionProperties properties;
     private final JdbcTemplate jdbcTemplate;
+    private final AdminActionRecorder adminActionRecorder;
 
     public AdminPlaceService(
             PlaceRepository placeRepository,
             TourApiPlaceIngestionService ingestionService,
             TourApiPlaceIngestionProperties properties,
-            JdbcTemplate jdbcTemplate
+            JdbcTemplate jdbcTemplate,
+            AdminActionRecorder adminActionRecorder
     ) {
         this.placeRepository = placeRepository;
         this.ingestionService = ingestionService;
         this.properties = properties;
         this.jdbcTemplate = jdbcTemplate;
+        this.adminActionRecorder = adminActionRecorder;
     }
 
     @Transactional(readOnly = true)
@@ -120,27 +125,37 @@ public class AdminPlaceService {
      * <p>트랜잭션을 걸지 않는다. TourAPI 호출이 길게 이어지므로 DB 커넥션을 그동안 쥐고
      * 있으면 안 된다.
      */
-    public TourApiPlaceIngestionResult runIngestion() {
+    public TourApiPlaceIngestionResult runIngestion(Long adminId) {
         int remaining = Math.max(0, properties.maxRequestsPerDay() - requestsUsedToday());
         if (remaining <= 0) {
             throw new BusinessException(ErrorCode.TOUR_API_QUOTA_EXHAUSTED);
         }
 
+        // 실행 전에 남긴다. 적재가 중간에 죽어도 "누가 예산을 쓰는 실행을 걸었는가"는
+        // 남아야 한다. 그날 예산이 왜 없는지 되짚을 수 있는 유일한 단서다.
         log.info("Manual TourAPI ingestion requested. remainingQuota={}", remaining);
+        adminActionRecorder.record(adminId, AdminActionType.INGESTION_RUN,
+                AdminActionTargetType.SYSTEM, null, null, "요청 시점 잔여 " + remaining + "회");
+
         return ingestionService.ingestConfigured();
     }
 
     @Transactional
-    public AdminPlaceResponse updateHidden(Long placeId, boolean hidden, String reason) {
+    public AdminPlaceResponse updateHidden(
+            Long placeId, boolean hidden, String reason, Long adminId) {
         Place place = placeRepository.findById(placeId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.PLACE_NOT_FOUND));
 
         if (hidden) {
             place.hide(reason);
             log.info("Place hidden. placeId={}, reason={}", placeId, reason);
+            adminActionRecorder.record(adminId, AdminActionType.PLACE_HIDDEN,
+                    AdminActionTargetType.PLACE, placeId, reason, place.getName());
         } else {
             place.unhide();
             log.info("Place unhidden. placeId={}", placeId);
+            adminActionRecorder.record(adminId, AdminActionType.PLACE_UNHIDDEN,
+                    AdminActionTargetType.PLACE, placeId, null, place.getName());
         }
         return AdminPlaceResponse.from(place);
     }

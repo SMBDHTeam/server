@@ -5,6 +5,7 @@ import com.server.admin.dto.AdminPlaceListResponse;
 import com.server.admin.dto.AdminPlaceResponse;
 import com.server.admin.dto.PlaceHiddenUpdateRequest;
 import com.server.admin.service.AdminPlaceService;
+import com.server.auth.web.CurrentUser;
 import com.server.place.ingestion.TourApiPlaceIngestionResult;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -71,7 +72,7 @@ public class AdminPlaceController {
                     + "다른 적재가 진행 중이면 lockSkipped 가 true 로 돌아온다."
     )
     public TourApiPlaceIngestionResult runIngestion() {
-        return adminPlaceService.runIngestion();
+        return adminPlaceService.runIngestion(CurrentUser.idOrNull());
     }
 
     @GetMapping("/hidden")
@@ -90,6 +91,7 @@ public class AdminPlaceController {
             @Parameter(example = "42") @PathVariable Long placeId,
             @Valid @RequestBody PlaceHiddenUpdateRequest request
     ) {
-        return adminPlaceService.updateHidden(placeId, request.hidden(), request.reason());
+        return adminPlaceService.updateHidden(
+                placeId, request.hidden(), request.reason(), CurrentUser.idOrNull());
     }
 }

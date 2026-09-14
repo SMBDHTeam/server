@@ -1,5 +1,7 @@
 package com.server.admin.service;
 
+import com.server.admin.domain.AdminActionTargetType;
+import com.server.admin.domain.AdminActionType;
 import com.server.admin.dto.AdminReportDetailResponse;
 import com.server.admin.dto.AdminReportListResponse;
 import com.server.admin.dto.AdminReportResponse;
@@ -12,6 +14,8 @@ import com.server.post.repository.CommentRepository;
 import com.server.post.repository.PostRepository;
 import com.server.report.domain.Report;
 import com.server.report.domain.ReportTargetType;
+import com.server.post.service.CommentService;
+import com.server.post.service.PostService;
 import com.server.report.repository.ReportRepository;
 import com.server.user.domain.User;
 import com.server.user.repository.UserRepository;
@@ -41,17 +45,46 @@ public class AdminReportService {
     private final PostRepository postRepository;
     private final CommentRepository commentRepository;
     private final UserRepository userRepository;
+    private final PostService postService;
+    private final CommentService commentService;
+    private final AdminActionRecorder adminActionRecorder;
 
     public AdminReportService(
             ReportRepository reportRepository,
             PostRepository postRepository,
             CommentRepository commentRepository,
-            UserRepository userRepository
+            UserRepository userRepository,
+            PostService postService,
+            CommentService commentService,
+            AdminActionRecorder adminActionRecorder
     ) {
         this.reportRepository = reportRepository;
         this.postRepository = postRepository;
         this.commentRepository = commentRepository;
         this.userRepository = userRepository;
+        this.postService = postService;
+        this.commentService = commentService;
+        this.adminActionRecorder = adminActionRecorder;
+    }
+
+    /**
+     * 게시물을 조치로 삭제한다.
+     *
+     * <p>삭제 자체는 {@code PostService} 가 하고 여기서는 기록을 남긴다. 컨트롤러가
+     * 도메인 서비스를 직접 부르면 기록 지점이 흩어져 빠뜨리기 쉽다.
+     */
+    @Transactional
+    public void deletePost(Long postId, Long adminId) {
+        postService.deleteByAdmin(postId);
+        adminActionRecorder.record(adminId, AdminActionType.POST_DELETED,
+                AdminActionTargetType.POST, postId);
+    }
+
+    @Transactional
+    public void deleteComment(Long commentId, Long adminId) {
+        commentService.deleteByAdmin(commentId);
+        adminActionRecorder.record(adminId, AdminActionType.COMMENT_DELETED,
+                AdminActionTargetType.COMMENT, commentId);
     }
 
     @Transactional(readOnly = true)
@@ -96,6 +129,8 @@ public class AdminReportService {
         report.handle(status, admin);
         log.info("Report status changed. reportId={}, status={}, adminId={}",
                 reportId, status, adminId);
+        adminActionRecorder.record(adminId, AdminActionType.REPORT_STATUS_CHANGED,
+                AdminActionTargetType.REPORT, reportId, null, "-> " + status);
         return AdminReportResponse.from(report);
     }
 
