@@ -7,8 +7,6 @@ import com.server.admin.dto.ReportStatusUpdateRequest;
 import com.server.admin.service.AdminReportService;
 import com.server.auth.web.CurrentUser;
 import com.server.post.domain.ReportStatus;
-import com.server.post.service.CommentService;
-import com.server.post.service.PostService;
 import com.server.report.domain.ReportTargetType;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -37,17 +35,11 @@ import org.springframework.web.bind.annotation.RestController;
 public class AdminReportController {
 
     private final AdminReportService adminReportService;
-    private final PostService postService;
-    private final CommentService commentService;
 
     public AdminReportController(
-            AdminReportService adminReportService,
-            PostService postService,
-            CommentService commentService
+            AdminReportService adminReportService
     ) {
         this.adminReportService = adminReportService;
-        this.postService = postService;
-        this.commentService = commentService;
     }
 
     @GetMapping("/reports")
@@ -95,11 +87,11 @@ public class AdminReportController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     @Operation(
             summary = "게시물 삭제 (관리자)",
-            description = "작성자 확인만 건너뛰고 본인 삭제와 같게 처리한다. 소프트 삭제이므로 "
-                    + "복구 기한 안에는 작성자가 되살릴 수 있다."
+            description = "소프트 삭제라 원문은 남지만, 관리자 조치로 표시되어 "
+                    + "작성자가 복구할 수 없다. 조치는 감사 기록에 남는다."
     )
     public void deletePost(@Parameter(example = "7") @PathVariable Long postId) {
-        postService.deleteByAdmin(postId);
+        adminReportService.deletePost(postId, CurrentUser.idOrNull());
     }
 
     @DeleteMapping("/comments/{commentId}")
@@ -110,6 +102,6 @@ public class AdminReportController {
                     + "작성자와 내용을 감추는 것은 본인 삭제와 같다."
     )
     public void deleteComment(@Parameter(example = "3") @PathVariable Long commentId) {
-        commentService.deleteByAdmin(commentId);
+        adminReportService.deleteComment(commentId, CurrentUser.idOrNull());
     }
 }

@@ -31,10 +31,13 @@ class AdminUserServiceTest {
     private UserRepository userRepository;
 
     private User target;
+    private User admin;
 
     @BeforeEach
     void setUp() {
         target = save("여행자", UserRole.USER, "target-sub", "traveler@example.com");
+        // 조치 기록이 관리자 ID 를 요구한다. 기록의 주체가 없는 조치는 이력이 거짓이 된다.
+        admin = save("관리자", UserRole.ADMIN, "admin-sub", "admin@example.com");
     }
 
     private User save(String nickname, UserRole role, String sub, String email) {
@@ -45,7 +48,7 @@ class AdminUserServiceTest {
     @Test
     @DisplayName("정지하면 상태와 사유가 남고 쓰기가 막힌 것으로 표시된다")
     void suspendsUser() {
-        var result = adminUserService.updateStatus(target.getId(), true, 7, "광고성 게시물 반복");
+        var result = adminUserService.updateStatus(target.getId(), true, 7, "광고성 게시물 반복", admin.getId());
 
         assertThat(result.status()).isEqualTo(UserStatus.SUSPENDED);
         assertThat(result.suspendedReason()).isEqualTo("광고성 게시물 반복");
@@ -56,7 +59,7 @@ class AdminUserServiceTest {
     @Test
     @DisplayName("기간을 생략하면 기한 없는 정지다")
     void suspendsIndefinitely() {
-        var result = adminUserService.updateStatus(target.getId(), true, null, "심각한 위반");
+        var result = adminUserService.updateStatus(target.getId(), true, null, "심각한 위반", admin.getId());
 
         assertThat(result.suspendedUntil()).isNull();
         assertThat(result.writeBlocked()).isTrue();
@@ -75,9 +78,9 @@ class AdminUserServiceTest {
     @Test
     @DisplayName("해제하면 사유와 기한이 지워진다")
     void releasesSuspension() {
-        adminUserService.updateStatus(target.getId(), true, 7, "광고성");
+        adminUserService.updateStatus(target.getId(), true, 7, "광고성", admin.getId());
 
-        var released = adminUserService.updateStatus(target.getId(), false, null, null);
+        var released = adminUserService.updateStatus(target.getId(), false, null, null, admin.getId());
 
         assertThat(released.status()).isEqualTo(UserStatus.ACTIVE);
         assertThat(released.suspendedUntil()).isNull();
@@ -90,9 +93,10 @@ class AdminUserServiceTest {
     void cannotSuspendAdmin() {
         // 관리자끼리 서로 정지시키면 아무도 풀 수 없는 상태가 될 수 있고,
         // 그때 남는 수단은 DB 를 직접 고치는 것뿐이다.
-        User admin = save("관리자", UserRole.ADMIN, "admin-sub", "admin@example.com");
+        User other = save("다른관리자", UserRole.ADMIN, "other-admin", "other-admin@example.com");
 
-        assertThatThrownBy(() -> adminUserService.updateStatus(admin.getId(), true, 7, "사유"))
+        assertThatThrownBy(() ->
+                adminUserService.updateStatus(other.getId(), true, 7, "사유", admin.getId()))
                 .isInstanceOf(BusinessException.class)
                 .hasFieldOrPropertyWithValue("errorCode", ErrorCode.CANNOT_SUSPEND_ADMIN);
     }
@@ -111,7 +115,7 @@ class AdminUserServiceTest {
     @DisplayName("상태로 거르고 전체 건수를 함께 준다")
     void filtersByStatus() {
         save("정상", UserRole.USER, "active-sub", "active@example.com");
-        adminUserService.updateStatus(target.getId(), true, 7, "사유");
+        adminUserService.updateStatus(target.getId(), true, 7, "사유", admin.getId());
 
         var suspended = adminUserService.getUsers(null, UserStatus.SUSPENDED, 0, 20);
 
@@ -138,7 +142,8 @@ class AdminUserServiceTest {
         target.delete(LocalDateTime.now());
         userRepository.saveAndFlush(target);
 
-        assertThatThrownBy(() -> adminUserService.updateStatus(target.getId(), true, 7, "사유"))
+        assertThatThrownBy(() ->
+                adminUserService.updateStatus(target.getId(), true, 7, "사유", admin.getId()))
                 .isInstanceOf(BusinessException.class)
                 .hasFieldOrPropertyWithValue("errorCode", ErrorCode.USER_NOT_FOUND);
     }

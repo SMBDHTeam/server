@@ -34,6 +34,15 @@ public class Post {
     @Column(name = "deleted_at")
     private LocalDateTime deletedAt;
 
+    /**
+     * 관리자가 지웠는지.
+     *
+     * <p>본인 삭제와 관리자 삭제가 같은 컬럼을 쓰면 구분이 불가능하다. 그러면 작성자가
+     * 제재로 지워진 글을 복구 기능으로 그대로 되살릴 수 있다.
+     */
+    @Column(name = "deleted_by_admin", nullable = false)
+    private boolean deletedByAdmin;
+
     protected Post() {
     }
 
@@ -90,6 +99,19 @@ public class Post {
     public void delete() {
         this.deletedAt = LocalDateTime.now();
         this.updatedAt = this.deletedAt;
+        this.deletedByAdmin = false;
+    }
+
+    /**
+     * 관리자 조치로 삭제한다.
+     *
+     * <p>지우지 않고 표시만 남기는 것은 본인 삭제와 같다. 오판을 되돌릴 수 있어야 하고,
+     * 분쟁이 붙었을 때 원문이 근거가 되기 때문이다. 다만 작성자는 되살릴 수 없다.
+     */
+    public void deleteByAdmin() {
+        this.deletedAt = LocalDateTime.now();
+        this.updatedAt = this.deletedAt;
+        this.deletedByAdmin = true;
     }
 
     /**
@@ -99,6 +121,12 @@ public class Post {
     public void restore() {
         this.deletedAt = null;
         this.updatedAt = LocalDateTime.now();
+        this.deletedByAdmin = false;
+    }
+
+    /** 관리자 조치로 지워진 글인지. 작성자 복구를 막는 판단에 쓴다. */
+    public boolean isDeletedByAdmin() {
+        return deletedByAdmin;
     }
 
     /** 삭제한 지 {@code days} 일이 지났는지. 지난 글은 복구할 수 없다. */

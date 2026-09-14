@@ -1,5 +1,7 @@
 package com.server.admin.service;
 
+import com.server.admin.domain.AdminActionTargetType;
+import com.server.admin.domain.AdminActionType;
 import com.server.admin.dto.AdminUserDetailResponse;
 import com.server.admin.dto.AdminUserListResponse;
 import com.server.admin.dto.AdminUserResponse;
@@ -9,9 +11,11 @@ import com.server.common.error.ErrorCode;
 import com.server.post.repository.PostRepository;
 import com.server.report.repository.ReportRepository;
 import com.server.user.domain.User;
+import com.server.user.domain.UserRole;
 import com.server.user.domain.UserStatus;
 import com.server.user.repository.UserRepository;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -30,6 +34,10 @@ public class AdminUserService {
 
     private static final Logger log = LoggerFactory.getLogger(AdminUserService.class);
 
+    /** 이력 화면에 그대로 보이는 문구다. 초와 나노초까지 나오면 읽기 어렵다. */
+    private static final DateTimeFormatter UNTIL_FORMAT =
+            DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
+
     private static final int DEFAULT_PAGE_SIZE = 20;
     private static final int MAX_PAGE_SIZE = 100;
 
@@ -37,17 +45,20 @@ public class AdminUserService {
     private final PostRepository postRepository;
     private final ReportRepository reportRepository;
     private final RefreshTokenStore refreshTokenStore;
+    private final AdminActionRecorder adminActionRecorder;
 
     public AdminUserService(
             UserRepository userRepository,
             PostRepository postRepository,
             ReportRepository reportRepository,
-            RefreshTokenStore refreshTokenStore
+            RefreshTokenStore refreshTokenStore,
+            AdminActionRecorder adminActionRecorder
     ) {
         this.userRepository = userRepository;
         this.postRepository = postRepository;
         this.reportRepository = reportRepository;
         this.refreshTokenStore = refreshTokenStore;
+        this.adminActionRecorder = adminActionRecorder;
     }
 
     @Transactional(readOnly = true)
@@ -65,6 +76,32 @@ public class AdminUserService {
         return new AdminUserListResponse(
                 users.stream().map(AdminUserResponse::from).toList(),
                 userRepository.countForAdmin(normalized, status));
+    }
+
+    /**
+     * 역할을 바꾼다.
+     *
+     * <p>이 API 가 없어 지금까지 운영 DB 에 직접 붙어 {@code UPDATE users SET role} 을
+     * 실행해야 했다. 사람이 운영 DB 에 접속하는 일을 정기 업무로 만들면 안 된다.
+     *
+     * <p>역할은 액세스 토큰에 담기므로 바꾼 즉시 반영되지 않는다. 리프레시 토큰을 폐기해
+     * 재로그인을 강제한다. 특히 강등에서 중요하다 &mdash; 폐기하지 않으면 최대 30분간
+     * 관리자 권한이 남는다.
+     */
+    @Transactional
+    public AdminUserResponse changeRole(Long userId, UserRole role, Long adminId) {
+        User user = userRepository.findByIdAndDeletedAtIsNull(userId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
+
+        UserRole before = user.getRole();
+        user.changeRole(role);
+        log.info("User role changed. userId={}, from={}, to={}, adminId={}",
+                userId, before, role, adminId);
+        adminActionRecorder.record(adminId, AdminActionType.USER_ROLE_CHANGED,
+                AdminActionTargetType.USER, userId, null, before + " -> " + role);
+
+        revokeTokensQuietly(userId);
+        return AdminUserResponse.from(user);
     }
 
     /** 탈퇴한 사용자도 조회한다. 신고를 따라 들어왔을 때 이미 탈퇴했다는 사실이 필요하다. */
@@ -92,7 +129,7 @@ public class AdminUserService {
      */
     @Transactional
     public AdminUserResponse updateStatus(
-            Long userId, boolean suspended, Integer days, String reason) {
+            Long userId, boolean suspended, Integer days, String reason, Long adminId) {
         User user = userRepository.findByIdAndDeletedAtIsNull(userId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
 
@@ -104,10 +141,15 @@ public class AdminUserService {
             LocalDateTime until = days == null ? null : LocalDateTime.now().plusDays(days);
             user.suspend(until, reason);
             log.info("User suspended. userId={}, until={}", userId, until);
+            adminActionRecorder.record(adminId, AdminActionType.USER_SUSPENDED,
+                    AdminActionTargetType.USER, userId, reason,
+                    until == null ? "기한 없음" : "만료 " + until.format(UNTIL_FORMAT));
             revokeTokensQuietly(userId);
         } else {
             user.releaseSuspension();
             log.info("User suspension released. userId={}", userId);
+            adminActionRecorder.record(adminId, AdminActionType.USER_SUSPENSION_RELEASED,
+                    AdminActionTargetType.USER, userId);
         }
         return AdminUserResponse.from(user);
     }

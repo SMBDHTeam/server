@@ -287,7 +287,7 @@ public class PostService {
     public void deleteByAdmin(Long postId) {
         Post post = postRepository.findByIdAndDeletedAtIsNull(postId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.POST_NOT_FOUND));
-        post.delete();
+        post.deleteByAdmin();
         hashtagService.detachFromPost(postId);
     }
 
@@ -316,6 +316,10 @@ public class PostService {
                 .orElseThrow(() -> new BusinessException(ErrorCode.POST_NOT_FOUND));
         if (!post.isWrittenBy(userId)) {
             throw new BusinessException(ErrorCode.POST_ACCESS_DENIED);
+        }
+        // 관리자가 조치로 지운 글이다. 작성자가 되살릴 수 있으면 삭제가 제재로 성립하지 않는다.
+        if (post.isDeletedByAdmin()) {
+            throw new BusinessException(ErrorCode.POST_DELETED_BY_ADMIN);
         }
         if (!post.isRestorableWithin(restoreWindowDays)) {
             throw new BusinessException(ErrorCode.POST_RESTORE_WINDOW_EXPIRED);

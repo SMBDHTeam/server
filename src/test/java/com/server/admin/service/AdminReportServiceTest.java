@@ -168,15 +168,19 @@ class AdminReportServiceTest {
     }
 
     @Test
-    @DisplayName("관리자 삭제도 소프트 삭제라 복구 기한 안에는 되살릴 수 있다")
-    void adminDeleteIsSoftDelete() {
-        // 관리자가 지운 게시물만 다른 상태로 남으면 복구·정리 경로가 갈라진다.
+    @DisplayName("관리자 삭제는 원문을 남기되 작성자가 되살릴 수 없다")
+    void adminDeleteIsSoftButNotRestorable() {
+        // 원문을 남기는 이유는 오판을 되돌릴 수 있어야 하고 분쟁의 근거가 되기 때문이다.
+        // 다만 작성자가 되살릴 수 있으면 삭제가 제재로 성립하지 않는다.
         Post post = savePost("관리자가 지울 글");
 
         postService.deleteByAdmin(post.getId());
 
         Post found = postRepository.findById(post.getId()).orElseThrow();
         assertThat(found.getDeletedAt()).isNotNull();
-        assertThat(postService.restore(post.getId(), author.getId()).id()).isEqualTo(post.getId());
+        assertThat(found.isDeletedByAdmin()).isTrue();
+        assertThatThrownBy(() -> postService.restore(post.getId(), author.getId()))
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("errorCode", ErrorCode.POST_DELETED_BY_ADMIN);
     }
 }

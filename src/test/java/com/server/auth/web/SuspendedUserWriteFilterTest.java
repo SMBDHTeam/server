@@ -43,6 +43,7 @@ class SuspendedUserWriteFilterTest {
     @Autowired
     private AdminUserService adminUserService;
     private User user;
+    private User admin;
     private String token;
 
     @BeforeEach
@@ -50,10 +51,13 @@ class SuspendedUserWriteFilterTest {
         user = userRepository.saveAndFlush(User.ofOAuth(
                 AuthProvider.GOOGLE, "suspend-sub", "s@example.com", "정지대상", null, UserRole.USER));
         token = "Bearer " + accessTokenProvider.issue(user);
+        admin = userRepository.saveAndFlush(User.ofOAuth(
+                AuthProvider.GOOGLE, "filter-admin", "filter-admin@example.com",
+                "필터관리자", null, UserRole.ADMIN));
     }
 
     private void suspend() {
-        adminUserService.updateStatus(user.getId(), true, 7, "광고성 게시물 반복");
+        adminUserService.updateStatus(user.getId(), true, 7, "광고성 게시물 반복", admin.getId());
     }
 
     @Test
@@ -96,7 +100,7 @@ class SuspendedUserWriteFilterTest {
     @DisplayName("정지 해제하면 쓰기가 다시 열린다")
     void unblocksAfterRelease() throws Exception {
         suspend();
-        adminUserService.updateStatus(user.getId(), false, null, null);
+        adminUserService.updateStatus(user.getId(), false, null, null, admin.getId());
 
         // 본문 검증에서 걸리더라도 USER_SUSPENDED 는 아니어야 한다.
         mockMvc.perform(post("/api/v1/posts")
