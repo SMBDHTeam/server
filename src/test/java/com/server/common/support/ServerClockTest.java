@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
+import java.util.TimeZone;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -20,10 +21,20 @@ class ServerClockTest {
     @Test
     @DisplayName("시스템 시간대와 무관하게 한국 시각을 준다")
     void staysInKoreaRegardlessOfSystemZone() {
-        LocalDateTime korea = LocalDateTime.now(ZoneId.of("Asia/Seoul"));
+        // 시간대를 바꾸지 않고 비교하면, 개발자 맥북처럼 이미 한국인 환경에서는 잘못 짠
+        // 코드도 통과한다. 실제로 바꿔 봐야 시간대를 고정했는지 알 수 있다.
+        TimeZone original = TimeZone.getDefault();
+        try {
+            TimeZone.setDefault(TimeZone.getTimeZone("America/New_York"));
 
-        assertThat(Duration.between(korea, ServerClock.now()).abs())
-                .isLessThan(Duration.ofSeconds(5));
+            LocalDateTime korea = LocalDateTime.now(ZoneId.of("Asia/Seoul"));
+
+            assertThat(Duration.between(korea, ServerClock.now()).abs())
+                    .isLessThan(Duration.ofSeconds(5));
+        } finally {
+            // 되돌리지 않으면 뒤따라 도는 테스트가 뉴욕 시계로 실행된다.
+            TimeZone.setDefault(original);
+        }
     }
 
     @Test
