@@ -36,7 +36,7 @@ public interface PlaceWishlistRepository extends JpaRepository<PlaceWishlist, Pl
      */
     @Query("""
             select new com.server.wishlist.dto.PlaceWishlistView(
-                place.id, place.name, place.category, place.address,
+                place.id, place.name, place.category, place.contentTypeId, place.address,
                 place.latitude, place.longitude, place.primaryImageUrl)
             from PlaceWishlist wish
             join wish.place place

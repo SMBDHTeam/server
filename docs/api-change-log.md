@@ -12,6 +12,17 @@ API 계약이 변경될 때마다 최신 항목을 위에 추가한다.
 - 호환성 파괴: 있음. 요청·성공 응답과 HTTP 404 상태는 그대로지만, 기존 일반 실패를 분기하던 클라이언트는 새 오류 코드를 처리해야 한다.
 - DB/ERD: 변경 없음
 
+## 2026-09-15 (장소 응답에 categoryLabel 추가)
+
+- API: `GET /api/v1/places/popular`, `GET /api/v1/users/me/wishlists`, `GET /api/v1/categories/{name}/places`
+- 구분: 추가 (응답 필드)
+- 이전: `category` 에 TourAPI 분류코드(`A02030400`)가 그대로 나가 화면에서 읽을 수 없었다.
+- 이후: `categoryLabel` 을 함께 보낸다. 장소 상세(`GET /places/{placeId}`)와 같은 규칙이다.
+- 이유: 세 응답이 장소 상세와 달리 라벨 변환을 거치지 않고 있었다.
+- 함께: 인기 장소와 위시리스트의 `imageUrl` 을 `primaryImageUrl` 로 바꿨다. 장소 상세와 같은 값인데 이름이 달라 화면마다 다른 필드를 써야 했다. 두 경로 모두 아직 화면에 붙기 전이라 지금 맞춘다.
+- 호환성 파괴: `category` 는 그대로 두고 필드를 더하므로 없음. `imageUrl` 은 이름이 바뀌지만 쓰는 화면이 아직 없다.
+- DB/ERD: 변경 없음
+
 ## 2026-09-13 (인기 장소 추가)
 
 - API: `GET /api/v1/places/popular`

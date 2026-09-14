@@ -63,6 +63,36 @@ class PlaceWishlistServiceTest {
     }
 
     @Test
+    @DisplayName("분류코드를 사람이 읽는 이름으로 바꿔 준다")
+    void resolvesCategoryLabel() {
+        wishlistService.add(placeId, userId);
+
+        assertThat(wishlistService.getMyWishlist(userId, 0, 20).items())
+                .singleElement()
+                .satisfies(place -> {
+                    assertThat(place.category()).isEqualTo("A0101");
+                    assertThat(place.categoryLabel()).isEqualTo("자연 관광지");
+                });
+    }
+
+    @Test
+    @DisplayName("분류가 없는 장소도 라벨을 준다")
+    void labelsPlaceWithoutCategory() {
+        // 지도 검색으로 등록한 장소는 분류가 비어 있을 수 있다. 라벨을 만들다 터지면
+        // 목록 전체가 500 이 된다.
+        Place bare = placeRepository.save(new Place(
+                "KAKAO_LOCAL", "bare-" + System.nanoTime(), null, "이름만 있는 곳", null, null,
+                new BigDecimal("129.0"), new BigDecimal("35.1"), null));
+        wishlistService.add(bare.getId(), userId);
+
+        assertThat(wishlistService.getMyWishlist(userId, 0, 20).items())
+                .anySatisfy(place -> {
+                    assertThat(place.category()).isNull();
+                    assertThat(place.categoryLabel()).isEqualTo("관광지");
+                });
+    }
+
+    @Test
     @DisplayName("같은 장소를 두 번 담아도 한 줄이다")
     void addIsIdempotent() {
         wishlistService.add(placeId, userId);
@@ -111,7 +141,7 @@ class PlaceWishlistServiceTest {
 
     private Place place(String name) {
         return new Place(
-                "TOUR_API", "test-" + name, "12", name, "관광지", "부산 수영구",
+                "TOUR_API", "test-" + name, "12", name, "A0101", "부산 수영구",
                 new BigDecimal("129.11860000"), new BigDecimal("35.15320000"), null);
     }
 }

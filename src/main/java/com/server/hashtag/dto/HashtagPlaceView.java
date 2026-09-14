@@ -13,6 +13,7 @@ public record HashtagPlaceView(
         Long placeId,
         String name,
         String category,
+        String contentTypeId,
         String address,
         BigDecimal latitude,
         BigDecimal longitude,

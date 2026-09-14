@@ -12,9 +12,10 @@ public record PlaceWishlistView(
         Long placeId,
         String name,
         String category,
+        String contentTypeId,
         String address,
         BigDecimal latitude,
         BigDecimal longitude,
-        String imageUrl
+        String primaryImageUrl
 ) {
 }

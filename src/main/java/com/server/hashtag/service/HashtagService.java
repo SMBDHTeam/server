@@ -2,6 +2,7 @@ package com.server.hashtag.service;
 
 import com.server.common.support.Paging;
 import com.server.hashtag.domain.Hashtag;
+import com.server.place.support.PlaceCategoryLabelResolver;
 import com.server.hashtag.dto.HashtagPlaceListResponse;
 import com.server.hashtag.dto.HashtagPlaceResponse;
 import com.server.hashtag.dto.HashtagSuggestionListResponse;
@@ -201,6 +202,7 @@ public class HashtagService {
                         view.placeId(),
                         view.name(),
                         view.category(),
+                        PlaceCategoryLabelResolver.resolve(view.category(), view.contentTypeId()),
                         view.address(),
                         view.latitude(),
                         view.longitude(),

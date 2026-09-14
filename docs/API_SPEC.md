@@ -2097,7 +2097,8 @@ GET /api/v1/posts/popular?category=맛집      인기순
     {
       "placeId": 42,
       "name": "OO국밥",
-      "category": "음식점",
+      "category": "A05020100",
+      "categoryLabel": "음식점",
       "address": "부산 ...",
       "latitude": 35.15320000,
       "longitude": 129.11860000,
@@ -2139,11 +2140,12 @@ GET /api/v1/posts/popular?category=맛집      인기순
     {
       "placeId": 42,
       "name": "광안리해수욕장",
-      "category": "관광지",
+      "category": "A01011200",
+      "categoryLabel": "자연 관광지",
       "address": "부산 수영구 광안해변로 219",
       "latitude": 35.15320000,
       "longitude": 129.11860000,
-      "imageUrl": null,
+      "primaryImageUrl": null,
       "postCount": 27,
       "authorCount": 19
     }
@@ -2180,8 +2182,14 @@ COMMUNITY_POPULAR_PLACE_MIN_AUTHORS=2
 **2명은 신뢰할 만한 기준이 아니라 데이터가 없어서 낮춰 둔 값이다.** 혼자 붙인 것만 걸러내는
 수준이며, 글이 쌓이면 올린다.
 
-**`imageUrl` 은 대부분 `null` 이다.** `places` 의 대표 이미지는 TourAPI 로 들어온 장소에만
-있고, 지도 검색으로 등록한 곳은 비어 있다. 화면에 무엇을 띄울지는 클라이언트가 정한다.
+**`category` 는 원본, `categoryLabel` 은 화면에 쓰는 값이다.** TourAPI 로 적재한 장소는
+`category` 에 분류코드(`A02030400`)가 들어 있어 그대로 보여주면 사람이 읽을 수 없다.
+장소 상세(`GET /places/{placeId}`)와 같은 규칙으로 라벨을 만들어 함께 보낸다.
+`C-13`·`C-13-1`·`C-13-2` 세 응답 모두 같다.
+
+**`primaryImageUrl` 은 대부분 `null` 이다.** `places` 의 대표 이미지는 TourAPI 로 들어온
+장소에만 있고, 지도 검색으로 등록한 곳은 비어 있다. 화면에 무엇을 띄울지는 클라이언트가
+정한다. 이름은 장소 상세(`GET /places/{placeId}`)와 맞췄다.
 
 여기서 받은 `placeId` 는 위시리스트(`C-13-1`)와 일정 생성의 `mustVisitPlaceIds` 에 그대로 쓴다.
 
@@ -2209,11 +2217,12 @@ COMMUNITY_POPULAR_PLACE_MIN_AUTHORS=2
     {
       "placeId": 42,
       "name": "광안리해수욕장",
-      "category": "관광지",
+      "category": "A01011200",
+      "categoryLabel": "자연 관광지",
       "address": "부산 수영구 광안해변로 219",
       "latitude": 35.15320000,
       "longitude": 129.11860000,
-      "imageUrl": "https://example.com/place/42.jpg"
+      "primaryImageUrl": "https://example.com/place/42.jpg"
     }
   ]
 }
