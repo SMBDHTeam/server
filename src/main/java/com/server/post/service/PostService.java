@@ -1,5 +1,6 @@
 package com.server.post.service;
 
+import com.server.common.support.ServerClock;
 import com.server.common.support.Paging;
 import com.server.bookmark.repository.BookmarkRepository;
 import com.server.common.error.BusinessException;
@@ -25,7 +26,6 @@ import com.server.post.repository.PostPlaceTagRepository;
 import com.server.post.repository.PostRepository;
 import com.server.user.domain.User;
 import com.server.user.repository.UserRepository;
-import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -186,7 +186,7 @@ public class PostService {
             throw new BusinessException(ErrorCode.UNAUTHORIZED);
         }
         List<Post> posts = postRepository.findPopularFeed(
-                LocalDateTime.now().minusDays(POPULAR_FEED_DAYS),
+                ServerClock.now().minusDays(POPULAR_FEED_DAYS),
                 following ? requesterId : null,
                 placeId,
                 normalizeCategory(category),
@@ -299,7 +299,7 @@ public class PostService {
         }
         List<Post> posts = postRepository.findDeletedByUserId(
                 userId,
-                LocalDateTime.now().minusDays(restoreWindowDays),
+                ServerClock.now().minusDays(restoreWindowDays),
                 Paging.of(page, size));
 
         // 삭제 시각 기준 정렬이라 이어받을 커서가 없다. 다음 페이지는 page 를 올려 요청한다.

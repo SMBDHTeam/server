@@ -1,5 +1,6 @@
 package com.server.wishlist.domain;
 
+import com.server.common.support.ServerClock;
 import com.server.place.domain.Place;
 import com.server.user.domain.User;
 import jakarta.persistence.Column;
@@ -43,7 +44,7 @@ public class PlaceWishlist {
     public PlaceWishlist(User user, Place place) {
         this.user = user;
         this.place = place;
-        this.createdAt = LocalDateTime.now();
+        this.createdAt = ServerClock.now();
     }
 
     public User getUser() {

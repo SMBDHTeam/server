@@ -1,5 +1,6 @@
 package com.server.post.service;
 
+import com.server.common.support.ServerClock;
 import com.server.bookmark.repository.BookmarkRepository;
 import com.server.hashtag.service.HashtagService;
 import com.server.post.domain.Post;
@@ -71,7 +72,7 @@ public class PostPurgeService {
      */
     @Transactional
     public PurgeResult purgeExpired(int retentionDays) {
-        LocalDateTime deadline = LocalDateTime.now().minusDays(retentionDays);
+        LocalDateTime deadline = ServerClock.now().minusDays(retentionDays);
         List<Post> expired = postRepository.findDeletedBefore(
                 deadline, PageRequest.of(0, BATCH_SIZE));
         if (expired.isEmpty()) {

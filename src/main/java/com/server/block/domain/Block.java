@@ -1,5 +1,6 @@
 package com.server.block.domain;
 
+import com.server.common.support.ServerClock;
 import com.server.user.domain.User;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -40,7 +41,7 @@ public class Block {
     public Block(User blocker, User blocked) {
         this.blocker = blocker;
         this.blocked = blocked;
-        this.createdAt = LocalDateTime.now();
+        this.createdAt = ServerClock.now();
     }
 
 

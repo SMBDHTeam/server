@@ -1,5 +1,6 @@
 package com.server.post.domain;
 
+import com.server.common.support.ServerClock;
 import com.server.user.domain.User;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -57,7 +58,7 @@ public class Comment {
         this.user = user;
         this.parent = parent;
         this.content = content;
-        this.createdAt = LocalDateTime.now();
+        this.createdAt = ServerClock.now();
         this.updatedAt = this.createdAt;
     }
 
@@ -103,12 +104,12 @@ public class Comment {
 
     public void updateContent(String content) {
         this.content = content;
-        this.updatedAt = LocalDateTime.now();
+        this.updatedAt = ServerClock.now();
     }
 
     /** 게시물과 마찬가지로 물리 삭제하지 않는다. */
     public void delete() {
-        this.deletedAt = LocalDateTime.now();
+        this.deletedAt = ServerClock.now();
         this.updatedAt = this.deletedAt;
     }
 }
