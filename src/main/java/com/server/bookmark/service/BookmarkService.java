@@ -10,7 +10,7 @@ import com.server.common.error.ErrorCode;
 import com.server.post.domain.Post;
 import com.server.post.repository.PostRepository;
 import com.server.post.service.PostSummaryAssembler;
-import com.server.user.repository.UserRepository;
+import com.server.user.service.ActiveUserReader;
 import java.util.List;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -20,18 +20,18 @@ public class BookmarkService {
 
     private final BookmarkRepository bookmarkRepository;
     private final PostRepository postRepository;
-    private final UserRepository userRepository;
+    private final ActiveUserReader activeUserReader;
     private final PostSummaryAssembler postSummaryAssembler;
 
     public BookmarkService(
             BookmarkRepository bookmarkRepository,
             PostRepository postRepository,
-            UserRepository userRepository,
+            ActiveUserReader activeUserReader,
             PostSummaryAssembler postSummaryAssembler
     ) {
         this.bookmarkRepository = bookmarkRepository;
         this.postRepository = postRepository;
-        this.userRepository = userRepository;
+        this.activeUserReader = activeUserReader;
         this.postSummaryAssembler = postSummaryAssembler;
     }
 
@@ -41,9 +41,7 @@ public class BookmarkService {
         if (!postRepository.existsByIdAndDeletedAtIsNull(postId)) {
             throw new BusinessException(ErrorCode.POST_NOT_FOUND);
         }
-        if (!userRepository.existsByIdAndDeletedAtIsNull(userId)) {
-            throw new BusinessException(ErrorCode.USER_NOT_FOUND);
-        }
+        activeUserReader.requireExists(userId);
         bookmarkRepository.insertIfAbsent(userId, postId);
         return new BookmarkResponse(true);
     }
@@ -55,9 +53,7 @@ public class BookmarkService {
         }
         // 저장·목록과 같은 조건으로 막는다. 지울 행이 없어 결과는 같지만, 한 자원의
         // 세 동작 중 하나만 탈퇴한 사용자를 통과시키면 나중에 규칙을 바꿀 때 빠진다.
-        if (!userRepository.existsByIdAndDeletedAtIsNull(userId)) {
-            throw new BusinessException(ErrorCode.USER_NOT_FOUND);
-        }
+        activeUserReader.requireExists(userId);
         bookmarkRepository.deleteByUserIdAndPostId(userId, postId);
         return new BookmarkResponse(false);
     }
@@ -65,9 +61,7 @@ public class BookmarkService {
     /** 저장한 뒤 삭제된 게시물과 탈퇴한 사용자의 게시물은 목록에서 제외한다. */
     @Transactional(readOnly = true)
     public BookmarkListResponse getMyBookmarks(Long userId, Integer page, Integer size) {
-        if (!userRepository.existsByIdAndDeletedAtIsNull(userId)) {
-            throw new BusinessException(ErrorCode.USER_NOT_FOUND);
-        }
+        activeUserReader.requireExists(userId);
         List<Post> posts = bookmarkRepository
                 .findReadableByUserId(userId, Paging.of(page, size))
                 .stream()

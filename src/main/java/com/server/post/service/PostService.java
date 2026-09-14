@@ -25,7 +25,7 @@ import com.server.post.repository.PostMediaRepository;
 import com.server.post.repository.PostPlaceTagRepository;
 import com.server.post.repository.PostRepository;
 import com.server.user.domain.User;
-import com.server.user.repository.UserRepository;
+import com.server.user.service.ActiveUserReader;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -49,7 +49,7 @@ public class PostService {
     private final PostPlaceTagRepository postPlaceTagRepository;
     private final PostLikeRepository postLikeRepository;
     private final BookmarkRepository bookmarkRepository;
-    private final UserRepository userRepository;
+    private final ActiveUserReader activeUserReader;
     private final PlaceRepository placeRepository;
     private final PostSummaryAssembler postSummaryAssembler;
     private final HashtagService hashtagService;
@@ -66,7 +66,7 @@ public class PostService {
             PostPlaceTagRepository postPlaceTagRepository,
             PostLikeRepository postLikeRepository,
             BookmarkRepository bookmarkRepository,
-            UserRepository userRepository,
+            ActiveUserReader activeUserReader,
             PlaceRepository placeRepository,
             PostSummaryAssembler postSummaryAssembler,
             HashtagService hashtagService,
@@ -78,7 +78,7 @@ public class PostService {
         this.postPlaceTagRepository = postPlaceTagRepository;
         this.postLikeRepository = postLikeRepository;
         this.bookmarkRepository = bookmarkRepository;
-        this.userRepository = userRepository;
+        this.activeUserReader = activeUserReader;
         this.placeRepository = placeRepository;
         this.postSummaryAssembler = postSummaryAssembler;
         this.hashtagService = hashtagService;
@@ -88,8 +88,7 @@ public class PostService {
 
     @Transactional
     public PostDetailResponse create(Long userId, PostCreateRequest request) {
-        User author = userRepository.findByIdAndDeletedAtIsNull(userId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
+        User author = activeUserReader.require(userId);
 
         Post post = postRepository.save(new Post(author, request.content()));
         List<PostMedia> mediaList = saveMedia(post, request.mediaList());
@@ -201,9 +200,7 @@ public class PostService {
     @Transactional(readOnly = true)
     public PostSummaryListResponse getUserPosts(
             Long userId, Long cursor, Integer size, Long requesterId) {
-        if (!userRepository.existsByIdAndDeletedAtIsNull(userId)) {
-            throw new BusinessException(ErrorCode.USER_NOT_FOUND);
-        }
+        activeUserReader.requireExists(userId);
         int limit = Paging.size(size);
         return toSummaryList(
                 postRepository.findByUserIdAndDeletedAtIsNullAndIdLessThanOrderByIdDesc(
@@ -294,9 +291,7 @@ public class PostService {
     /** 내가 지운 게시물 목록. 복구 기한이 남은 것만 준다. */
     @Transactional(readOnly = true)
     public PostSummaryListResponse getMyDeletedPosts(Long userId, Integer page, Integer size) {
-        if (!userRepository.existsByIdAndDeletedAtIsNull(userId)) {
-            throw new BusinessException(ErrorCode.USER_NOT_FOUND);
-        }
+        activeUserReader.requireExists(userId);
         List<Post> posts = postRepository.findDeletedByUserId(
                 userId,
                 ServerClock.now().minusDays(restoreWindowDays),
@@ -357,9 +352,7 @@ public class PostService {
         if (!postRepository.existsByIdAndDeletedAtIsNull(postId)) {
             throw new BusinessException(ErrorCode.POST_NOT_FOUND);
         }
-        if (!userRepository.existsByIdAndDeletedAtIsNull(userId)) {
-            throw new BusinessException(ErrorCode.USER_NOT_FOUND);
-        }
+        activeUserReader.requireExists(userId);
 
         // 이미 눌러 둔 상태면 개수도 알림도 건드리지 않는다.
         if (postLikeRepository.insertIfAbsent(postId, userId) > 0) {

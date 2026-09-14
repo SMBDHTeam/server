@@ -11,7 +11,7 @@ import com.server.notification.dto.NotificationListResponse;
 import com.server.notification.dto.NotificationResponse;
 import com.server.notification.repository.NotificationRepository;
 import com.server.post.repository.CommentRepository;
-import com.server.user.repository.UserRepository;
+import com.server.user.service.ActiveUserReader;
 import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -36,18 +36,18 @@ public class NotificationService {
     private final NotificationRepository notificationRepository;
     private final NotificationWriter notificationWriter;
     private final CommentRepository commentRepository;
-    private final UserRepository userRepository;
+    private final ActiveUserReader activeUserReader;
 
     public NotificationService(
             NotificationRepository notificationRepository,
             NotificationWriter notificationWriter,
             CommentRepository commentRepository,
-            UserRepository userRepository
+            ActiveUserReader activeUserReader
     ) {
         this.notificationRepository = notificationRepository;
         this.notificationWriter = notificationWriter;
         this.commentRepository = commentRepository;
-        this.userRepository = userRepository;
+        this.activeUserReader = activeUserReader;
     }
 
     /**
@@ -121,9 +121,7 @@ public class NotificationService {
     }
 
     private void requireActiveUser(Long userId) {
-        if (!userRepository.existsByIdAndDeletedAtIsNull(userId)) {
-            throw new BusinessException(ErrorCode.USER_NOT_FOUND);
-        }
+        activeUserReader.requireExists(userId);
     }
 
     private NotificationResponse toResponse(Notification notification) {

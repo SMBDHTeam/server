@@ -32,7 +32,7 @@ import com.server.post.repository.PostMediaRepository;
 import com.server.post.repository.PostPlaceTagRepository;
 import com.server.post.repository.PostRepository;
 import com.server.user.domain.User;
-import com.server.user.repository.UserRepository;
+import com.server.user.service.ActiveUserReader;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
@@ -59,7 +59,7 @@ class PostServiceTest {
             Mockito.mock(PostPlaceTagRepository.class);
     private final PostLikeRepository postLikeRepository = Mockito.mock(PostLikeRepository.class);
     private final BookmarkRepository bookmarkRepository = Mockito.mock(BookmarkRepository.class);
-    private final UserRepository userRepository = Mockito.mock(UserRepository.class);
+    private final ActiveUserReader activeUserReader = Mockito.mock(ActiveUserReader.class);
     private final PlaceRepository placeRepository = Mockito.mock(PlaceRepository.class);
     private final PostSummaryAssembler postSummaryAssembler =
             Mockito.mock(PostSummaryAssembler.class);
@@ -73,7 +73,7 @@ class PostServiceTest {
             postPlaceTagRepository,
             postLikeRepository,
             bookmarkRepository,
-            userRepository,
+            activeUserReader,
             placeRepository,
             postSummaryAssembler,
             hashtagService,
@@ -456,8 +456,8 @@ class PostServiceTest {
     private User givenActiveUser(long userId) {
         User user = new User("사용자" + userId, null);
         ReflectionTestUtils.setField(user, "id", userId);
-        when(userRepository.findByIdAndDeletedAtIsNull(userId)).thenReturn(Optional.of(user));
-        when(userRepository.existsByIdAndDeletedAtIsNull(userId)).thenReturn(true);
+        // 살아 있는 사용자면 확인이 조용히 지나가고, require 는 엔티티를 준다.
+        when(activeUserReader.require(userId)).thenReturn(user);
         return user;
     }
 }
