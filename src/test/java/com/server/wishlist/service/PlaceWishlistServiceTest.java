@@ -63,6 +63,19 @@ class PlaceWishlistServiceTest {
     }
 
     @Test
+    @DisplayName("분류코드를 사람이 읽는 이름으로 바꿔 준다")
+    void resolvesCategoryLabel() {
+        wishlistService.add(placeId, userId);
+
+        assertThat(wishlistService.getMyWishlist(userId, 0, 20).items())
+                .singleElement()
+                .satisfies(place -> {
+                    assertThat(place.category()).isEqualTo("A0101");
+                    assertThat(place.categoryLabel()).isEqualTo("자연 관광지");
+                });
+    }
+
+    @Test
     @DisplayName("같은 장소를 두 번 담아도 한 줄이다")
     void addIsIdempotent() {
         wishlistService.add(placeId, userId);
@@ -111,7 +124,7 @@ class PlaceWishlistServiceTest {
 
     private Place place(String name) {
         return new Place(
-                "TOUR_API", "test-" + name, "12", name, "관광지", "부산 수영구",
+                "TOUR_API", "test-" + name, "12", name, "A0101", "부산 수영구",
                 new BigDecimal("129.11860000"), new BigDecimal("35.15320000"), null);
     }
 }

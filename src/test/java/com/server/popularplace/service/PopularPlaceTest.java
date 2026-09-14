@@ -119,6 +119,22 @@ class PopularPlaceTest {
     }
 
     @Test
+    @DisplayName("분류코드를 사람이 읽는 이름으로 바꿔 준다")
+    void resolvesCategoryLabel() {
+        // TourAPI 분류코드가 그대로 나가면 화면에 "A02030400" 이 뜬다.
+        taggedPost(user("가"), beach);
+        taggedPost(user("나"), beach);
+        flush();
+
+        assertThat(findPopular())
+                .singleElement()
+                .satisfies(place -> {
+                    assertThat(place.category()).isEqualTo("A0101");
+                    assertThat(place.categoryLabel()).isEqualTo("자연 관광지");
+                });
+    }
+
+    @Test
     @DisplayName("가려 둔 장소는 빼고 준다")
     void ignoresHiddenPlace() {
         taggedPost(user("가"), beach);
@@ -160,7 +176,7 @@ class PopularPlaceTest {
 
     private Place place(String name) {
         Place place = new Place(
-                "TOUR_API", name + System.nanoTime(), "12", name, "관광지", "부산 어딘가",
+                "TOUR_API", name + System.nanoTime(), "12", name, "A0101", "부산 어딘가",
                 new BigDecimal("129.11860000"), new BigDecimal("35.15320000"), null);
         entityManager.persist(place);
         return place;

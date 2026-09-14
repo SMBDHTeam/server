@@ -61,7 +61,7 @@ public interface PostPlaceTagRepository extends JpaRepository<PostPlaceTag, Long
      */
     @Query("""
             select new com.server.popularplace.dto.PopularPlaceView(
-                place.id, place.name, place.category, place.address,
+                place.id, place.name, place.category, place.contentTypeId, place.address,
                 place.latitude, place.longitude, place.primaryImageUrl,
                 count(distinct post.id), count(distinct author.id),
                 max(post.createdAt))
@@ -75,7 +75,7 @@ public interface PostPlaceTagRepository extends JpaRepository<PostPlaceTag, Long
               and post.createdAt >= :since
               and (select count(distinct other.place.id) from PostPlaceTag other
                    where other.post = post) = 1
-            group by place.id, place.name, place.category, place.address,
+            group by place.id, place.name, place.category, place.contentTypeId, place.address,
                      place.latitude, place.longitude, place.primaryImageUrl
             having count(distinct author.id) >= :minAuthors
             order by count(distinct author.id) desc,

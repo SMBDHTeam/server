@@ -62,7 +62,7 @@ public interface PostHashtagRepository extends JpaRepository<PostHashtag, PostHa
      */
     @Query("""
             select new com.server.hashtag.dto.HashtagPlaceView(
-                place.id, place.name, place.category, place.address,
+                place.id, place.name, place.category, place.contentTypeId, place.address,
                 place.latitude, place.longitude,
                 count(distinct link.post.id), count(distinct link.post.user.id))
             from PostHashtag link
@@ -73,7 +73,7 @@ public interface PostHashtagRepository extends JpaRepository<PostHashtag, PostHa
               and link.post.user.deletedAt is null
               and (select count(distinct other.place.id) from PostPlaceTag other
                    where other.post = link.post) = 1
-            group by place.id, place.name, place.category, place.address,
+            group by place.id, place.name, place.category, place.contentTypeId, place.address,
                      place.latitude, place.longitude
             having count(distinct link.post.user.id) >= :minAuthors
             order by count(distinct link.post.user.id) desc, count(distinct link.post.id) desc
