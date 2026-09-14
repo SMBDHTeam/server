@@ -25,7 +25,7 @@ import com.server.post.repository.CommentLikeRepository;
 import com.server.post.repository.CommentRepository;
 import com.server.post.repository.PostRepository;
 import com.server.user.domain.User;
-import com.server.user.repository.UserRepository;
+import com.server.user.service.ActiveUserReader;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -47,13 +47,13 @@ class CommentServiceTest {
             Mockito.mock(CommentLikeRepository.class);
     private final PostRepository postRepository = Mockito.mock(PostRepository.class);
     private final BlockRepository blockRepository = Mockito.mock(BlockRepository.class);
-    private final UserRepository userRepository = Mockito.mock(UserRepository.class);
+    private final ActiveUserReader activeUserReader = Mockito.mock(ActiveUserReader.class);
     private final NotificationService notificationService =
             Mockito.mock(NotificationService.class);
 
     private final CommentService commentService = new CommentService(
             commentRepository, commentLikeRepository, postRepository, blockRepository,
-            userRepository, notificationService);
+            activeUserReader, notificationService);
 
     @Test
     @DisplayName("답글에 다시 답글을 달 수 없다")
@@ -313,8 +313,8 @@ class CommentServiceTest {
 
     private User givenActiveUser(long userId) {
         User user = user(userId);
-        when(userRepository.findByIdAndDeletedAtIsNull(userId)).thenReturn(Optional.of(user));
-        when(userRepository.existsByIdAndDeletedAtIsNull(userId)).thenReturn(true);
+        // 살아 있는 사용자면 확인이 조용히 지나가고, require 는 엔티티를 준다.
+        when(activeUserReader.require(userId)).thenReturn(user);
         return user;
     }
 

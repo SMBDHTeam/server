@@ -4,7 +4,7 @@ import com.server.common.error.BusinessException;
 import com.server.common.error.ErrorCode;
 import com.server.common.support.Paging;
 import com.server.place.repository.PlaceRepository;
-import com.server.user.repository.UserRepository;
+import com.server.user.service.ActiveUserReader;
 import com.server.wishlist.dto.PlaceWishlistListResponse;
 import com.server.wishlist.dto.PlaceWishlistResponse;
 import com.server.wishlist.dto.PlaceWishlistToggleResponse;
@@ -23,16 +23,16 @@ public class PlaceWishlistService {
 
     private final PlaceWishlistRepository wishlistRepository;
     private final PlaceRepository placeRepository;
-    private final UserRepository userRepository;
+    private final ActiveUserReader activeUserReader;
 
     public PlaceWishlistService(
             PlaceWishlistRepository wishlistRepository,
             PlaceRepository placeRepository,
-            UserRepository userRepository
+            ActiveUserReader activeUserReader
     ) {
         this.wishlistRepository = wishlistRepository;
         this.placeRepository = placeRepository;
-        this.userRepository = userRepository;
+        this.activeUserReader = activeUserReader;
     }
 
     /** 이미 담은 장소를 다시 담아도 중복 생성되지 않는다. */
@@ -73,8 +73,6 @@ public class PlaceWishlistService {
     }
 
     private void requireUser(Long userId) {
-        if (!userRepository.existsByIdAndDeletedAtIsNull(userId)) {
-            throw new BusinessException(ErrorCode.USER_NOT_FOUND);
-        }
+        activeUserReader.requireExists(userId);
     }
 }

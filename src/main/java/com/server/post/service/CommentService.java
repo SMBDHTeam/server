@@ -18,7 +18,7 @@ import com.server.post.repository.CommentLikeRepository;
 import com.server.post.repository.CommentRepository;
 import com.server.post.repository.PostRepository;
 import com.server.user.domain.User;
-import com.server.user.repository.UserRepository;
+import com.server.user.service.ActiveUserReader;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -40,7 +40,7 @@ public class CommentService {
     private final CommentLikeRepository commentLikeRepository;
     private final PostRepository postRepository;
     private final BlockRepository blockRepository;
-    private final UserRepository userRepository;
+    private final ActiveUserReader activeUserReader;
     private final NotificationService notificationService;
 
     public CommentService(
@@ -48,14 +48,14 @@ public class CommentService {
             CommentLikeRepository commentLikeRepository,
             PostRepository postRepository,
             BlockRepository blockRepository,
-            UserRepository userRepository,
+            ActiveUserReader activeUserReader,
             NotificationService notificationService
     ) {
         this.commentRepository = commentRepository;
         this.commentLikeRepository = commentLikeRepository;
         this.postRepository = postRepository;
         this.blockRepository = blockRepository;
-        this.userRepository = userRepository;
+        this.activeUserReader = activeUserReader;
         this.notificationService = notificationService;
     }
 
@@ -68,8 +68,7 @@ public class CommentService {
     public CommentResponse create(Long postId, Long userId, CommentCreateRequest request) {
         Post post = postRepository.findByIdAndDeletedAtIsNull(postId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.POST_NOT_FOUND));
-        User author = userRepository.findByIdAndDeletedAtIsNull(userId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
+        User author = activeUserReader.require(userId);
 
         // 본인 글이면 차단 관계가 있을 수 없어 조회를 건너뛴다.
         Long postAuthorId = post.getUser().getId();
@@ -149,9 +148,7 @@ public class CommentService {
     @Transactional
     public CommentLikeResponse like(Long postId, Long commentId, Long userId) {
         findComment(postId, commentId);
-        if (!userRepository.existsByIdAndDeletedAtIsNull(userId)) {
-            throw new BusinessException(ErrorCode.USER_NOT_FOUND);
-        }
+        activeUserReader.requireExists(userId);
 
         // 이미 눌러 둔 상태면 개수도 알림도 건드리지 않는다.
         if (commentLikeRepository.insertIfAbsent(commentId, userId) > 0) {

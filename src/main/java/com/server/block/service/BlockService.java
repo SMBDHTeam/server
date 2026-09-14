@@ -9,7 +9,7 @@ import com.server.common.error.ErrorCode;
 import com.server.follow.dto.FollowUserResponse;
 import com.server.follow.repository.FollowRepository;
 import com.server.user.domain.User;
-import com.server.user.repository.UserRepository;
+import com.server.user.service.ActiveUserReader;
 import java.util.List;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -19,16 +19,16 @@ public class BlockService {
 
     private final BlockRepository blockRepository;
     private final FollowRepository followRepository;
-    private final UserRepository userRepository;
+    private final ActiveUserReader activeUserReader;
 
     public BlockService(
             BlockRepository blockRepository,
             FollowRepository followRepository,
-            UserRepository userRepository
+            ActiveUserReader activeUserReader
     ) {
         this.blockRepository = blockRepository;
         this.followRepository = followRepository;
-        this.userRepository = userRepository;
+        this.activeUserReader = activeUserReader;
     }
 
     /**
@@ -40,8 +40,8 @@ public class BlockService {
         if (targetUserId.equals(userId)) {
             throw new BusinessException(ErrorCode.INVALID_BLOCK_REQUEST);
         }
-        findActiveUser(targetUserId);
-        findActiveUser(userId);
+        activeUserReader.requireExists(targetUserId);
+        activeUserReader.requireExists(userId);
 
         blockRepository.insertIfAbsent(userId, targetUserId);
         followRepository.deleteByFollowerIdAndFollowingId(userId, targetUserId);
@@ -53,24 +53,19 @@ public class BlockService {
     /** 차단을 풀어도 끊긴 팔로우는 되살리지 않는다. */
     @Transactional
     public BlockResponse unblock(Long targetUserId, Long userId) {
-        findActiveUser(targetUserId);
+        activeUserReader.requireExists(targetUserId);
         blockRepository.deleteByBlockerIdAndBlockedId(userId, targetUserId);
         return new BlockResponse(false);
     }
 
     @Transactional(readOnly = true)
     public BlockUserListResponse getMyBlocks(Long userId, Integer page, Integer size) {
-        findActiveUser(userId);
+        activeUserReader.requireExists(userId);
         List<FollowUserResponse> items = blockRepository
                 .findByBlockerIdOrderByCreatedAtDesc(userId, Paging.of(page, size)).stream()
                 .map(block -> FollowUserResponse.from(block.getBlocked()))
                 .toList();
         return new BlockUserListResponse(items);
-    }
-
-    private User findActiveUser(Long userId) {
-        return userRepository.findByIdAndDeletedAtIsNull(userId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
     }
 
 }

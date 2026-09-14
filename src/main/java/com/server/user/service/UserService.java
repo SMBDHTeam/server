@@ -22,15 +22,18 @@ public class UserService {
     private final UserRepository userRepository;
     private final PostRepository postRepository;
     private final FollowRepository followRepository;
+    private final ActiveUserReader activeUserReader;
 
     public UserService(
             UserRepository userRepository,
             PostRepository postRepository,
-            FollowRepository followRepository
+            FollowRepository followRepository,
+            ActiveUserReader activeUserReader
     ) {
         this.userRepository = userRepository;
         this.postRepository = postRepository;
         this.followRepository = followRepository;
+        this.activeUserReader = activeUserReader;
     }
 
     /** 닉네임에 검색어가 포함된 사용자를 찾는다. 검색어가 비어 있으면 빈 목록을 준다. */
@@ -50,20 +53,20 @@ public class UserService {
 
     @Transactional
     public UserProfileResponse changeProfileImage(Long userId, ProfileImageUpdateRequest request) {
-        findActiveUser(userId).changeProfileImage(request.profileImageUrl());
+        activeUserReader.require(userId).changeProfileImage(request.profileImageUrl());
         return getProfile(userId, userId);
     }
 
     @Transactional
     public UserProfileResponse removeProfileImage(Long userId) {
-        findActiveUser(userId).removeProfileImage();
+        activeUserReader.require(userId).removeProfileImage();
         return getProfile(userId, userId);
     }
 
     /** 이미 쓰는 사람이 있는 닉네임이면 거절한다. 자기 닉네임을 그대로 보내는 건 허용한다. */
     @Transactional
     public UserProfileResponse changeNickname(Long userId, NicknameUpdateRequest request) {
-        User user = findActiveUser(userId);
+        User user = activeUserReader.require(userId);
 
         if (!user.getNickname().equals(request.nickname())
                 && userRepository.existsByNicknameAndDeletedAtIsNull(request.nickname())) {
@@ -94,11 +97,6 @@ public class UserService {
                 followRepository.countByFollowerId(userId),
                 following,
                 userId.equals(requesterId));
-    }
-
-    private User findActiveUser(Long userId) {
-        return userRepository.findByIdAndDeletedAtIsNull(userId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
     }
 
 }

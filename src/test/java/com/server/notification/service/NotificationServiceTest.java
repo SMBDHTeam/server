@@ -15,7 +15,7 @@ import com.server.notification.domain.NotificationType;
 import com.server.notification.repository.NotificationRepository;
 import com.server.post.repository.CommentRepository;
 import com.server.user.domain.User;
-import com.server.user.repository.UserRepository;
+import com.server.user.service.ActiveUserReader;
 import java.time.LocalDateTime;
 import java.util.Optional;
 import org.junit.jupiter.api.DisplayName;
@@ -32,7 +32,7 @@ class NotificationServiceTest {
 
     private final NotificationRepository notificationRepository =
             Mockito.mock(NotificationRepository.class);
-    private final UserRepository userRepository = Mockito.mock(UserRepository.class);
+    private final ActiveUserReader activeUserReader = Mockito.mock(ActiveUserReader.class);
     private final CommentRepository commentRepository = Mockito.mock(CommentRepository.class);
 
     private final NotificationWriter notificationWriter = Mockito.mock(NotificationWriter.class);
@@ -42,7 +42,7 @@ class NotificationServiceTest {
                     notificationRepository,
                     notificationWriter,
                     commentRepository,
-                    userRepository);
+                    activeUserReader);
 
     @Test
     @DisplayName("저장이 실패해도 부르는 쪽 작업을 막지 않는다")

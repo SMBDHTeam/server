@@ -12,13 +12,10 @@ import com.server.common.error.BusinessException;
 import com.server.common.error.ErrorCode;
 import com.server.follow.repository.FollowRepository;
 import com.server.notification.service.NotificationService;
-import com.server.user.domain.User;
-import com.server.user.repository.UserRepository;
-import java.util.Optional;
+import com.server.user.service.ActiveUserReader;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
-import org.springframework.test.util.ReflectionTestUtils;
 
 /**
  * 차단은 팔로우를 끊는데 팔로우에는 차단 확인이 없어, 차단 직후 팔로우 한 번이면
@@ -32,13 +29,13 @@ class FollowBlockRuleTest {
 
     private final FollowRepository followRepository = Mockito.mock(FollowRepository.class);
     private final BlockRepository blockRepository = Mockito.mock(BlockRepository.class);
-    private final UserRepository userRepository = Mockito.mock(UserRepository.class);
+    private final ActiveUserReader activeUserReader = Mockito.mock(ActiveUserReader.class);
     private final NotificationService notificationService =
             Mockito.mock(NotificationService.class);
 
     private final FollowService followService =
             new FollowService(
-                    followRepository, blockRepository, userRepository, notificationService);
+                    followRepository, blockRepository, activeUserReader, notificationService);
 
     @Test
     @DisplayName("내가 차단한 상대는 차단을 풀어야 팔로우할 수 있다")
@@ -79,14 +76,8 @@ class FollowBlockRuleTest {
         verify(followRepository).insertIfAbsent(ME, TARGET);
     }
 
+    /** 살아 있는 사용자면 확인이 조용히 지나간다. mock 기본 동작이 그러하므로 둘 다 통과한다. */
     private void givenActiveUsers() {
-        givenActiveUser(ME);
-        givenActiveUser(TARGET);
-    }
-
-    private void givenActiveUser(long userId) {
-        User user = new User("사용자" + userId, null);
-        ReflectionTestUtils.setField(user, "id", userId);
-        when(userRepository.findByIdAndDeletedAtIsNull(userId)).thenReturn(Optional.of(user));
+        // ActiveUserReader 는 없는 사용자일 때만 예외를 던진다. 여기서는 막지 않는다.
     }
 }

@@ -12,7 +12,7 @@ import com.server.notification.domain.NotificationTargetType;
 import com.server.notification.domain.NotificationType;
 import com.server.notification.service.NotificationService;
 import com.server.user.domain.User;
-import com.server.user.repository.UserRepository;
+import com.server.user.service.ActiveUserReader;
 import java.util.List;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -22,18 +22,18 @@ public class FollowService {
 
     private final FollowRepository followRepository;
     private final BlockRepository blockRepository;
-    private final UserRepository userRepository;
+    private final ActiveUserReader activeUserReader;
     private final NotificationService notificationService;
 
     public FollowService(
             FollowRepository followRepository,
             BlockRepository blockRepository,
-            UserRepository userRepository,
+            ActiveUserReader activeUserReader,
             NotificationService notificationService
     ) {
         this.followRepository = followRepository;
         this.blockRepository = blockRepository;
-        this.userRepository = userRepository;
+        this.activeUserReader = activeUserReader;
         this.notificationService = notificationService;
     }
 
@@ -49,8 +49,8 @@ public class FollowService {
         if (targetUserId.equals(userId)) {
             throw new BusinessException(ErrorCode.INVALID_FOLLOW_REQUEST);
         }
-        findActiveUser(targetUserId);
-        findActiveUser(userId);
+        activeUserReader.requireExists(targetUserId);
+        activeUserReader.requireExists(userId);
 
         if (blockRepository.existsByBlockerIdAndBlockedId(userId, targetUserId)) {
             throw new BusinessException(ErrorCode.FOLLOW_BLOCKED_USER);
@@ -71,7 +71,7 @@ public class FollowService {
 
     @Transactional
     public FollowResponse unfollow(Long targetUserId, Long userId) {
-        findActiveUser(targetUserId);
+        activeUserReader.requireExists(targetUserId);
         followRepository.deleteByFollowerIdAndFollowingId(userId, targetUserId);
         return new FollowResponse(followRepository.countByFollowingId(targetUserId), false);
     }
@@ -79,7 +79,7 @@ public class FollowService {
     /** 대상을 팔로우하는 사람들. */
     @Transactional(readOnly = true)
     public FollowUserListResponse getFollowers(Long targetUserId, Integer page, Integer size) {
-        findActiveUser(targetUserId);
+        activeUserReader.requireExists(targetUserId);
         List<FollowUserResponse> items = followRepository
                 .findByFollowingIdOrderByCreatedAtDesc(targetUserId, Paging.of(page, size)).stream()
                 .map(follow -> FollowUserResponse.from(follow.getFollower()))
@@ -90,17 +90,12 @@ public class FollowService {
     /** 대상이 팔로우하는 사람들. */
     @Transactional(readOnly = true)
     public FollowUserListResponse getFollowings(Long targetUserId, Integer page, Integer size) {
-        findActiveUser(targetUserId);
+        activeUserReader.requireExists(targetUserId);
         List<FollowUserResponse> items = followRepository
                 .findByFollowerIdOrderByCreatedAtDesc(targetUserId, Paging.of(page, size)).stream()
                 .map(follow -> FollowUserResponse.from(follow.getFollowing()))
                 .toList();
         return new FollowUserListResponse(items, followRepository.countByFollowerId(targetUserId));
-    }
-
-    private User findActiveUser(Long userId) {
-        return userRepository.findByIdAndDeletedAtIsNull(userId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
     }
 
 }
