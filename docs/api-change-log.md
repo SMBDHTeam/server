@@ -2,6 +2,18 @@
 
 API 계약이 변경될 때마다 최신 항목을 위에 추가한다.
 
+## 2026-09-14 (신고 사유 유형 추가)
+
+- API: `POST /api/v1/reports`, `GET /api/v1/admin/reports`, `GET /api/v1/admin/reports/{reportId}`, `PATCH /api/v1/admin/reports/{reportId}`
+- 구분: 변경
+- 이전: 신고 사유를 자유 입력 `reason` 하나로 받았고 필수였다.
+- 이후: `reasonType`(`SPAM`, `ABUSE`, `SEXUAL`, `ILLEGAL`, `PRIVACY`, `FALSE_INFO`, `OTHER`)이 필수다. `reason`은 `OTHER`일 때만 필수이며, 공백뿐이면 비워서 저장한다. 신고 응답과 관리자 신고 응답에 `reasonType`이 담기고, 관리자 응답의 `reason`은 `null`일 수 있다.
+- 함께 추가: `GET /api/v1/admin/reports`에 `reasonType` 필터. 생략하면 거르지 않는다.
+- 신설 오류 코드: `400 CANNOT_REPORT_OWN_TARGET`(본인의 게시물·댓글이나 자기 자신을 신고), `400 INVALID_REPORT_REQUEST`. 이전에는 자기 글도 신고할 수 있었고, 신고 검증 실패가 `INVALID_SCHEDULE_CONDITION`으로 나갔다.
+- 이유: 자유 입력만으로는 관리자가 신고를 전부 읽어야 유형별로 모아 볼 수 있다.
+- 호환성 파괴: 있음. `reasonType` 없이 보내면 `400`이다. 이 API를 부르는 클라이언트는 아직 없었고, dev 에 쌓인 신고는 0건이었다.
+- DB/ERD: `V21__add_report_reason_type.sql`. `reports.reason_type` 추가(기존 행은 `OTHER`), `reports.reason` NULL 허용, `idx_reports_reason_type` 추가
+
 ## 2026-09-14 (관리자 조치 이력·역할 변경 추가, 관리자 API 문서화)
 
 - API: `GET /api/v1/admin/actions`, `PATCH /api/v1/admin/users/{userId}/role`, `POST /api/v1/posts/{postId}/restore`, `GET /api/v1/posts/me/deleted`, `GET /api/v1/admin/places/hidden`(삭제)

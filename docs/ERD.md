@@ -560,7 +560,8 @@ DB에서 직접 증감시킨다. 동시에 들어온 요청이 같은 값을 읽
 | `reporter_id` | bigint | FK, O | 신고자 `users.id` |
 | `target_type` | varchar | O | `POST`, `COMMENT`, `USER` |
 | `target_id` | bigint | O | 신고 대상 ID |
-| `reason` | text | O | 신고 사유 |
+| `reason_type` | varchar(30) | O | `SPAM`, `ABUSE`, `SEXUAL`, `ILLEGAL`, `PRIVACY`, `FALSE_INFO`, `OTHER`. 기본 `OTHER` |
+| `reason` | text | X | 신고자가 덧붙인 설명. `OTHER`면 애플리케이션이 필수로 받는다 |
 | `status` | varchar | O | `PENDING`, `REVIEWING`, `RESOLVED`, `REJECTED` |
 | `handled_by` | bigint | FK, X | 마지막으로 상태를 바꾼 관리자 `users.id`. 한 번도 바꾸지 않았으면 NULL |
 | `handled_at` | datetime | X | 마지막 상태 변경 시각. `PENDING`으로 되돌려도 비우지 않는다 |

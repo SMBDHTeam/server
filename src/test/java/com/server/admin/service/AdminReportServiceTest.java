@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.server.admin.dto.AdminReportDetailResponse;
+import com.server.admin.dto.AdminReportResponse;
 import com.server.common.error.BusinessException;
 import com.server.common.error.ErrorCode;
 import com.server.post.domain.Post;
@@ -11,6 +12,7 @@ import com.server.post.domain.ReportStatus;
 import com.server.post.repository.PostRepository;
 import com.server.post.service.PostService;
 import com.server.report.domain.Report;
+import com.server.report.domain.ReportReasonType;
 import com.server.report.domain.ReportTargetType;
 import com.server.report.repository.ReportRepository;
 import com.server.user.domain.AuthProvider;
@@ -64,7 +66,7 @@ class AdminReportServiceTest {
 
     private Report saveReport(ReportTargetType type, Long targetId) {
         return reportRepository.saveAndFlush(
-                new Report(reporter, type, targetId, "광고성입니다"));
+                new Report(reporter, type, targetId, ReportReasonType.SPAM, "광고성입니다"));
     }
 
     @Test
@@ -138,11 +140,11 @@ class AdminReportServiceTest {
         Report second = saveReport(ReportTargetType.COMMENT, 1L);
         adminReportService.updateStatus(second.getId(), ReportStatus.RESOLVED, admin.getId());
 
-        var pending = adminReportService.getReports(ReportStatus.PENDING, null, 0, 20);
+        var pending = adminReportService.getReports(ReportStatus.PENDING, null, null, 0, 20);
 
         assertThat(pending.items()).hasSize(1);
         assertThat(pending.totalCount()).isEqualTo(1);
-        assertThat(adminReportService.getReports(null, null, 0, 20).totalCount()).isEqualTo(2);
+        assertThat(adminReportService.getReports(null, null, null, 0, 20).totalCount()).isEqualTo(2);
     }
 
     @Test
@@ -152,7 +154,7 @@ class AdminReportServiceTest {
         Report first = saveReport(ReportTargetType.POST, savePost("먼저").getId());
         Report second = saveReport(ReportTargetType.COMMENT, 2L);
 
-        var reports = adminReportService.getReports(null, null, 0, 20);
+        var reports = adminReportService.getReports(null, null, null, 0, 20);
 
         assertThat(reports.items().get(0).id()).isEqualTo(first.getId());
         assertThat(reports.items().get(1).id()).isEqualTo(second.getId());
@@ -182,5 +184,27 @@ class AdminReportServiceTest {
         assertThatThrownBy(() -> postService.restore(post.getId(), author.getId()))
                 .isInstanceOf(BusinessException.class)
                 .hasFieldOrPropertyWithValue("errorCode", ErrorCode.POST_DELETED_BY_ADMIN);
+    }
+
+    @Test
+    @DisplayName("사유 유형으로 거른다")
+    void filtersByReasonType() {
+        // 같은 사람이 같은 대상을 두 번 신고할 수 없어 대상을 나눈다.
+        Post spamPost = savePost("같은 링크를 반복한 글");
+        Post abusePost = savePost("욕설이 담긴 글");
+        reportRepository.saveAndFlush(new Report(
+                reporter, ReportTargetType.POST, spamPost.getId(), ReportReasonType.SPAM, null));
+        reportRepository.saveAndFlush(new Report(
+                reporter, ReportTargetType.POST, abusePost.getId(), ReportReasonType.ABUSE, "욕설"));
+
+        var abuse = adminReportService.getReports(null, null, ReportReasonType.ABUSE, 0, 20);
+
+        assertThat(abuse.items())
+                .extracting(AdminReportResponse::targetId)
+                .contains(abusePost.getId())
+                .doesNotContain(spamPost.getId());
+        assertThat(abuse.items()).extracting(AdminReportResponse::reasonType)
+                .containsOnly(ReportReasonType.ABUSE);
+        assertThat(abuse.totalCount()).isEqualTo(abuse.items().size());
     }
 }

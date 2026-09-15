@@ -703,7 +703,8 @@ V2 응답은 top-level `dailyStartTime`, `dailyEndTime`을 사용하지 않는�
 | `reporter` | object | O | 신고한 사용자. `id`, `nickname` |
 | `targetType` | string | O | `POST`, `COMMENT`, `USER` |
 | `targetId` | integer | O | 신고 대상 ID |
-| `reason` | string | O | 신고자가 적은 사유 |
+| `reasonType` | string | O | `SPAM`, `ABUSE`, `SEXUAL`, `ILLEGAL`, `PRIVACY`, `FALSE_INFO`, `OTHER` |
+| `reason` | string | X | 신고자가 덧붙인 설명. 없으면 `null` |
 | `status` | string | O | `PENDING`, `REVIEWING`, `RESOLVED`, `REJECTED` |
 | `createdAt` | string(datetime) | O | 접수 시각 |
 | `handledBy` | object | X | 마지막으로 상태를 바꾼 관리자. `id`, `nickname`. 한 번도 바꾸지 않았으면 `null` |

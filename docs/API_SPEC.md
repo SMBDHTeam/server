@@ -2095,18 +2095,43 @@ GET /api/v1/posts/popular?category=맛집      인기순
 `POST /api/v1/reports`
 
 ```json
-{ "targetType": "POST", "targetId": 7, "reason": "광고성 게시물입니다" }
+{ "targetType": "POST", "targetId": 7, "reasonType": "SPAM", "reason": "같은 링크를 반복해서 올립니다" }
 ```
 
-`targetType`은 `POST`, `COMMENT`, `USER`다. 대상이 없으면 각각
-`POST_NOT_FOUND`, `COMMENT_NOT_FOUND`, `USER_NOT_FOUND`를 반환한다.
-같은 대상을 다시 신고하면 `409 ALREADY_REPORTED`다.
+| 필드 | 필수 | 값 |
+| --- | :---: | --- |
+| `targetType` | O | `POST`, `COMMENT`, `USER` |
+| `targetId` | O | 신고 대상 ID |
+| `reasonType` | O | 아래 사유 유형 |
+| `reason` | 조건부 | `OTHER`면 필수, 나머지는 생략할 수 있다. 최대 500자 |
+
+| `reasonType` | 화면 문구 (클라이언트) |
+| --- | --- |
+| `SPAM` | 스팸·광고 |
+| `ABUSE` | 욕설·비하·괴롭힘 |
+| `SEXUAL` | 음란하거나 선정적인 내용 |
+| `ILLEGAL` | 불법이거나 위험한 내용 |
+| `PRIVACY` | 개인정보 노출 |
+| `FALSE_INFO` | 잘못된 장소·여행 정보 |
+| `OTHER` | 기타 |
+
+**사유는 유형을 먼저 고르고 설명을 덧붙인다.** 자유 입력만 받으면 관리자가 전부 읽어야 무엇이
+많은지 알 수 있다. 공백뿐인 `reason`은 비워서 저장한다. 화면 문구는 클라이언트가 들고 있다.
+
+검증에 실패하면 `400 INVALID_REPORT_REQUEST`다. `reasonType`이 없거나, `OTHER`인데 `reason`이
+비었거나, `reason`이 500자를 넘는 경우다. 열거형에 없는 값은 `400 MALFORMED_REQUEST`다.
+
+대상이 없으면 각각 `POST_NOT_FOUND`, `COMMENT_NOT_FOUND`, `USER_NOT_FOUND`를 반환한다.
+같은 대상을 다시 신고하면 사유 유형이 달라도 `409 ALREADY_REPORTED`다.
+본인의 게시물·댓글이나 자기 자신을 신고하면 `400 CANNOT_REPORT_OWN_TARGET`이다. 화면에서 버튼을
+숨겨도 API 로는 부를 수 있어 서버에서 막는다. 확인 순서는 대상 존재(404), 본인 여부(400), 중복(409)이다.
 
 ```json
 {
   "id": 1,
   "targetType": "POST",
   "targetId": 7,
+  "reasonType": "SPAM",
   "status": "PENDING",
   "createdAt": "2026-08-24T18:10:00"
 }
@@ -2377,6 +2402,7 @@ iOS 는 홈 화면 추가가 전제다. 알림이 몇십 초 늦게 뜨는 것�
 | `COMMENT_NOT_ALLOWED` | 403 | 차단 관계인 사람의 게시물에 댓글 작성 |
 | `NICKNAME_ALREADY_USED` | 409 | 다른 사용자가 쓰는 닉네임 |
 | `ALREADY_REPORTED` | 409 | 같은 대상을 다시 신고 |
+| `CANNOT_REPORT_OWN_TARGET` | 400 | 본인의 게시물·댓글이나 자기 자신을 신고 |
 | `INVALID_MEDIA_FILE` | 400 | 파일을 안 보냈거나, 빈 파일이거나, 건수 초과 |
 | `MEDIA_FILE_TOO_LARGE` | 413 | 한 건이 10MB 를 넘음 |
 | `UNSUPPORTED_MEDIA_FORMAT` | 415 | 허용하지 않는 형식이거나 내용이 확장자와 다름 |
@@ -2519,12 +2545,13 @@ files: (파일)
 
 ### A-2. 신고 처리
 
-`GET /api/v1/admin/reports?status=PENDING&targetType=POST&page=0&size=20`
+`GET /api/v1/admin/reports?status=PENDING&targetType=POST&reasonType=SPAM&page=0&size=20`
 
 | 파라미터 | 필수 | 값 |
 | --- | :---: | --- |
 | `status` | X | `PENDING`, `REVIEWING`, `RESOLVED`, `REJECTED`. 생략하면 전부 |
 | `targetType` | X | `POST`, `COMMENT`, `USER`. 생략하면 전부 |
+| `reasonType` | X | `SPAM`, `ABUSE`, `SEXUAL`, `ILLEGAL`, `PRIVACY`, `FALSE_INFO`, `OTHER`. 생략하면 전부 |
 
 **오래된 신고부터 나온다.**
 
@@ -2536,7 +2563,8 @@ files: (파일)
       "reporter": { "id": 3, "nickname": "여행자" },
       "targetType": "POST",
       "targetId": 7,
-      "reason": "광고성 게시물입니다",
+      "reasonType": "SPAM",
+      "reason": "같은 링크를 반복해서 올립니다",
       "status": "PENDING",
       "createdAt": "2026-08-25T14:02:00",
       "handledBy": null,

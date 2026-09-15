@@ -31,7 +31,7 @@ public class ReportController {
     @ResponseStatus(HttpStatus.CREATED)
     @Operation(
             summary = "신고",
-            description = "접수만 한다. 처리 상태를 바꾸는 관리자 기능은 아직 없다. "
+            description = "사유 유형(reasonType)을 고르고, 기타(OTHER)면 설명(reason)을 함께 보낸다. 처리는 관리자 API 가 한다. "
                     + "같은 대상을 다시 신고하면 409 를 반환한다."
     )
     public ReportResponse report(

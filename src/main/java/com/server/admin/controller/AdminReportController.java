@@ -7,6 +7,7 @@ import com.server.admin.dto.ReportStatusUpdateRequest;
 import com.server.admin.service.AdminReportService;
 import com.server.auth.web.CurrentUser;
 import com.server.post.domain.ReportStatus;
+import com.server.report.domain.ReportReasonType;
 import com.server.report.domain.ReportTargetType;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -46,17 +47,19 @@ public class AdminReportController {
     @Operation(
             summary = "신고 목록",
             description = "오래된 것부터 반환한다. 최신순이면 방치된 신고가 계속 뒤로 밀린다. "
-                    + "status 와 targetType 은 생략하면 거르지 않는다."
+                    + "status, targetType, reasonType 은 생략하면 거르지 않는다."
     )
     public AdminReportListResponse getReports(
             @Parameter(description = "PENDING, REVIEWING, RESOLVED, REJECTED", example = "PENDING")
             @RequestParam(required = false) ReportStatus status,
             @Parameter(description = "POST, COMMENT, USER", example = "POST")
             @RequestParam(required = false) ReportTargetType targetType,
+            @Parameter(description = "SPAM, ABUSE, SEXUAL, ILLEGAL, PRIVACY, FALSE_INFO, OTHER", example = "SPAM")
+            @RequestParam(required = false) ReportReasonType reasonType,
             @Parameter(example = "0") @RequestParam(required = false) Integer page,
             @Parameter(example = "20") @RequestParam(required = false) Integer size
     ) {
-        return adminReportService.getReports(status, targetType, page, size);
+        return adminReportService.getReports(status, targetType, reasonType, page, size);
     }
 
     @GetMapping("/reports/{reportId}")
