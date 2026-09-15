@@ -24,8 +24,18 @@ public record PlaceDetailResponse(
         String primaryImageUrl,
         String overview,
         OperatingInfo operatingInfo,
-        List<Image> images
+        List<Image> images,
+        @Schema(description = "내 위시리스트에 담겼는지. 로그인하지 않았으면 null", example = "true")
+        Boolean wishlisted
 ) {
+
+    /** 요청자 기준 값을 채운다. 장소 정보는 요청자와 무관해 서비스가 null 로 만든다. */
+    public PlaceDetailResponse withWishlisted(Boolean wishlisted) {
+        return new PlaceDetailResponse(
+                id, source, externalContentId, contentTypeId, name, category, categoryLabel,
+                address, longitude, latitude, placeUrl, primaryImageUrl, overview, operatingInfo, images,
+                wishlisted);
+    }
 
     public record OperatingInfo(
             String openingHoursText,

@@ -594,6 +594,7 @@ V2 응답은 top-level `dailyStartTime`, `dailyEndTime`을 사용하지 않는�
 | `images[].url` | string | O | 원본 이미지 |
 | `images[].thumbnailUrl` | string | X | 썸네일 |
 | `images[].copyrightType` | string | X | 저작권 구분 |
+| `wishlisted` | boolean | X | 내 위시리스트에 담겼는지. 로그인하지 않았으면 `null` |
 
 ## 8. 주변 편의시설
 

@@ -1247,11 +1247,16 @@ GET /api/v1/places?longitude=129.0403&latitude=35.1151&radius=1000
       "thumbnailUrl": "https://example.com/thumbnail.jpg",
       "copyrightType": "Type1"
     }
-  ]
+  ],
+  "wishlisted": true
 }
 ```
 
 TourAPI 기본·상세·소개·이미지 응답을 내부 DB에 적재한 결과를 조회한다.
+
+**로그인 없이 볼 수 있다.** 토큰을 보내면 `wishlisted`에 내 위시리스트에 담겼는지가 담기고,
+보내지 않으면 `null`이다. `false`는 로그인한 사용자가 담지 않은 경우뿐이라, 화면은 `null`일 때
+하트를 그리지 않는다.
 
 사용자가 네이버·카카오 검색으로 직접 등록한 장소는 `overview`·`operatingInfo`·`images`가 비어 있다.
 TourAPI가 그 장소를 모르고 외부 지역검색 API도 이 값들을 제공하지 않기 때문이며, **조회 실패가 아니라
