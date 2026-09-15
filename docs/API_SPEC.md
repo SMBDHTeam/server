@@ -2653,12 +2653,13 @@ dev 는 정리 배치가 켜져 있다(`COMMUNITY_POST_PURGE_ENABLED=true`).
 
 ### A-3. 사용자 관리
 
-`GET /api/v1/admin/users?keyword=여행&status=SUSPENDED&page=0&size=20`
+`GET /api/v1/admin/users?keyword=여행&status=SUSPENDED&role=USER&page=0&size=20`
 
 | 파라미터 | 필수 | 값 |
 | --- | :---: | --- |
 | `keyword` | X | 닉네임 또는 이메일 부분 일치. 대소문자를 구분하지 않는다 |
 | `status` | X | `ACTIVE`, `SUSPENDED`, `WITHDRAWN`. 생략하면 전부 |
+| `role` | X | `USER`, `ADMIN`. 생략하면 전부 |
 
 **최근 가입순이다.** 탈퇴한 사용자도 나온다.
 

@@ -106,9 +106,9 @@ class AdminUserServiceTest {
     void searchesNicknameAndEmail() {
         save("다른사람", UserRole.USER, "other-sub", "someone@example.com");
 
-        assertThat(adminUserService.getUsers("여행", null, 0, 20).items()).hasSize(1);
-        assertThat(adminUserService.getUsers("traveler@", null, 0, 20).items()).hasSize(1);
-        assertThat(adminUserService.getUsers("없는값", null, 0, 20).items()).isEmpty();
+        assertThat(adminUserService.getUsers("여행", null, null, 0, 20).items()).hasSize(1);
+        assertThat(adminUserService.getUsers("traveler@", null, null, 0, 20).items()).hasSize(1);
+        assertThat(adminUserService.getUsers("없는값", null, null, 0, 20).items()).isEmpty();
     }
 
     @Test
@@ -117,7 +117,7 @@ class AdminUserServiceTest {
         save("정상", UserRole.USER, "active-sub", "active@example.com");
         adminUserService.updateStatus(target.getId(), true, 7, "사유", admin.getId());
 
-        var suspended = adminUserService.getUsers(null, UserStatus.SUSPENDED, 0, 20);
+        var suspended = adminUserService.getUsers(null, UserStatus.SUSPENDED, null, 0, 20);
 
         assertThat(suspended.items()).hasSize(1);
         assertThat(suspended.totalCount()).isEqualTo(1);

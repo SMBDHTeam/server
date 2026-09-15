@@ -44,7 +44,7 @@ class AdminUserSearchIntegrationTest {
         userRepository.saveAndFlush(User.ofOAuth(
                 AuthProvider.GOOGLE, "pg-sub", "pg@example.com", "검색대상", null, UserRole.USER));
 
-        var result = adminUserService.getUsers(null, null, 0, 20);
+        var result = adminUserService.getUsers(null, null, null, 0, 20);
 
         assertThat(result.items()).isNotEmpty();
         assertThat(result.totalCount()).isPositive();
@@ -57,8 +57,8 @@ class AdminUserSearchIntegrationTest {
                 AuthProvider.GOOGLE, "pg-sub-2", "finder@example.com", "찾을사람", null,
                 UserRole.USER));
 
-        assertThat(adminUserService.getUsers("찾을", null, 0, 20).items()).hasSize(1);
-        assertThat(adminUserService.getUsers("finder@", null, 0, 20).items()).hasSize(1);
-        assertThat(adminUserService.getUsers("없는값", null, 0, 20).items()).isEmpty();
+        assertThat(adminUserService.getUsers("찾을", null, null, 0, 20).items()).hasSize(1);
+        assertThat(adminUserService.getUsers("finder@", null, null, 0, 20).items()).hasSize(1);
+        assertThat(adminUserService.getUsers("없는값", null, null, 0, 20).items()).isEmpty();
     }
 }
