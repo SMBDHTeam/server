@@ -84,6 +84,19 @@ class BlockProfileStateTest {
     }
 
     @Test
+    @DisplayName("차단한 적 없는 상대에게 해제를 불러도 팔로우 상태를 있는 그대로 준다")
+    void reportsFollowingWhenNeverBlocked() {
+        // 해제는 멱등하다. 차단한 적 없어도 오류가 아니다. 이때 팔로우는 끊기지 않았으므로
+        // false 를 고정으로 주면 화면이 멀쩡한 팔로우 버튼을 되돌려 버린다.
+        followService.follow(targetId, meId);
+
+        BlockResponse unblocked = blockService.unblock(targetId, meId);
+
+        assertThat(unblocked.blocked()).isFalse();
+        assertThat(unblocked.following()).isTrue();
+    }
+
+    @Test
     @DisplayName("차단을 풀어도 끊긴 팔로우는 되살아나지 않는다")
     void keepsFollowRemovedAfterUnblock() {
         followService.follow(targetId, meId);
