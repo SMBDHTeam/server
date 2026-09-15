@@ -47,7 +47,8 @@ public class BlockService {
         followRepository.deleteByFollowerIdAndFollowingId(userId, targetUserId);
         followRepository.deleteByFollowerIdAndFollowingId(targetUserId, userId);
 
-        return new BlockResponse(true);
+        // 방금 끊었으므로 언제나 false 다. 화면이 팔로우 버튼을 되돌리는 데 쓴다.
+        return new BlockResponse(true, false);
     }
 
     /** 차단을 풀어도 끊긴 팔로우는 되살리지 않는다. */
@@ -55,7 +56,9 @@ public class BlockService {
     public BlockResponse unblock(Long targetUserId, Long userId) {
         activeUserReader.requireExists(targetUserId);
         blockRepository.deleteByBlockerIdAndBlockedId(userId, targetUserId);
-        return new BlockResponse(false);
+        // 차단을 풀어도 끊긴 팔로우는 되살리지 않으므로 지금 상태를 다시 읽어 준다.
+        return new BlockResponse(false,
+                followRepository.existsByFollowerIdAndFollowingId(userId, targetUserId));
     }
 
     @Transactional(readOnly = true)
