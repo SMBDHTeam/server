@@ -6,6 +6,7 @@ import com.server.post.repository.CommentRepository;
 import com.server.post.repository.PostRepository;
 import com.server.report.domain.Report;
 import com.server.report.domain.ReportTargetType;
+import com.server.report.dto.ReportCheckResponse;
 import com.server.report.dto.ReportCreateRequest;
 import com.server.report.dto.ReportResponse;
 import com.server.report.repository.ReportRepository;
@@ -67,6 +68,18 @@ public class ReportService {
             // 확인만으로는 막을 수 없는 경합이라 제약에 맡기고 같은 응답으로 돌려준다.
             throw new BusinessException(ErrorCode.ALREADY_REPORTED);
         }
+    }
+
+    /**
+     * 요청자가 이 대상을 이미 신고했는지.
+     *
+     * <p>신고는 대상마다 한 번뿐이라, 화면이 사유를 고르게 한 뒤에야 409 로 알려주면 같은 과정을
+     * 헛되게 반복한다. 대상의 존재는 확인하지 않는다. 지워진 대상도 신고 기록은 남아 있다.
+     */
+    @Transactional(readOnly = true)
+    public ReportCheckResponse check(Long reporterId, ReportTargetType targetType, Long targetId) {
+        return new ReportCheckResponse(
+                reportRepository.existsByReporterIdAndTargetTypeAndTargetId(reporterId, targetType, targetId));
     }
 
     /**

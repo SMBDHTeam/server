@@ -179,4 +179,16 @@ class ReportServiceTest {
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.CANNOT_REPORT_OWN_TARGET);
     }
+
+    @Test
+    @DisplayName("신고 여부는 신고 전 false, 신고 후 true 다")
+    void checksWhetherAlreadyReported() {
+        assertThat(reportService.check(reporter.getId(), ReportTargetType.POST, post.getId()).reported()).isFalse();
+
+        reportService.report(reporter.getId(), request(ReportReasonType.SPAM, null));
+
+        assertThat(reportService.check(reporter.getId(), ReportTargetType.POST, post.getId()).reported()).isTrue();
+        // 다른 사람의 신고는 내 신고 여부에 섞이지 않는다.
+        assertThat(reportService.check(author.getId(), ReportTargetType.POST, post.getId()).reported()).isFalse();
+    }
 }

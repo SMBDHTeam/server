@@ -107,6 +107,7 @@
 | 알림 읽음 | PATCH | `/notifications/{notificationId}/read` | `200 OK` | 필수 |
 | 알림 모두 읽음 | PATCH | `/notifications/read-all` | `200 OK` | 필수 |
 | 신고 | POST | `/reports` | `201 Created` | 필수 |
+| 내 신고 여부 | GET | `/reports/me` | `200 OK` | 필수 |
 
 ### 관리자 엔드포인트
 
@@ -2141,6 +2142,18 @@ GET /api/v1/posts/popular?category=맛집      인기순
   "createdAt": "2026-08-24T18:10:00"
 }
 ```
+
+**이미 신고했는지는 미리 확인한다.**
+
+`GET /api/v1/reports/me?targetType=POST&targetId=7`
+
+```json
+{ "reported": true }
+```
+
+신고는 대상마다 한 번뿐이다. 사유를 고르게 한 뒤에야 `409`로 알려주면 같은 과정을 헛되게
+반복하므로, 화면은 신고 시트를 열 때 이 값을 보고 `true`면 바로 안내한다. 대상이 지워졌어도
+신고 기록이 있으면 `true`다. `targetType`·`targetId`가 없거나 잘못되면 `400 INVALID_REPORT_REQUEST`다.
 
 **여기서는 접수만 한다.** 신고 확인과 처리 상태 변경은 `관리자 계약`의 A-2가 맡는다.
 
