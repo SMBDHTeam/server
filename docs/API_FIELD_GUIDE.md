@@ -596,6 +596,21 @@ V2 응답은 top-level `dailyStartTime`, `dailyEndTime`을 사용하지 않는�
 | `images[].copyrightType` | string | X | 저작권 구분 |
 | `wishlisted` | boolean | X | 내 위시리스트에 담겼는지. 로그인하지 않았으면 `null` |
 
+## 7-1. 장소 카카오맵 주소
+
+`GET /api/v1/places/{placeId}/kakao-link`
+
+| 요청 필드 | 위치 | 자료형 | 필수 | 의미 |
+| --- | --- | --- | :---: | --- |
+| `placeId` | Path | integer | O | 장소 ID |
+
+| 응답 필드 | 자료형 | 필수 | 의미 |
+| --- | --- | :---: | --- |
+| `placeId` | integer | O | 장소 ID |
+| `kakaoPlaceId` | string | X | 같은 장소로 판단한 카카오 장소 ID. 찾지 못했으면 `null` |
+| `url` | string | O | 앱 안에 띄울 카카오맵 페이지. 찾았으면 장소 상세, 못 찾았으면 "부산 {이름}" 검색 결과 |
+| `matched` | boolean | O | 카카오 장소를 찾았는지. `false` 면 화면이 검색 결과라고 알린다 |
+
 ## 8. 주변 편의시설
 
 `GET /api/v1/places/{placeId}/nearby-facilities`

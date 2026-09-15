@@ -33,6 +33,7 @@
 | 일정 수정 | PATCH | `/schedules/{scheduleId}` | `200 OK` |
 | 장소 검색 | GET | `/places` | `200 OK` |
 | 장소 상세 | GET | `/places/{placeId}` | `200 OK` |
+| 장소 카카오맵 주소 | GET | `/places/{placeId}/kakao-link` | `200 OK` |
 | 주변 편의시설 | GET | `/places/{placeId}/nearby-facilities` | `200 OK` |
 | 일정 지도 | GET | `/schedules/{scheduleId}/map` | `200 OK` |
 | 공유 링크 생성 | POST | `/schedules/{scheduleId}/shares` | `201 Created` |
@@ -1263,7 +1264,51 @@ TourAPI 기본·상세·소개·이미지 응답을 내부 DB에 적재한 결�
 TourAPI가 그 장소를 모르고 외부 지역검색 API도 이 값들을 제공하지 않기 때문이며, **조회 실패가 아니라
 정상 응답이다.** 이 경우 `placeUrl`로 외부 지도 서비스의 장소 페이지를 연결한다.
 
-`placeUrl`이 없는 장소(TourAPI 적재분)는 `name`과 좌표로 지도 API를 조회해 같은 화면을 구성할 수 있다.
+`placeUrl`이 없는 장소(TourAPI 적재분)는 `GET /places/{placeId}/kakao-link`(7-1)로 카카오맵 페이지를 얻는다.
+
+## 7-1. 장소 카카오맵 주소
+
+`GET /api/v1/places/{placeId}/kakao-link`
+
+장소 상세 화면이 앱 안에 띄울 카카오맵 페이지 주소를 준다. **로그인 없이 볼 수 있다.**
+
+```json
+{
+  "placeId": 101,
+  "kakaoPlaceId": "7913306",
+  "url": "https://place.map.kakao.com/7913306",
+  "matched": true
+}
+```
+
+찾지 못한 경우:
+
+```json
+{
+  "placeId": 102,
+  "kakaoPlaceId": null,
+  "url": "https://m.map.kakao.com/actions/searchView?q=%EB%B6%80%EC%82%B0%20%EA%B0%90%EC%B2%9C%EC%82%AC",
+  "matched": false
+}
+```
+
+카카오 장소를 고르는 순서는 다음과 같다.
+
+| 경우 | 결과 |
+| --- | --- |
+| 카카오 검색으로 등록한 장소(`source=KAKAO_LOCAL`) | 원본 ID 로 장소 상세 페이지. 카카오를 부르지 않는다 |
+| 그 밖의 장소 | 좌표 반경 300m 안을 이름으로 검색해(괄호 설명은 뺀다), 공백·괄호·앞의 "부산"을 뺀 이름이 **똑같은** 가장 가까운 장소 |
+| 같은 장소가 없거나, 좌표가 없거나, 카카오 호출이 실패 | `matched=false`. "부산 {이름}" 검색 결과 페이지 |
+
+- 이름을 품기만 하는 곳은 잇지 않는다. 관광지 주변 가게가 "탐앤탐스 부산송도해수욕장점"처럼 이름을 따기 때문이다. 잘못된 장소보다 검색 결과가 낫다.
+- 카카오 장애여도 오류를 주지 않는다. 검색 결과 페이지로 대신한다.
+- 결과를 저장하지 않는다. 요청마다 찾는다. DB 변경 없음.
+- 두 주소 모두 iframe 으로 띄울 수 있다. `map.kakao.com`(PC)과 네이버 지도는 `X-Frame-Options`로 막혀 있어 쓰지 않는다.
+- 검색 결과 페이지는 앱 설치 안내 팝업이 먼저 뜰 수 있다.
+
+| 오류 | 조건 |
+| --- | --- |
+| `404 PLACE_NOT_FOUND` | 장소가 없거나 관리자가 가린 장소 |
 
 ## 8. 주변 편의시설 조회
 
