@@ -7,6 +7,7 @@ import com.server.admin.dto.UserRoleUpdateRequest;
 import com.server.admin.dto.UserStatusUpdateRequest;
 import com.server.admin.service.AdminUserService;
 import com.server.auth.web.CurrentUser;
+import com.server.user.domain.UserRole;
 import com.server.user.domain.UserStatus;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -35,17 +36,19 @@ public class AdminUserController {
     @Operation(
             summary = "사용자 목록",
             description = "닉네임과 이메일을 함께 검색한다. 탈퇴한 사용자도 포함하며 "
-                    + "status 로 거를 수 있다. 최근 가입한 순이다."
+                    + "status 와 role 로 거를 수 있다. 최근 가입한 순이다."
     )
     public AdminUserListResponse getUsers(
             @Parameter(description = "닉네임 또는 이메일 일부", example = "여행")
             @RequestParam(required = false) String keyword,
             @Parameter(description = "ACTIVE, SUSPENDED, WITHDRAWN", example = "SUSPENDED")
             @RequestParam(required = false) UserStatus status,
+            @Parameter(description = "USER, ADMIN. 운영자 화면이 관리자 목록을 볼 때 쓴다", example = "ADMIN")
+            @RequestParam(required = false) UserRole role,
             @Parameter(example = "0") @RequestParam(required = false) Integer page,
             @Parameter(example = "20") @RequestParam(required = false) Integer size
     ) {
-        return adminUserService.getUsers(keyword, status, page, size);
+        return adminUserService.getUsers(keyword, status, role, page, size);
     }
 
     @GetMapping("/{userId}")

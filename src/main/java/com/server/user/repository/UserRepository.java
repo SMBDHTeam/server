@@ -44,11 +44,13 @@ public interface UserRepository extends JpaRepository<User, Long> {
                    or lower(user.nickname) like lower(concat('%', cast(:keyword as string), '%'))
                    or lower(user.email) like lower(concat('%', cast(:keyword as string), '%')))
               and (:status is null or user.status = :status)
+              and (:role is null or user.role = :role)
             order by user.createdAt desc
             """)
     List<User> searchForAdmin(
             @Param("keyword") String keyword,
             @Param("status") UserStatus status,
+            @Param("role") UserRole role,
             Pageable pageable);
 
     @Query("""
@@ -57,6 +59,10 @@ public interface UserRepository extends JpaRepository<User, Long> {
                    or lower(user.nickname) like lower(concat('%', cast(:keyword as string), '%'))
                    or lower(user.email) like lower(concat('%', cast(:keyword as string), '%')))
               and (:status is null or user.status = :status)
+              and (:role is null or user.role = :role)
             """)
-    long countForAdmin(@Param("keyword") String keyword, @Param("status") UserStatus status);
+    long countForAdmin(
+            @Param("keyword") String keyword,
+            @Param("status") UserStatus status,
+            @Param("role") UserRole role);
 }

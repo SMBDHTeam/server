@@ -64,7 +64,7 @@ public class AdminUserService {
 
     @Transactional(readOnly = true)
     public AdminUserListResponse getUsers(
-            String keyword, UserStatus status, Integer page, Integer size) {
+            String keyword, UserStatus status, UserRole role, Integer page, Integer size) {
         int resolvedPage = page == null || page < 0 ? 0 : page;
         int resolvedSize = size == null || size <= 0
                 ? DEFAULT_PAGE_SIZE
@@ -72,11 +72,11 @@ public class AdminUserService {
         String normalized = keyword == null || keyword.isBlank() ? null : keyword.trim();
 
         List<User> users = userRepository.searchForAdmin(
-                normalized, status, PageRequest.of(resolvedPage, resolvedSize));
+                normalized, status, role, PageRequest.of(resolvedPage, resolvedSize));
 
         return new AdminUserListResponse(
                 users.stream().map(AdminUserResponse::from).toList(),
-                userRepository.countForAdmin(normalized, status));
+                userRepository.countForAdmin(normalized, status, role));
     }
 
     /**
