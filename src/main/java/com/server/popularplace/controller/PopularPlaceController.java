@@ -1,5 +1,7 @@
 package com.server.popularplace.controller;
 
+import com.server.auth.service.AuthenticatedUser;
+import com.server.auth.web.LoginUser;
 import com.server.popularplace.dto.PopularPlaceListResponse;
 import com.server.popularplace.service.PopularPlaceService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -7,6 +9,7 @@ import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -34,12 +37,14 @@ public class PopularPlaceController {
             summary = "인기 장소",
             description = "최근 커뮤니티에서 많이 언급된 장소를 언급한 사람이 많은 순으로 반환한다. "
                     + "홈 화면과 일정 만들 때 장소를 고르는 화면에 쓴다. "
-                    + "여기서 받은 placeId 를 위시리스트나 일정의 mustVisitPlaceIds 에 그대로 넣는다."
+                    + "여기서 받은 placeId 를 위시리스트나 일정의 mustVisitPlaceIds 에 그대로 넣는다. "
+                    + "로그인 없이 볼 수 있으며, 토큰을 보내면 wishlisted 를 채운다."
     )
     public PopularPlaceListResponse getPopularPlaces(
             @Parameter(description = "가져올 장소 수. 1 이상 50 이하", example = "10")
-            @RequestParam(defaultValue = "10") @Min(1) @Max(50) Integer size
+            @RequestParam(defaultValue = "10") @Min(1) @Max(50) Integer size,
+            @AuthenticationPrincipal AuthenticatedUser loginUser
     ) {
-        return popularPlaceService.findPopularPlaces(size);
+        return popularPlaceService.findPopularPlaces(size, LoginUser.idOrNull(loginUser));
     }
 }
