@@ -4,6 +4,7 @@ import com.server.common.support.Paging;
 import com.server.common.error.BusinessException;
 import com.server.common.error.ErrorCode;
 import com.server.follow.dto.FollowUserResponse;
+import com.server.block.repository.BlockRepository;
 import com.server.follow.repository.FollowRepository;
 import com.server.post.repository.PostRepository;
 import com.server.user.domain.User;
@@ -22,17 +23,20 @@ public class UserService {
     private final UserRepository userRepository;
     private final PostRepository postRepository;
     private final FollowRepository followRepository;
+    private final BlockRepository blockRepository;
     private final ActiveUserReader activeUserReader;
 
     public UserService(
             UserRepository userRepository,
             PostRepository postRepository,
             FollowRepository followRepository,
+            BlockRepository blockRepository,
             ActiveUserReader activeUserReader
     ) {
         this.userRepository = userRepository;
         this.postRepository = postRepository;
         this.followRepository = followRepository;
+        this.blockRepository = blockRepository;
         this.activeUserReader = activeUserReader;
     }
 
@@ -86,9 +90,13 @@ public class UserService {
         User user = userRepository.findByIdAndDeletedAtIsNull(userId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
 
-        boolean following = requesterId != null
-                && !requesterId.equals(userId)
+        boolean otherUser = requesterId != null && !requesterId.equals(userId);
+        boolean following = otherUser
                 && followRepository.existsByFollowerIdAndFollowingId(requesterId, userId);
+        // 차단 여부를 주지 않으면 화면이 차단·해제 버튼 중 무엇을 보여야 할지 알 수 없다.
+        // 누른 직후에는 응답으로 알지만, 프로필을 다시 열면 그 기억이 사라진다.
+        boolean blocked = otherUser
+                && blockRepository.existsByBlockerIdAndBlockedId(requesterId, userId);
 
         return UserProfileResponse.of(
                 user,
@@ -96,6 +104,7 @@ public class UserService {
                 followRepository.countByFollowingId(userId),
                 followRepository.countByFollowerId(userId),
                 following,
+                blocked,
                 userId.equals(requesterId));
     }
 

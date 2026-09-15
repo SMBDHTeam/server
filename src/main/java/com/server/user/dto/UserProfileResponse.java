@@ -14,6 +14,9 @@ public record UserProfileResponse(
         @Schema(description = "요청자가 이 사용자를 팔로우한 상태인지. 요청자를 알 수 없으면 false 다.",
                 example = "true")
         boolean following,
+        @Schema(description = "요청자가 이 사용자를 차단한 상태인지. 요청자를 알 수 없으면 false 다. "
+                + "차단한 상대의 프로필에서는 차단 해제 버튼을 보여야 한다.", example = "false")
+        boolean blocked,
         @Schema(description = "요청자 본인의 프로필인지. 본인이면 북마크 탭을 노출한다.", example = "false")
         boolean me
 ) {
@@ -24,6 +27,7 @@ public record UserProfileResponse(
             long followerCount,
             long followingCount,
             boolean following,
+            boolean blocked,
             boolean me
     ) {
         return new UserProfileResponse(
@@ -34,6 +38,7 @@ public record UserProfileResponse(
                 followerCount,
                 followingCount,
                 following,
+                blocked,
                 me);
     }
 }
