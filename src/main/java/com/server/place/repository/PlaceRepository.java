@@ -28,7 +28,6 @@ public interface PlaceRepository extends JpaRepository<Place, Long> {
     Optional<Place> findById(Long id);
 
     /** 관리자가 가려 둔 장소. 최근에 가린 순이다. */
-    List<Place> findByHiddenAtIsNotNullOrderByHiddenAtDesc();
 
     long countByHiddenAtIsNotNull();
 

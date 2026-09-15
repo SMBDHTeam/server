@@ -2,9 +2,10 @@
 
 > 구현 상태 안내
 >
-> - 1~26번 테이블과 `일정 생성 V2 변경`은 현재 구현 기준이다.
+> - 1~29번 테이블과 `일정 생성 V2 변경`은 현재 구현 기준이다.
 > - V2 컬럼과 테이블은 `V4__schedule_generation_v2.sql`, 질문 화면 단계는 `V5__add_question_ui_step.sql`에서 추가한다.
 > - 사용자(14번)는 `V6__create_users_table.sql`, 커뮤니티(15~26번)는 `V8__create_community_tables.sql`에서 추가한다.
+> - 관리자 기능 컬럼은 `V9`(users 권한·정지), `V12`(reports 처리자), `V13`(places 숨김), `V20`(`admin_actions`, `posts.deleted_by_admin`)에서 추가한다.
 
 ## 표기
 
@@ -72,8 +73,14 @@ TourAPI에서 수집한 관광지·음식점·문화시설 등의 기본정보�
 | `ingestion_retry_count` | integer | O | 연속 상세 동기화 실패 횟수 |
 | `ingestion_last_error` | text | X | 비밀값을 제외한 마지막 내부 오류 코드 |
 | `ingestion_next_retry_at` | datetime | X | 다음 상세 동기화 재시도 가능시각 |
+| `hidden_at` | datetime | X | 관리자가 가린 시각. NULL이면 노출 중 |
+| `hidden_reason` | text | X | 가린 사유. 해제하면 NULL |
 
 `source + external_content_id` 조합은 중복될 수 없다. 이름 검색과 위치 검색을 위한 인덱스는 DBMS 확정 후 migration에서 정의한다.
+
+**잘못 적재된 장소는 지우지 않고 가린다.** 행을 지우면 다음 TourAPI 증분 적재가 같은 장소를 다시 만든다.
+가린 장소는 공개 검색·상세·위시리스트·인기 장소에서 빠진다. `idx_places_hidden_at`은
+`hidden_at IS NOT NULL`인 행만 담는 부분 인덱스로, 가린 장소만 거르는 조회용이다.
 
 ## 4. place_details
 
@@ -355,6 +362,7 @@ TourAPI의 일일 요청 제한을 서버 재시작과 중복 실행 이후에�
 | `created_at` | datetime | O | 작성시각 |
 | `updated_at` | datetime | O | 마지막 수정시각 |
 | `deleted_at` | datetime | X | 삭제 표시시각 |
+| `deleted_by_admin` | boolean | O | 관리자가 지웠는지. 기본 `false`. `true`면 작성자가 복구할 수 없다 |
 
 `id`는 증가하는 정수다. 피드는 `id`를 커서로 쓰는 방식이라 순서가 있는 식별자가 필요하다.
 
@@ -362,7 +370,11 @@ TourAPI의 일일 요청 제한을 서버 재시작과 중복 실행 이후에�
 DB에서 직접 증감시킨다. 동시에 들어온 요청이 같은 값을 읽어 하나가 사라지는 것을 막기 위함이다.
 
 삭제는 `deleted_at`만 남긴다. 삭제 후 30일간 `POST /posts/{postId}/restore` 로 되돌릴 수 있으므로 조회에서 제외하되
-행은 보존한다. **만료된 게시물을 정리하는 배치는 아직 없다.**
+행은 보존한다. 관리자가 지운 게시물(`deleted_by_admin = true`)은 작성자의 삭제 목록과 복구에서 제외한다.
+
+복구 기한이 지난 게시물은 `PostPurgeScheduler`가 지운다. 설정 기본값은 꺼짐이지만 dev 배포는 켜 둔다
+(`COMMUNITY_POST_PURGE_ENABLED=true`). **관리자가 지운 게시물은 지우지 않는다.** 대상 조회가
+`deleted_by_admin = false`만 고른다. 지우면 신고와 조치 이력이 가리키는 원본이 사라진다.
 
 인덱스: `idx_posts_created_at`, `idx_posts_user_id`
 
@@ -540,7 +552,7 @@ DB에서 직접 증감시킨다. 동시에 들어온 요청이 같은 값을 읽
 
 ## 26. reports
 
-신고다. 접수만 하며 **처리 상태를 바꾸는 관리자 기능은 아직 없다.**
+신고다. 사용자가 접수하고 관리자가 처리 상태를 바꾼다.
 
 | 컬럼 | 자료형 | 키·필수 | 의미 |
 | --- | --- | --- | --- |
@@ -548,10 +560,11 @@ DB에서 직접 증감시킨다. 동시에 들어온 요청이 같은 값을 읽
 | `reporter_id` | bigint | FK, O | 신고자 `users.id` |
 | `target_type` | varchar | O | `POST`, `COMMENT`, `USER` |
 | `target_id` | bigint | O | 신고 대상 ID |
-| `reason` | text | O | 신고 사유 |
-| `status` | varchar | O | `PENDING`, `RESOLVED` |
-| `handled_by` | bigint | FK, X | 처리한 관리자 `users.id`. 처리 전이면 NULL |
-| `handled_at` | datetime | X | 처리 시각 |
+| `reason_type` | varchar(30) | O | `SPAM`, `ABUSE`, `SEXUAL`, `ILLEGAL`, `PRIVACY`, `FALSE_INFO`, `OTHER`. 기본 `OTHER` |
+| `reason` | text | X | 신고자가 덧붙인 설명. `OTHER`면 애플리케이션이 필수로 받는다 |
+| `status` | varchar | O | `PENDING`, `REVIEWING`, `RESOLVED`, `REJECTED` |
+| `handled_by` | bigint | FK, X | 마지막으로 상태를 바꾼 관리자 `users.id`. 한 번도 바꾸지 않았으면 NULL |
+| `handled_at` | datetime | X | 마지막 상태 변경 시각. `PENDING`으로 되돌려도 비우지 않는다 |
 | `created_at` | datetime | O | 접수시각 |
 
 **`target_id`에는 외래키가 없다.** 대상이 게시물·댓글·사용자로 달라져 한 테이블을 가리킬 수
@@ -616,6 +629,41 @@ DB에서 직접 증감시킨다. 동시에 들어온 요청이 같은 값을 읽
 읽는 일이 많고, 이 순서 덕분에 별도 인덱스가 필요 없다.
 
 몇 명이 담았는지는 응답에 담지 않는다.
+
+## 29. admin_actions
+
+관리자 조치 이력이다. `V20__create_admin_actions.sql`에서 추가했다.
+
+| 컬럼 | 자료형 | 키·필수 | 의미 |
+| --- | --- | --- | --- |
+| `id` | bigint | PK, O | 이력 ID |
+| `admin_id` | bigint | FK, O | 조치한 관리자 `users.id` |
+| `action` | varchar(40) | O | `REPORT_STATUS_CHANGED`, `POST_DELETED`, `COMMENT_DELETED`, `USER_SUSPENDED`, `USER_SUSPENSION_RELEASED`, `USER_ROLE_CHANGED`, `PLACE_HIDDEN`, `PLACE_UNHIDDEN`, `INGESTION_RUN` |
+| `target_type` | varchar(20) | O | `REPORT`, `POST`, `COMMENT`, `USER`, `PLACE`, `SYSTEM` |
+| `target_id` | bigint | X | 대상 ID. `SYSTEM`이면 NULL |
+| `reason` | varchar(500) | X | 관리자가 입력한 사유 |
+| `detail` | varchar(500) | X | 상태 전이·실행 결과 같은 부가 정보. 사람이 읽는 문구 |
+| `created_at` | datetime | O | 조치 시각 |
+
+인덱스는 다음과 같다.
+
+| 이름 | 대상 | 비고 |
+| --- | --- | --- |
+| `idx_admin_actions_created_at` | (`created_at` DESC) | 전체 이력 최신순 |
+| `idx_admin_actions_target` | (`target_type`, `target_id`) | 한 대상에 대한 이력 |
+| `idx_admin_actions_admin` | (`admin_id`, `created_at` DESC) | 한 관리자의 이력 |
+
+**조치와 같은 트랜잭션에서 남긴다.** 기록이 실패하면 조치도 되돌아간다. 기록 없는 조치가
+생기면 이력을 믿을 수 없다. 수동 적재(`INGESTION_RUN`)만 트랜잭션 없이 실행 전에 남긴다.
+
+**고치거나 지우지 않는다.** 엔티티에 변경 메서드가 없고 API도 없다. 조치를 되돌리면 되돌린
+조치가 새 행으로 쌓인다.
+
+**`target_id`에는 외래키가 없다.** `reports`와 같은 이유다. 대상이 다섯 테이블로 갈린다.
+대상 행이 지워져도 이력은 남는다.
+
+`admin_id`는 NULL을 허용하지 않는다. 애플리케이션도 관리자 ID 없이 기록하려 하면 예외를 던진다.
+누가 했는지 모르는 이력은 남기지 않는다.
 
 ## 일정 생성 V2 변경
 
@@ -859,6 +907,8 @@ Preview의 고정 행사 제약이 실제 일정의 방문지로 배치된 결�
 | `users` N : M `users` (`blocks`) | 차단. 방향이 있다 |
 | `posts` N : M `hashtags` (`post_hashtags`) | 게시물의 해시태그 |
 | `users` 1 : N `reports` | 사용자는 여러 건을 신고할 수 있다. 신고 대상은 FK로 연결하지 않는다 |
+| `users` 1 : N `reports` (`handled_by`) | 관리자는 여러 신고의 처리자로 남는다 |
+| `users` 1 : N `admin_actions` | 관리자는 여러 조치를 남긴다. 조치 대상은 FK로 연결하지 않는다 |
 | `users` 1 : N `notifications` | 사용자는 여러 알림을 받는다. `recipient_id`와 `actor_id`로 두 번 연결된다. 알림 대상은 FK로 연결하지 않는다 |
 
 ## DB에 저장하지 않는 데이터

@@ -1,5 +1,6 @@
 package com.server.admin.domain;
 
+import com.server.common.support.ServerClock;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -67,7 +68,7 @@ public class AdminAction {
         this.targetId = targetId;
         this.reason = trim(reason);
         this.detail = trim(detail);
-        this.createdAt = LocalDateTime.now();
+        this.createdAt = ServerClock.now();
     }
 
     /** 컬럼 한도를 넘겨 기록 자체가 실패하는 것을 막는다. 기록은 조치를 방해하면 안 된다. */

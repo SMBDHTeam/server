@@ -14,11 +14,13 @@ import com.server.common.web.TraceIdFilter;
 import com.server.place.dto.PlaceDetailResponse;
 import com.server.place.dto.PlaceSearchResponse;
 import com.server.place.service.PlaceService;
+import com.server.wishlist.service.PlaceWishlistService;
 import java.math.BigDecimal;
 import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
+import org.springframework.security.web.method.annotation.AuthenticationPrincipalArgumentResolver;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
@@ -26,8 +28,10 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 class PlaceControllerTest {
 
     private final PlaceService placeService = Mockito.mock(PlaceService.class);
+    private final PlaceWishlistService placeWishlistService = Mockito.mock(PlaceWishlistService.class);
     private final MockMvc mockMvc = MockMvcBuilders
-            .standaloneSetup(new PlaceController(placeService))
+            .standaloneSetup(new PlaceController(placeService, placeWishlistService))
+            .setCustomArgumentResolvers(new AuthenticationPrincipalArgumentResolver())
             .setControllerAdvice(new GlobalExceptionHandler())
             .addFilters(new TraceIdFilter())
             .build();
@@ -89,7 +93,8 @@ class PlaceControllerTest {
                                 "https://example.com/image.jpg",
                                 "https://example.com/thumbnail.jpg",
                                 "Type1"
-                        ))
+                        )),
+                        null
                 ));
 
         mockMvc.perform(get("/api/v1/places/101")

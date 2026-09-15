@@ -13,6 +13,7 @@ import com.server.post.domain.ReportStatus;
 import com.server.post.repository.CommentRepository;
 import com.server.post.repository.PostRepository;
 import com.server.report.domain.Report;
+import com.server.report.domain.ReportReasonType;
 import com.server.report.domain.ReportTargetType;
 import com.server.post.service.CommentService;
 import com.server.post.service.PostService;
@@ -89,20 +90,21 @@ public class AdminReportService {
 
     @Transactional(readOnly = true)
     public AdminReportListResponse getReports(
-            ReportStatus status, ReportTargetType targetType, Integer page, Integer size) {
+            ReportStatus status, ReportTargetType targetType, ReportReasonType reasonType,
+            Integer page, Integer size) {
         int resolvedPage = page == null || page < 0 ? 0 : page;
         int resolvedSize = size == null || size <= 0
                 ? DEFAULT_PAGE_SIZE
                 : Math.min(size, MAX_PAGE_SIZE);
 
         List<Report> reports = reportRepository.findForAdmin(
-                status, targetType, PageRequest.of(resolvedPage, resolvedSize));
+                status, targetType, reasonType, PageRequest.of(resolvedPage, resolvedSize));
 
         // 전체 건수를 함께 준다. 없으면 화면이 페이지 수를 계산할 수 없어 다음 페이지가
         // 비어 있는지 눌러 봐야 안다.
         return new AdminReportListResponse(
                 reports.stream().map(AdminReportResponse::from).toList(),
-                reportRepository.countForAdmin(status, targetType));
+                reportRepository.countForAdmin(status, targetType, reasonType));
     }
 
     @Transactional(readOnly = true)

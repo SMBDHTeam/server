@@ -1,10 +1,13 @@
 package com.server.place.controller;
 
+import com.server.auth.service.AuthenticatedUser;
+import com.server.auth.web.LoginUser;
 import com.server.place.dto.PlaceDetailResponse;
 import com.server.place.dto.PlaceSearchResponse;
 import com.server.place.dto.PlaceResolveRequest;
 import com.server.place.dto.PlaceResolveResponse;
 import com.server.place.service.PlaceService;
+import com.server.wishlist.service.PlaceWishlistService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.ExampleObject;
@@ -14,6 +17,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.Valid;
 import java.math.BigDecimal;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -30,9 +34,11 @@ import org.springframework.web.bind.annotation.RestController;
 public class PlaceController {
 
     private final PlaceService placeService;
+    private final PlaceWishlistService placeWishlistService;
 
-    public PlaceController(PlaceService placeService) {
+    public PlaceController(PlaceService placeService, PlaceWishlistService placeWishlistService) {
         this.placeService = placeService;
+        this.placeWishlistService = placeWishlistService;
     }
 
     @GetMapping
@@ -88,10 +94,17 @@ public class PlaceController {
     }
 
     @GetMapping("/{placeId}")
-    @Operation(summary = "장소 상세 조회")
+    @Operation(
+            summary = "장소 상세 조회",
+            description = "로그인하지 않아도 볼 수 있다. 토큰을 보내면 wishlisted 에 내 위시리스트에 담겼는지를 채운다."
+    )
     public PlaceDetailResponse getDetail(
-            @Parameter(description = "장소 검색 응답의 ID", example = "1") @PathVariable Long placeId
+            @Parameter(description = "장소 검색 응답의 ID", example = "1") @PathVariable Long placeId,
+            @AuthenticationPrincipal AuthenticatedUser loginUser
     ) {
-        return placeService.getDetail(placeId);
+        // 상세를 먼저 읽는다. 없거나 가린 장소면 여기서 404 로 끝나 위시리스트를 읽지 않는다.
+        PlaceDetailResponse detail = placeService.getDetail(placeId);
+        return detail.withWishlisted(
+                placeWishlistService.wishlistedOrNull(placeId, LoginUser.idOrNull(loginUser)));
     }
 }

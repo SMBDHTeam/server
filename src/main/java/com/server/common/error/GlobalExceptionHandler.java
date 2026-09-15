@@ -320,6 +320,12 @@ public class GlobalExceptionHandler {
         if (uri.startsWith("/api/v1/users")) {
             return ErrorCode.INVALID_USER_REQUEST;
         }
+        if (uri.startsWith("/api/v1/admin")) {
+            return ErrorCode.INVALID_ADMIN_REQUEST;
+        }
+        if (uri.startsWith("/api/v1/reports")) {
+            return ErrorCode.INVALID_REPORT_REQUEST;
+        }
         if (uri.startsWith("/api/v1/media")) {
             return ErrorCode.INVALID_MEDIA_FILE;
         }

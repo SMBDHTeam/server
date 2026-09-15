@@ -170,7 +170,7 @@ TMAP HTTP 429는 DATA의 `503 / detail: TMAP_QUOTA_EXCEEDED`를 거쳐 SERVER의
 | `items[].externalId` | string | O | 데이터 출처의 장소 ID |
 | `items[].name` | string | O | 장소명 |
 | `items[].category` | string/null | X | 표시용 분류 |
-| `items[].categoryLabel` | string | O | 카테고리 코드의 사용자 표시 문구 |
+| `items[].categoryLabel` | string | O | 화면에 보일 분류 이름. TourAPI 코드는 이름으로, 카카오·네이버 경로(`여행 > 관광,명소 > 해수욕장,해변`)는 마지막 단계의 첫 이름(`해수욕장`)으로 바꾼다 |
 | `items[].address` | string/null | X | 주소 |
 | `items[].longitude` | number | O | 경도 |
 | `items[].latitude` | number | O | 위도 |
@@ -381,7 +381,7 @@ V2 응답은 top-level `dailyStartTime`, `dailyEndTime`을 사용하지 않는�
 | `endDate` | string(date) | O | 여행 종료일 |
 | `dailyStartTime` | string(time) | O | 기본 일일 시작시각 |
 | `dailyEndTime` | string(time) | O | 기본 일일 종료시각 |
-| `styleSummary` | string | X | 답변 기반 여행 스타일 요약 |
+| `styleSummary` | string | X | 답변 기반 여행 스타일 요약. 계획 일정은 "동행 테마 여유/알찬 일정", 즉흥 일정은 "즉흥여행 · 목적지 · 테마" 형태다. 예: `친구와 맛집 여유 일정` |
 | `days` | array | O | 날짜별 일정 |
 | `days[].dayNo` | integer | O | 여행 일차 |
 | `days[].date` | string(date) | O | 실제 날짜 |
@@ -511,7 +511,7 @@ V2 응답은 top-level `dailyStartTime`, `dailyEndTime`을 사용하지 않는�
 | `items[].status` | string | O | 일정 상태 |
 | `items[].startDate` | string(date) | O | 시작일 |
 | `items[].endDate` | string(date) | O | 종료일 |
-| `items[].styleSummary` | string | X | 여행 스타일 요약 |
+| `items[].styleSummary` | string | X | 여행 스타일 요약. 형식은 일정 단건 조회와 같다 |
 | `items[].days` | array | O | 날짜별 일정 |
 
 ## 5. 일정 수정
@@ -594,6 +594,7 @@ V2 응답은 top-level `dailyStartTime`, `dailyEndTime`을 사용하지 않는�
 | `images[].url` | string | O | 원본 이미지 |
 | `images[].thumbnailUrl` | string | X | 썸네일 |
 | `images[].copyrightType` | string | X | 저작권 구분 |
+| `wishlisted` | boolean | X | 내 위시리스트에 담겼는지. 로그인하지 않았으면 `null` |
 
 ## 8. 주변 편의시설
 
@@ -689,3 +690,163 @@ V2 응답은 top-level `dailyStartTime`, `dailyEndTime`을 사용하지 않는�
 | `shareId` | Path | string(UUID) | O | 폐기할 공유 링크 ID |
 
 응답 본문 없이 `204 No Content`를 반환한다.
+
+## 관리자 필드
+
+계약은 `docs/API_SPEC.md`의 `관리자 계약`(A-1~A-7)을 본다. 목록 응답은 모두
+`items`(array)와 `totalCount`(integer, 조건에 맞는 전체 건수)를 가진다.
+
+### A-2. 신고
+
+| 응답 필드 | 자료형 | 필수 | 의미 |
+| --- | --- | :---: | --- |
+| `id` | integer | O | 신고 ID |
+| `reporter` | object | O | 신고한 사용자. `id`, `nickname` |
+| `targetType` | string | O | `POST`, `COMMENT`, `USER` |
+| `targetId` | integer | O | 신고 대상 ID |
+| `reasonType` | string | O | `SPAM`, `ABUSE`, `SEXUAL`, `ILLEGAL`, `PRIVACY`, `FALSE_INFO`, `OTHER` |
+| `reason` | string | X | 신고자가 덧붙인 설명. 없으면 `null` |
+| `status` | string | O | `PENDING`, `REVIEWING`, `RESOLVED`, `REJECTED` |
+| `createdAt` | string(datetime) | O | 접수 시각 |
+| `handledBy` | object | X | 마지막으로 상태를 바꾼 관리자. `id`, `nickname`. 한 번도 바꾸지 않았으면 `null` |
+| `handledAt` | string(datetime) | X | 마지막 상태 변경 시각 |
+
+신고 상세 `GET /admin/reports/{reportId}`
+
+| 응답 필드 | 자료형 | 필수 | 의미 |
+| --- | --- | :---: | --- |
+| `report` | object | O | 위 신고 한 건 |
+| `target` | object | X | 신고 대상 원본. 행이 없으면 `null` |
+| `target.id` | integer | O | 대상 ID |
+| `target.author` | object | O | 작성자 또는 대상 사용자. `id`, `nickname` |
+| `target.content` | string | O | 게시물·댓글이면 본문, 사용자면 닉네임 |
+| `target.deleted` | boolean | O | 지워졌거나 탈퇴했는지 |
+
+| 요청 필드 | 위치 | 자료형 | 필수 | 의미 |
+| --- | --- | --- | :---: | --- |
+| `status` | Body | string | O | 바꿀 처리 상태 |
+
+### A-3. 사용자
+
+| 응답 필드 | 자료형 | 필수 | 의미 |
+| --- | --- | :---: | --- |
+| `id` | integer | O | 사용자 ID |
+| `nickname` | string | O | 닉네임 |
+| `email` | string | X | 로그인 제공자가 준 이메일 |
+| `role` | string | O | `USER`, `ADMIN` |
+| `status` | string | O | `ACTIVE`, `SUSPENDED`, `WITHDRAWN`. 정지 기한이 지나도 `SUSPENDED`로 남는다 |
+| `suspendedUntil` | string(datetime) | X | 정지 만료 시각. 기한 없는 정지면 `null` |
+| `suspendedReason` | string | X | 정지 사유 |
+| `writeBlocked` | boolean | O | 지금 쓰기가 막혀 있는지. 정지 여부는 이 값으로 판단한다 |
+| `createdAt` | string(datetime) | O | 가입 시각 |
+| `deletedAt` | string(datetime) | X | 탈퇴 시각. 탈퇴하지 않았으면 `null` |
+
+사용자 상세 `GET /admin/users/{userId}`
+
+| 응답 필드 | 자료형 | 필수 | 의미 |
+| --- | --- | :---: | --- |
+| `user` | object | O | 위 사용자 한 건 |
+| `postCount` | integer | O | 삭제하지 않은 게시물 수 |
+| `reportsFiled` | integer | O | 이 사용자가 접수한 신고 수 |
+| `reportsReceived` | integer | O | 이 사용자와 그 게시물·댓글을 대상으로 접수된 신고 수 |
+
+정지·해제 `PATCH /admin/users/{userId}/status`
+
+| 요청 필드 | 위치 | 자료형 | 필수 | 의미 |
+| --- | --- | --- | :---: | --- |
+| `suspended` | Body | boolean | O | `true`면 정지, `false`면 해제 |
+| `days` | Body | integer | X | 정지 기간(일). `1~3650`. 생략하면 기한 없음 |
+| `reason` | Body | string | 조건부 | 정지할 때 필수. 최대 500자 |
+
+역할 변경 `PATCH /admin/users/{userId}/role`
+
+| 요청 필드 | 위치 | 자료형 | 필수 | 의미 |
+| --- | --- | --- | :---: | --- |
+| `role` | Body | string | O | `USER`, `ADMIN` |
+
+### A-4. 장소
+
+| 응답 필드 | 자료형 | 필수 | 의미 |
+| --- | --- | :---: | --- |
+| `id` | integer | O | 내부 장소 ID |
+| `name` | string | O | 장소명 |
+| `address` | string | X | 주소 |
+| `source` | string | O | `TOUR_API`, `KAKAO_LOCAL` |
+| `hidden` | boolean | O | 가려져 있는지 |
+| `hiddenAt` | string(datetime) | X | 가린 시각 |
+| `hiddenReason` | string | X | 가린 사유 |
+
+| 요청 필드 | 위치 | 자료형 | 필수 | 의미 |
+| --- | --- | --- | :---: | --- |
+| `hidden` | Body | boolean | O | `true`면 가림, `false`면 해제 |
+| `reason` | Body | string | 조건부 | 가릴 때 필수. 최대 500자 |
+
+적재 상태 `GET /admin/places/ingestion`
+
+| 응답 필드 | 자료형 | 필수 | 의미 |
+| --- | --- | :---: | --- |
+| `statusCounts` | object | O | `ingestion_status`별 장소 수. 키는 `PENDING`, `SYNCED`, `FAILED` |
+| `hiddenCount` | integer | O | 가린 장소 수 |
+| `ingestionEnabled` | boolean | O | 적재 스케줄러가 켜져 있는지 |
+| `enrichmentEnabled` | boolean | O | 상세 보강이 켜져 있는지 |
+| `quotaDate` | string(date) | O | 예산 기준일(KST) |
+| `requestsUsed` | integer | O | 오늘 쓴 TourAPI 호출 수 |
+| `dailyLimit` | integer | O | 하루 호출 한도 |
+| `requestsRemaining` | integer | O | 오늘 남은 호출 수. `0`이면 수동 적재가 `429` |
+
+수동 적재 `POST /admin/places/ingestion`
+
+| 응답 필드 | 자료형 | 필수 | 의미 |
+| --- | --- | :---: | --- |
+| `fetched` | integer | O | 목록에서 읽은 장소 수 |
+| `discovered` | integer | O | 새로 발견한 장소 수 |
+| `enriched` | integer | O | 상세를 보강한 장소 수 |
+| `unchanged` | integer | O | 바뀌지 않아 건너뛴 장소 수 |
+| `pending` | integer | O | 보강을 다음으로 미룬 장소 수 |
+| `failed` | integer | O | 보강에 실패한 장소 수 |
+| `skipped` | integer | O | 처리하지 않은 장소 수 |
+| `apiRequests` | integer | O | 이번 실행이 쓴 TourAPI 호출 수 |
+| `lockSkipped` | boolean | O | 다른 적재가 돌고 있어 실행하지 않았는지. `true`면 나머지는 `0` |
+
+### A-5. 통계
+
+총계 `GET /admin/stats/summary`
+
+| 응답 필드 | 자료형 | 필수 | 의미 |
+| --- | --- | :---: | --- |
+| `days` | integer | O | 실제 적용한 집계 기간(일) |
+| `users`, `posts`, `schedules` | object | O | `total`(전체 누적), `recent`(기간 안에 늘어난 수) |
+| `pendingReports` | integer | O | `PENDING` 신고 수 |
+| `suspendedUsers` | integer | O | 정지 상태 사용자 수 |
+| `visiblePlaces` | integer | O | 가리지 않은 장소 수 |
+
+추이 `GET /admin/stats/trend`
+
+| 응답 필드 | 자료형 | 필수 | 의미 |
+| --- | --- | :---: | --- |
+| `metric` | string | O | `USERS`, `POSTS`, `SCHEDULES` |
+| `points` | array | O | 날짜 오름차순. 값이 0인 날 포함 |
+| `points[].date` | string(date) | O | 날짜 |
+| `points[].count` | integer | O | 그날 만들어진 행 수 |
+
+인기 `GET /admin/stats/popular`
+
+| 응답 필드 | 자료형 | 필수 | 의미 |
+| --- | --- | :---: | --- |
+| `type` | string | O | `PLACE`, `HASHTAG` |
+| `items[].id` | integer | X | 장소 ID. `HASHTAG`면 `null` |
+| `items[].name` | string | O | 장소명 또는 카테고리 이름 |
+| `items[].count` | integer | O | 쓰인 횟수 |
+
+### A-6. 조치 이력
+
+| 응답 필드 | 자료형 | 필수 | 의미 |
+| --- | --- | :---: | --- |
+| `id` | integer | O | 이력 ID |
+| `admin` | object | O | 조치한 관리자. `id`, `nickname` |
+| `action` | string | O | 조치 종류. 값 목록은 `API_SPEC.md` A-6 |
+| `targetType` | string | O | `REPORT`, `POST`, `COMMENT`, `USER`, `PLACE`, `SYSTEM` |
+| `targetId` | integer | X | 대상 ID. `SYSTEM`이면 `null` |
+| `reason` | string | X | 관리자가 입력한 사유 |
+| `detail` | string | X | 상태 전이나 실행 결과. 사람이 읽는 문구 |
+| `createdAt` | string(datetime) | O | 조치 시각 |

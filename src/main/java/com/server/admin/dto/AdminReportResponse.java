@@ -2,6 +2,7 @@ package com.server.admin.dto;
 
 import com.server.post.domain.ReportStatus;
 import com.server.report.domain.Report;
+import com.server.report.domain.ReportReasonType;
 import com.server.report.domain.ReportTargetType;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.time.LocalDateTime;
@@ -12,7 +13,10 @@ public record AdminReportResponse(
         @Schema(description = "신고한 사용자") Reporter reporter,
         @Schema(description = "POST, COMMENT, USER", example = "POST") ReportTargetType targetType,
         @Schema(example = "7") Long targetId,
-        @Schema(example = "광고성 게시물입니다") String reason,
+        @Schema(description = "SPAM, ABUSE, SEXUAL, ILLEGAL, PRIVACY, FALSE_INFO, OTHER", example = "SPAM")
+        ReportReasonType reasonType,
+        @Schema(description = "신고자가 덧붙인 설명. 없으면 null", example = "같은 링크를 반복해서 올립니다")
+        String reason,
         @Schema(description = "PENDING, REVIEWING, RESOLVED, REJECTED", example = "PENDING")
         ReportStatus status,
         @Schema(example = "2026-08-25T14:02:00") LocalDateTime createdAt,
@@ -33,6 +37,7 @@ public record AdminReportResponse(
                 new Reporter(report.getReporter().getId(), report.getReporter().getNickname()),
                 report.getTargetType(),
                 report.getTargetId(),
+                report.getReasonType(),
                 report.getReason(),
                 report.getStatus(),
                 report.getCreatedAt(),

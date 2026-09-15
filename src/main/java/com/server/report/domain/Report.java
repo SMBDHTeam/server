@@ -1,5 +1,6 @@
 package com.server.report.domain;
 
+import com.server.common.support.ServerClock;
 import com.server.post.domain.ReportStatus;
 import com.server.user.domain.User;
 import jakarta.persistence.Column;
@@ -41,7 +42,12 @@ public class Report {
     @Column(name = "target_id", nullable = false)
     private Long targetId;
 
-    @Column(nullable = false, columnDefinition = "text")
+    @Enumerated(EnumType.STRING)
+    @Column(name = "reason_type", nullable = false, length = 30)
+    private ReportReasonType reasonType;
+
+    /** 신고자가 덧붙인 설명. 기타가 아니면 없을 수 있다. */
+    @Column(columnDefinition = "text")
     private String reason;
 
     @Enumerated(EnumType.STRING)
@@ -62,10 +68,17 @@ public class Report {
     protected Report() {
     }
 
-    public Report(User reporter, ReportTargetType targetType, Long targetId, String reason) {
+    public Report(
+            User reporter,
+            ReportTargetType targetType,
+            Long targetId,
+            ReportReasonType reasonType,
+            String reason
+    ) {
         this.reporter = reporter;
         this.targetType = targetType;
         this.targetId = targetId;
+        this.reasonType = reasonType;
         this.reason = reason;
         this.status = ReportStatus.PENDING;
         this.createdAt = LocalDateTime.now();
@@ -78,7 +91,7 @@ public class Report {
     public void handle(ReportStatus status, User handler) {
         this.status = status;
         this.handledBy = handler;
-        this.handledAt = LocalDateTime.now();
+        this.handledAt = ServerClock.now();
     }
 
     public User getHandledBy() {
@@ -103,6 +116,10 @@ public class Report {
 
     public Long getTargetId() {
         return targetId;
+    }
+
+    public ReportReasonType getReasonType() {
+        return reasonType;
     }
 
     public String getReason() {

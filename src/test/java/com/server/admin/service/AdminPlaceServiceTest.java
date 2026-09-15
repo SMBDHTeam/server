@@ -108,13 +108,16 @@ class AdminPlaceServiceTest {
     }
 
     @Test
-    @DisplayName("가려 둔 장소 목록에 나온다")
+    @DisplayName("가린 장소만 거르면 나온다")
     void listsHiddenPlaces() {
         adminPlaceService.updateHidden(place.getId(), true, "좌표 오류", admin.getId());
 
-        assertThat(adminPlaceService.getHiddenPlaces())
+        assertThat(adminPlaceService.getPlaces("숨김테스트장소", true, 0, 20).items())
                 .extracting(com.server.admin.dto.AdminPlaceResponse::id)
                 .contains(place.getId());
+        assertThat(adminPlaceService.getPlaces("숨김테스트장소", false, 0, 20).items())
+                .extracting(com.server.admin.dto.AdminPlaceResponse::id)
+                .doesNotContain(place.getId());
     }
 
     @Test

@@ -1,13 +1,13 @@
 package com.server.auth.web;
 
 import com.server.common.error.ErrorCode;
+import com.server.common.support.ServerClock;
 import com.server.user.repository.UserRepository;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
-import java.time.LocalDateTime;
 import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -66,7 +66,7 @@ public class SuspendedUserWriteFilter extends OncePerRequestFilter {
         }
 
         boolean blocked = userRepository.findById(userId)
-                .map(user -> user.isWriteBlockedAt(LocalDateTime.now()))
+                .map(user -> user.isWriteBlockedAt(ServerClock.now()))
                 .orElse(false);
         if (blocked) {
             log.info("Blocked write from suspended user. userId={}, uri={}",

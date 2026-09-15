@@ -13,7 +13,15 @@ import org.springframework.data.repository.query.Param;
 
 public interface PlaceWishlistRepository extends JpaRepository<PlaceWishlist, PlaceWishlistId> {
 
-    boolean existsByUserIdAndPlaceId(Long userId, Long placeId);
+    /**
+     * 담았는지. 키가 {@code @IdClass} 의 {@code @ManyToOne} 이라 메서드 이름으로 만든 쿼리는
+     * Hibernate 가 {@code userId} 경로를 풀지 못해 NPE 가 난다. 목록 조회와 같은 경로로 직접 쓴다.
+     */
+    @Query("""
+            select count(wish) > 0 from PlaceWishlist wish
+            where wish.user.id = :userId and wish.place.id = :placeId
+            """)
+    boolean existsByUserIdAndPlaceId(@Param("userId") Long userId, @Param("placeId") Long placeId);
 
     long deleteByUserIdAndPlaceId(Long userId, Long placeId);
 

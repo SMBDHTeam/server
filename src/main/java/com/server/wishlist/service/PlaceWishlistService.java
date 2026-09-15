@@ -63,6 +63,20 @@ public class PlaceWishlistService {
     }
 
     /**
+     * 요청자가 이 장소를 담았는지. 로그인하지 않았으면 {@code null} 이다.
+     *
+     * <p>장소 상세는 로그인 없이 열려 있다. 그때 {@code false} 를 주면 "안 담았다"와 "모른다"가
+     * 구분되지 않아 화면이 빈 하트를 그린다.
+     */
+    @Transactional(readOnly = true)
+    public Boolean wishlistedOrNull(Long placeId, Long userId) {
+        if (userId == null) {
+            return null;
+        }
+        return wishlistRepository.existsByUserIdAndPlaceId(userId, placeId);
+    }
+
+    /**
      * 가려 둔 장소도 담을 수 있게 둔다. 담긴 뒤에 관리자가 가릴 수도 있어 어차피 목록
      * 조회에서 걸러야 하고, 두 곳에서 막으면 같은 규칙이 흩어진다.
      */

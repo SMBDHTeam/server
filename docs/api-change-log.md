@@ -2,6 +2,80 @@
 
 API 계약이 변경될 때마다 최신 항목을 위에 추가한다.
 
+## 2026-09-15 (내 신고 여부 조회 추가)
+
+- API: `GET /api/v1/reports/me`
+- 구분: 추가
+- 이전: 이미 신고한 대상인지 알 수 없어, 신고 시트에서 사유를 고르고 제출한 뒤에야 `409 ALREADY_REPORTED`로 알 수 있었다.
+- 이후: `targetType`·`targetId`로 내가 신고했는지(`reported`)를 준다. 로그인이 필요하다.
+- 호환성 파괴: 없음. 새 경로다.
+- DB/ERD: 변경 없음
+
+## 2026-09-15 (장소 상세에 위시리스트 여부 추가)
+
+- API: `GET /api/v1/places/{placeId}`
+- 구분: 추가(필드)
+- 이전: 화면이 하트 상태를 알려면 `GET /users/me/wishlists`를 따로 불러 찾아야 했다. 한 번에 최대 50곳이라 그보다 많이 담으면 담긴 장소도 빈 하트로 보였다.
+- 이후: 토큰을 보내면 `wishlisted`(boolean)를 채운다. 토큰이 없으면 `null`이다.
+- 유지: 로그인 없이 조회할 수 있다. 없거나 가린 장소는 `404 PLACE_NOT_FOUND`
+- 호환성 파괴: 없음. 필드 추가
+- DB/ERD: 변경 없음
+
+## 2026-09-15 (외부 장소 분류 라벨 정리)
+
+- API: `categoryLabel`을 주는 장소 응답 전부 (장소 검색·상세·Resolve, 일정 방문지, 인기 장소, 위시리스트, 카테고리 장소)
+- 구분: 변경 (값)
+- 이전: 카카오·네이버로 등록한 장소는 `categoryLabel`에 분류 경로 전체(`여행 > 관광,명소 > 해수욕장,해변`)가 나갔다.
+- 이후: 경로의 마지막 단계 첫 이름(`해수욕장`)을 준다. TourAPI 분류코드 변환은 그대로다.
+- 유지: `category`는 저장된 원본 그대로
+- 호환성 파괴: 없음. 표시용 값이 짧아진다.
+- DB/ERD: 변경 없음
+
+## 2026-09-14 (신고 사유 유형 추가)
+
+- API: `POST /api/v1/reports`, `GET /api/v1/admin/reports`, `GET /api/v1/admin/reports/{reportId}`, `PATCH /api/v1/admin/reports/{reportId}`
+- 구분: 변경
+- 이전: 신고 사유를 자유 입력 `reason` 하나로 받았고 필수였다.
+- 이후: `reasonType`(`SPAM`, `ABUSE`, `SEXUAL`, `ILLEGAL`, `PRIVACY`, `FALSE_INFO`, `OTHER`)이 필수다. `reason`은 `OTHER`일 때만 필수이며, 공백뿐이면 비워서 저장한다. 신고 응답과 관리자 신고 응답에 `reasonType`이 담기고, 관리자 응답의 `reason`은 `null`일 수 있다.
+- 함께 추가: `GET /api/v1/admin/reports`에 `reasonType` 필터. 생략하면 거르지 않는다.
+- 신설 오류 코드: `400 CANNOT_REPORT_OWN_TARGET`(본인의 게시물·댓글이나 자기 자신을 신고), `400 INVALID_REPORT_REQUEST`. 이전에는 자기 글도 신고할 수 있었고, 신고 검증 실패가 `INVALID_SCHEDULE_CONDITION`으로 나갔다.
+- 이유: 자유 입력만으로는 관리자가 신고를 전부 읽어야 유형별로 모아 볼 수 있다.
+- 호환성 파괴: 있음. `reasonType` 없이 보내면 `400`이다. 이 API를 부르는 클라이언트는 아직 없었고, dev 에 쌓인 신고는 0건이었다.
+- DB/ERD: `V21__add_report_reason_type.sql`. `reports.reason_type` 추가(기존 행은 `OTHER`), `reports.reason` NULL 허용, `idx_reports_reason_type` 추가
+
+## 2026-09-14 (관리자 조치 이력·역할 변경 추가, 관리자 API 문서화)
+
+- API: `GET /api/v1/admin/actions`, `PATCH /api/v1/admin/users/{userId}/role`, `POST /api/v1/posts/{postId}/restore`, `GET /api/v1/posts/me/deleted`, `GET /api/v1/admin/places/hidden`(삭제)
+- 구분: 추가, 변경, 삭제
+- 이전: 누가 어떤 조치를 했는지 남지 않았다. 역할을 바꾸려면 운영 DB에 직접 접속했다. 관리자가 지운 게시물을 작성자가 복구할 수 있었다.
+- 이후: 상태를 바꾸는 관리자 요청 9종을 `admin_actions`에 남기고 `GET /admin/actions`로 조회한다. 역할은 API로 바꾸며 대상의 리프레시 토큰을 폐기한다. 관리자가 지운 게시물은 `GET /posts/me/deleted`에서 빠지고, 복구하면 `403 POST_DELETED_BY_ADMIN`이다.
+- 유지: 작성자가 스스로 지운 게시물의 복구, 기존 관리자 API의 요청·응답
+- 함께 변경: 관리자 경로의 검증 실패가 `400 INVALID_ADMIN_REQUEST`로 나간다. 이전에는 `INVALID_SCHEDULE_CONDITION`이었다. 마지막 남은 관리자를 `USER`로 바꾸면 `409 CANNOT_DEMOTE_LAST_ADMIN`이다. 게시물 정리 배치가 관리자가 지운 게시물을 지우지 않는다.
+- 삭제: `GET /api/v1/admin/places/hidden`. `GET /api/v1/admin/places?hidden=true`와 기능이 겹치고 부르는 클라이언트가 없었다.
+- 호환성 파괴: 있음. 복구 API에 새 오류 코드가 생겼고, 관리자 경로 검증 실패의 `code`가 바뀌었고, `GET /admin/places/hidden`이 없어졌다.
+- DB/ERD: `V20__create_admin_actions.sql`. `admin_actions` 신설, `posts.deleted_by_admin` 추가
+
+### 문서에 빠져 있던 관리자 API
+
+아래는 이미 배포돼 있었으나 이 문서와 `API_SPEC.md`에 없었다. 이번에 `API_SPEC.md`의
+`관리자 계약`(A-1~A-7), `API_FIELD_GUIDE.md`의 `관리자 필드`, `ERD.md`에 함께 적었다.
+
+| 추가일 | API | DB |
+| --- | --- | --- |
+| 2026-08-25 | 신고 목록·상세·상태 변경, 관리자 게시물·댓글 삭제 | `V12` `reports.handled_by`, `handled_at` |
+| 2026-08-25 | 사용자 목록·상세·정지·해제 | `V9` `users.role`, `status`, `suspended_*` |
+| 2026-08-25 | 가린 장소 목록, 장소 숨김·해제, 적재 상태, 수동 적재 | `V13` `places.hidden_at`, `hidden_reason` |
+| 2026-08-25 | 통계 총계·추이·인기 | 없음 |
+| 2026-09-07 | `GET /api/v1/admin/places` 등록된 장소 검색 | 없음 |
+
+### 문서화하며 확인한 것
+
+- 아래는 문서화하며 발견해 이번 변경에서 함께 고쳤다(위 `함께 변경`, `삭제`).
+  - 관리자 경로 검증 실패가 `INVALID_SCHEDULE_CONDITION`으로 나갔다.
+  - 마지막 관리자가 스스로를 `USER`로 바꿀 수 있었다.
+  - 정리 배치(`findDeletedBefore`)가 `deleted_by_admin`을 보지 않아 관리자가 지운 게시물도 30일 뒤 지웠다. dev 는 배치가 켜져 있으나 관리자 삭제 표시가 2026-09-14 에 생겨 아직 지워진 게시물은 없다.
+  - `GET /admin/places/hidden`이 `GET /admin/places?hidden=true`와 겹쳤다.
+
 ## 2026-09-14 (즉흥여행 목적지 추천 실패 원인 구분)
 
 - API: `POST /api/v1/spontaneous-trips/destinations`

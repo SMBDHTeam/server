@@ -1,6 +1,7 @@
 package com.server.report.repository;
 
 import com.server.report.domain.Report;
+import com.server.report.domain.ReportReasonType;
 import com.server.report.domain.ReportTargetType;
 import com.server.post.domain.ReportStatus;
 import java.util.List;
@@ -15,7 +16,7 @@ public interface ReportRepository extends JpaRepository<Report, Long> {
             Long reporterId, ReportTargetType targetType, Long targetId);
 
     /**
-     * 관리자 신고 목록. 상태·대상 유형은 없으면 거르지 않는다.
+     * 관리자 신고 목록. 상태·대상 유형·사유 유형은 없으면 거르지 않는다.
      *
      * <p>대기 중인 것부터 오래된 순으로 본다. 최신순으로 두면 오래 방치된 신고가 계속
      * 뒤로 밀린다.
@@ -26,21 +27,25 @@ public interface ReportRepository extends JpaRepository<Report, Long> {
             left join fetch report.handledBy
             where (:status is null or report.status = :status)
               and (:targetType is null or report.targetType = :targetType)
+              and (:reasonType is null or report.reasonType = :reasonType)
             order by report.createdAt asc
             """)
     List<Report> findForAdmin(
             @Param("status") ReportStatus status,
             @Param("targetType") ReportTargetType targetType,
+            @Param("reasonType") ReportReasonType reasonType,
             Pageable pageable);
 
     @Query("""
             select count(report) from Report report
             where (:status is null or report.status = :status)
               and (:targetType is null or report.targetType = :targetType)
+              and (:reasonType is null or report.reasonType = :reasonType)
             """)
     long countForAdmin(
             @Param("status") ReportStatus status,
-            @Param("targetType") ReportTargetType targetType);
+            @Param("targetType") ReportTargetType targetType,
+            @Param("reasonType") ReportReasonType reasonType);
 
     long countByReporterId(Long reporterId);
 

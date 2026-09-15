@@ -88,7 +88,7 @@ class AdminReportAuthorizationTest {
         for (String path : new String[]{
                 "/api/v1/admin/users",
                 "/api/v1/admin/places/ingestion",
-                "/api/v1/admin/places/hidden",
+                "/api/v1/admin/places",
                 "/api/v1/admin/stats/summary",
                 "/api/v1/admin/stats/popular?type=PLACE"}) {
             mockMvc.perform(get(path).header("Authorization", token(UserRole.USER)))
@@ -103,7 +103,7 @@ class AdminReportAuthorizationTest {
     void allowsAdminAcrossAdminApis() throws Exception {
         for (String path : new String[]{
                 "/api/v1/admin/users",
-                "/api/v1/admin/places/hidden",
+                "/api/v1/admin/places",
                 "/api/v1/admin/stats/summary"}) {
             mockMvc.perform(get(path).header("Authorization", token(UserRole.ADMIN)))
                     .andExpect(status().isOk());

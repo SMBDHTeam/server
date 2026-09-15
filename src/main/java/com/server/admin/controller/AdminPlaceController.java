@@ -11,7 +11,6 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
-import java.util.List;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -73,12 +72,6 @@ public class AdminPlaceController {
     )
     public TourApiPlaceIngestionResult runIngestion() {
         return adminPlaceService.runIngestion(CurrentUser.idOrNull());
-    }
-
-    @GetMapping("/hidden")
-    @Operation(summary = "가려 둔 장소 목록", description = "최근에 가린 순이다.")
-    public List<AdminPlaceResponse> getHiddenPlaces() {
-        return adminPlaceService.getHiddenPlaces();
     }
 
     @PatchMapping("/{placeId}/hidden")

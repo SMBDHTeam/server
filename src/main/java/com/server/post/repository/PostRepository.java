@@ -51,10 +51,16 @@ public interface PostRepository extends JpaRepository<Post, Long> {
             @Param("restorableFrom") LocalDateTime restorableFrom,
             Pageable pageable);
 
-    /** 복구 기한이 지나 완전히 지울 게시물. 한 번에 지나치게 많이 잡지 않도록 나눠 읽는다. */
+    /**
+     * 복구 기한이 지나 완전히 지울 게시물. 한 번에 지나치게 많이 잡지 않도록 나눠 읽는다.
+     *
+     * <p>관리자가 지운 게시물은 뺀다. 지우면 신고 상세의 원본과 조치 이력이 가리키는 대상이
+     * 사라져 나중에 조치를 되짚을 수 없다.
+     */
     @Query("""
             select post from Post post
             where post.deletedAt is not null
+              and post.deletedByAdmin = false
               and post.deletedAt < :deadline
             order by post.deletedAt asc
             """)

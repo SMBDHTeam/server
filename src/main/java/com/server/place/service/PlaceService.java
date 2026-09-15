@@ -260,7 +260,7 @@ public class PlaceService {
                 PlaceCategoryLabelResolver.resolve(place.getCategory(), place.getContentTypeId()),
                 place.getAddress(), place.getLongitude(), place.getLatitude(),
                 place.getPlaceUrl(), place.getPrimaryImageUrl(),
-                overview, operatingInfo, images);
+                overview, operatingInfo, images, null);
     }
 
 

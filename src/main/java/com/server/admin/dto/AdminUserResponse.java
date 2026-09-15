@@ -1,5 +1,6 @@
 package com.server.admin.dto;
 
+import com.server.common.support.ServerClock;
 import com.server.user.domain.User;
 import com.server.user.domain.UserRole;
 import com.server.user.domain.UserStatus;
@@ -30,7 +31,7 @@ public record AdminUserResponse(
                 user.getStatus(),
                 user.getSuspendedUntil(),
                 user.getSuspendedReason(),
-                user.isWriteBlockedAt(LocalDateTime.now()),
+                user.isWriteBlockedAt(ServerClock.now()),
                 user.getCreatedAt(),
                 user.getDeletedAt());
     }

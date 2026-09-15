@@ -145,13 +145,33 @@ class PostPurgeServiceTest {
         assertThat(postRepository.findById(live.getId())).isPresent();
     }
 
+    @Test
+    @DisplayName("관리자가 지운 게시물은 기한이 지나도 지우지 않는다")
+    void keepsPostDeletedByAdmin() {
+        // 지우면 신고 상세의 원본과 조치 이력이 가리키는 대상이 사라져 조치를 되짚을 수 없다.
+        Post deletedByAdmin = givenPost(LocalDateTime.now().minusDays(RETENTION_DAYS + 1), true);
+        entityManager.clear();
+
+        assertThat(postPurgeService.purgeExpired(RETENTION_DAYS).purgedCount()).isZero();
+        assertThat(postRepository.findById(deletedByAdmin.getId())).isPresent();
+    }
+
     private long postCountOf(String name) {
         return hashtagRepository.findByNameIn(List.of(name)).get(0).getPostCount();
     }
 
     private Post givenPost(LocalDateTime deletedAt) {
+        return givenPost(deletedAt, false);
+    }
+
+    /**
+     * 표시는 저장 전에 넣는다. 아래 좋아요·저장 삽입이 영속성 컨텍스트를 비우므로, 저장 뒤에
+     * 필드를 바꾸면 분리된 객체라 DB 에 반영되지 않는다.
+     */
+    private Post givenPost(LocalDateTime deletedAt, boolean deletedByAdmin) {
         Post post = new Post(author, "지운 글");
         ReflectionTestUtils.setField(post, "deletedAt", deletedAt);
+        ReflectionTestUtils.setField(post, "deletedByAdmin", deletedByAdmin);
         entityManager.persist(post);
         entityManager.persist(new PostMedia(post, MediaType.IMAGE, "https://e.com/a.jpg", 0));
         entityManager.flush();
