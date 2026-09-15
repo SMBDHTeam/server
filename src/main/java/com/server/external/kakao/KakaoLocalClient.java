@@ -37,6 +37,34 @@ public class KakaoLocalClient {
                 () -> new KakaoLocalSearchResponse(null));
     }
 
+    /**
+     * 좌표 주변에서 키워드로 찾는다. 가까운 순으로 받는다.
+     *
+     * <p>같은 이름이 부산 여러 곳에 있을 수 있어, 우리 장소와 같은 곳을 고를 때 좌표로 좁힌다.
+     */
+    public KakaoLocalSearchResponse searchKeywordNear(
+            String keyword,
+            BigDecimal longitude,
+            BigDecimal latitude,
+            int radius,
+            int size
+    ) {
+        return execute(() -> restClient.get()
+                .uri(uriBuilder -> uriBuilder
+                        .path("/v2/local/search/keyword.json")
+                        .queryParam("query", keyword)
+                        .queryParam("x", longitude)
+                        .queryParam("y", latitude)
+                        .queryParam("radius", radius)
+                        .queryParam("sort", "distance")
+                        .queryParam("size", size)
+                        .build())
+                .header("Authorization", authorizationHeader())
+                .retrieve()
+                .body(KakaoLocalSearchResponse.class),
+                () -> new KakaoLocalSearchResponse(null));
+    }
+
     public KakaoLocalSearchResponse searchConvenienceStores(
             BigDecimal longitude,
             BigDecimal latitude,
