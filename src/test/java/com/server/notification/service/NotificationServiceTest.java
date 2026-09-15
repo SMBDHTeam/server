@@ -36,11 +36,14 @@ class NotificationServiceTest {
     private final CommentRepository commentRepository = Mockito.mock(CommentRepository.class);
 
     private final NotificationWriter notificationWriter = Mockito.mock(NotificationWriter.class);
+    private final NotificationStreamService notificationStreamService =
+            Mockito.mock(NotificationStreamService.class);
 
     private final NotificationService notificationService =
             new NotificationService(
                     notificationRepository,
                     notificationWriter,
+                    notificationStreamService,
                     commentRepository,
                     activeUserReader);
 

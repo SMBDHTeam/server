@@ -9,6 +9,7 @@ import com.server.notification.domain.NotificationTargetType;
 import com.server.notification.domain.NotificationType;
 import com.server.notification.dto.NotificationListResponse;
 import com.server.notification.dto.NotificationResponse;
+import com.server.notification.dto.NotificationStreamEvent;
 import com.server.notification.repository.NotificationRepository;
 import com.server.post.repository.CommentRepository;
 import com.server.user.service.ActiveUserReader;
@@ -18,13 +19,14 @@ import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 /**
  * 알림을 쌓고 읽는다. 알림은 커뮤니티 전용이 아니므로 이 서비스는 어떤 도메인에서
  * 부르는지 모른다. 알림을 만드는 쪽이 받는 사람과 대상만 넘기면 된다.
  *
- * <p>실시간 푸시는 없다. 저장해 두고 클라이언트가 조회한다. 나중에 푸시를 붙이더라도
- * {@link #notify} 뒤에 전송 한 줄을 더하는 형태라 이 구조는 그대로 쓸 수 있다.
+ * <p>알림은 먼저 저장한 뒤, 현재 접속 중인 클라이언트가 있으면 SSE로 새 알림을 전송한다.
+ * 스트림이 끊겨도 저장된 알림 목록을 다시 조회하면 누락 없이 복구된다.
  */
 @Service
 public class NotificationService {
@@ -35,17 +37,20 @@ public class NotificationService {
 
     private final NotificationRepository notificationRepository;
     private final NotificationWriter notificationWriter;
+    private final NotificationStreamService notificationStreamService;
     private final CommentRepository commentRepository;
     private final ActiveUserReader activeUserReader;
 
     public NotificationService(
             NotificationRepository notificationRepository,
             NotificationWriter notificationWriter,
+            NotificationStreamService notificationStreamService,
             CommentRepository commentRepository,
             ActiveUserReader activeUserReader
     ) {
         this.notificationRepository = notificationRepository;
         this.notificationWriter = notificationWriter;
+        this.notificationStreamService = notificationStreamService;
         this.commentRepository = commentRepository;
         this.activeUserReader = activeUserReader;
     }
@@ -65,7 +70,15 @@ public class NotificationService {
             Long targetId
     ) {
         try {
-            notificationWriter.write(recipientId, actorId, type, targetType, targetId);
+            notificationWriter.write(recipientId, actorId, type, targetType, targetId)
+                    .flatMap(notificationRepository::findById)
+                    .map(this::toResponse)
+                    .ifPresent(notification ->
+                            notificationStreamService.publish(
+                                    recipientId,
+                                    new NotificationStreamEvent(
+                                            notification,
+                                            notificationRepository.countUnread(recipientId))));
         } catch (RuntimeException exception) {
             log.warn("알림을 남기지 못했다. recipientId={}, type={}, targetId={}",
                     recipientId, type, targetId, exception);
@@ -118,6 +131,11 @@ public class NotificationService {
         requireActiveUser(userId);
         notificationRepository.markAllAsRead(userId, ServerClock.now());
         return notificationRepository.countUnread(userId);
+    }
+
+    public SseEmitter subscribe(Long userId) {
+        requireActiveUser(userId);
+        return notificationStreamService.subscribe(userId);
     }
 
     private void requireActiveUser(Long userId) {
