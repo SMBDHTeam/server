@@ -16,9 +16,9 @@ spring:
   servlet:
     multipart:
       # 기본값은 한 건 1MB, 요청 전체 10MB 다. 그대로 두면 app.media 한도에 닿기 전에
-      # 서블릿이 먼저 막는다. 한 건 10MB × 10건에 여유를 둔다.
+      # 서블릿이 먼저 막는다. 한 건 10MB, 요청 전체 50MB 정책에 맞춘다.
       max-file-size: ${COMMUNITY_MEDIA_MAX_FILE_SIZE:10MB}
-      max-request-size: ${COMMUNITY_MEDIA_MAX_REQUEST_SIZE:110MB}
+      max-request-size: ${COMMUNITY_MEDIA_MAX_REQUEST_SIZE:50MB}
 
 server:
   port: 8080
