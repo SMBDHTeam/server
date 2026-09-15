@@ -11,9 +11,11 @@ import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
+import org.springframework.http.MediaType;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 @RestController
 @Validated
@@ -53,6 +55,18 @@ public class NotificationController {
     ) {
         Long userId = LoginUser.require(loginUser);
         return new UnreadCountResponse(notificationService.countUnread(userId));
+    }
+
+    @GetMapping(value = "/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    @Operation(
+            summary = "실시간 알림 스트림",
+            description = "새 알림이 생기면 notification 이벤트로 내려준다. 연결이 끊기면 클라이언트가 재연결한다."
+    )
+    public SseEmitter streamNotifications(
+            @AuthenticationPrincipal AuthenticatedUser loginUser
+    ) {
+        Long userId = LoginUser.require(loginUser);
+        return notificationService.subscribe(userId);
     }
 
     @PatchMapping("/{notificationId}/read")

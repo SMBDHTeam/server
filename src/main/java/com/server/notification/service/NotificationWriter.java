@@ -6,6 +6,7 @@ import com.server.notification.domain.NotificationType;
 import com.server.notification.repository.NotificationRepository;
 import com.server.user.domain.User;
 import com.server.user.repository.UserRepository;
+import java.util.Optional;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -42,7 +43,7 @@ public class NotificationWriter {
      * 댓글은 대상이 매번 새 댓글이라 이 규칙에 걸리지 않는다.
      */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public void write(
+    public Optional<Long> write(
             Long recipientId,
             Long actorId,
             NotificationType type,
@@ -51,21 +52,22 @@ public class NotificationWriter {
     ) {
         // 받는 사람을 찾는 조회가 비어 돌아올 수 있다.
         if (recipientId == null || recipientId.equals(actorId)) {
-            return;
+            return Optional.empty();
         }
         User recipient = userRepository.findByIdAndDeletedAtIsNull(recipientId).orElse(null);
         if (recipient == null) {
-            return;
+            return Optional.empty();
         }
         if (notificationRepository.existsByRecipientIdAndActorIdAndTypeAndTargetTypeAndTargetId(
                 recipientId, actorId, type, targetType, targetId)) {
-            return;
+            return Optional.empty();
         }
         User actor = actorId == null
                 ? null
                 : userRepository.findByIdAndDeletedAtIsNull(actorId).orElse(null);
 
-        notificationRepository.save(
+        Notification notification = notificationRepository.save(
                 new Notification(recipient, actor, type, targetType, targetId));
+        return Optional.of(notification.getId());
     }
 }
