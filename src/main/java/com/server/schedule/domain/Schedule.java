@@ -1,5 +1,6 @@
 package com.server.schedule.domain;
 
+import com.server.common.support.ServerClock;
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -147,7 +148,7 @@ public class Schedule {
         this.endLatitude = endLatitude;
         this.styleSummary = styleSummary;
         this.conditionJson = conditionJson;
-        this.createdAt = LocalDateTime.now();
+        this.createdAt = ServerClock.now();
         this.updatedAt = this.createdAt;
     }
 
@@ -156,7 +157,7 @@ public class Schedule {
     }
 
     public void touch() {
-        this.updatedAt = LocalDateTime.now();
+        this.updatedAt = ServerClock.now();
     }
 
     public void applyPreview(

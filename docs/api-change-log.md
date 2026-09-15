@@ -2,6 +2,39 @@
 
 API 계약이 변경될 때마다 최신 항목을 위에 추가한다.
 
+## 2026-09-14 (관리자 조치 이력·역할 변경 추가, 관리자 API 문서화)
+
+- API: `GET /api/v1/admin/actions`, `PATCH /api/v1/admin/users/{userId}/role`, `POST /api/v1/posts/{postId}/restore`, `GET /api/v1/posts/me/deleted`, `GET /api/v1/admin/places/hidden`(삭제)
+- 구분: 추가, 변경, 삭제
+- 이전: 누가 어떤 조치를 했는지 남지 않았다. 역할을 바꾸려면 운영 DB에 직접 접속했다. 관리자가 지운 게시물을 작성자가 복구할 수 있었다.
+- 이후: 상태를 바꾸는 관리자 요청 9종을 `admin_actions`에 남기고 `GET /admin/actions`로 조회한다. 역할은 API로 바꾸며 대상의 리프레시 토큰을 폐기한다. 관리자가 지운 게시물은 `GET /posts/me/deleted`에서 빠지고, 복구하면 `403 POST_DELETED_BY_ADMIN`이다.
+- 유지: 작성자가 스스로 지운 게시물의 복구, 기존 관리자 API의 요청·응답
+- 함께 변경: 관리자 경로의 검증 실패가 `400 INVALID_ADMIN_REQUEST`로 나간다. 이전에는 `INVALID_SCHEDULE_CONDITION`이었다. 마지막 남은 관리자를 `USER`로 바꾸면 `409 CANNOT_DEMOTE_LAST_ADMIN`이다. 게시물 정리 배치가 관리자가 지운 게시물을 지우지 않는다.
+- 삭제: `GET /api/v1/admin/places/hidden`. `GET /api/v1/admin/places?hidden=true`와 기능이 겹치고 부르는 클라이언트가 없었다.
+- 호환성 파괴: 있음. 복구 API에 새 오류 코드가 생겼고, 관리자 경로 검증 실패의 `code`가 바뀌었고, `GET /admin/places/hidden`이 없어졌다.
+- DB/ERD: `V20__create_admin_actions.sql`. `admin_actions` 신설, `posts.deleted_by_admin` 추가
+
+### 문서에 빠져 있던 관리자 API
+
+아래는 이미 배포돼 있었으나 이 문서와 `API_SPEC.md`에 없었다. 이번에 `API_SPEC.md`의
+`관리자 계약`(A-1~A-7), `API_FIELD_GUIDE.md`의 `관리자 필드`, `ERD.md`에 함께 적었다.
+
+| 추가일 | API | DB |
+| --- | --- | --- |
+| 2026-08-25 | 신고 목록·상세·상태 변경, 관리자 게시물·댓글 삭제 | `V12` `reports.handled_by`, `handled_at` |
+| 2026-08-25 | 사용자 목록·상세·정지·해제 | `V9` `users.role`, `status`, `suspended_*` |
+| 2026-08-25 | 가린 장소 목록, 장소 숨김·해제, 적재 상태, 수동 적재 | `V13` `places.hidden_at`, `hidden_reason` |
+| 2026-08-25 | 통계 총계·추이·인기 | 없음 |
+| 2026-09-07 | `GET /api/v1/admin/places` 등록된 장소 검색 | 없음 |
+
+### 문서화하며 확인한 것
+
+- 아래는 문서화하며 발견해 이번 변경에서 함께 고쳤다(위 `함께 변경`, `삭제`).
+  - 관리자 경로 검증 실패가 `INVALID_SCHEDULE_CONDITION`으로 나갔다.
+  - 마지막 관리자가 스스로를 `USER`로 바꿀 수 있었다.
+  - 정리 배치(`findDeletedBefore`)가 `deleted_by_admin`을 보지 않아 관리자가 지운 게시물도 30일 뒤 지웠다. dev 는 배치가 켜져 있으나 관리자 삭제 표시가 2026-09-14 에 생겨 아직 지워진 게시물은 없다.
+  - `GET /admin/places/hidden`이 `GET /admin/places?hidden=true`와 겹쳤다.
+
 ## 2026-09-14 (즉흥여행 목적지 추천 실패 원인 구분)
 
 - API: `POST /api/v1/spontaneous-trips/destinations`

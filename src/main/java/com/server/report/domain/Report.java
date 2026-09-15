@@ -1,5 +1,6 @@
 package com.server.report.domain;
 
+import com.server.common.support.ServerClock;
 import com.server.post.domain.ReportStatus;
 import com.server.user.domain.User;
 import jakarta.persistence.Column;
@@ -78,7 +79,7 @@ public class Report {
     public void handle(ReportStatus status, User handler) {
         this.status = status;
         this.handledBy = handler;
-        this.handledAt = LocalDateTime.now();
+        this.handledAt = ServerClock.now();
     }
 
     public User getHandledBy() {

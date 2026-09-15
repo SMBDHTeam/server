@@ -5,6 +5,7 @@ import com.server.user.domain.User;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.data.domain.Pageable;
+import com.server.user.domain.UserRole;
 import com.server.user.domain.UserStatus;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -15,6 +16,9 @@ public interface UserRepository extends JpaRepository<User, Long> {
     Optional<User> findByIdAndDeletedAtIsNull(Long id);
 
     boolean existsByIdAndDeletedAtIsNull(Long id);
+
+    /** 탈퇴하지 않은 사용자 중 이 역할인 수. 마지막 관리자 강등을 막는 데 쓴다. */
+    long countByRoleAndDeletedAtIsNull(UserRole role);
 
     boolean existsByNicknameAndDeletedAtIsNull(String nickname);
 

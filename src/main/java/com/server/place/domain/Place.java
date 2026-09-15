@@ -1,5 +1,6 @@
 package com.server.place.domain;
 
+import com.server.common.support.ServerClock;
 import jakarta.persistence.Column;
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Entity;
@@ -133,7 +134,7 @@ public class Place {
         this.longitude = longitude;
         this.latitude = latitude;
         this.primaryImageUrl = primaryImageUrl;
-        this.createdAt = LocalDateTime.now();
+        this.createdAt = ServerClock.now();
         this.updatedAt = this.createdAt;
         this.lastSeenAt = this.createdAt;
         this.lastSyncedAt = this.createdAt;
@@ -153,7 +154,7 @@ public class Place {
     }
 
     public void hide(String reason) {
-        this.hiddenAt = LocalDateTime.now();
+        this.hiddenAt = ServerClock.now();
         this.hiddenReason = reason;
     }
 
@@ -220,7 +221,7 @@ public class Place {
         this.longitude = longitude;
         this.latitude = latitude;
         this.placeUrl = placeUrl;
-        this.lastSeenAt = LocalDateTime.now();
+        this.lastSeenAt = ServerClock.now();
         this.lastSyncedAt = this.lastSeenAt;
         this.updatedAt = this.lastSeenAt;
     }
@@ -293,13 +294,13 @@ public class Place {
         this.longitude = longitude;
         this.latitude = latitude;
         this.primaryImageUrl = primaryImageUrl;
-        this.updatedAt = LocalDateTime.now();
+        this.updatedAt = ServerClock.now();
     }
 
     public void replaceImages(List<PlaceImage> images) {
         this.images.clear();
         this.images.addAll(images);
-        this.updatedAt = LocalDateTime.now();
+        this.updatedAt = ServerClock.now();
     }
 
     public void markNewDiscovery(LocalDateTime sourceModifiedAt, LocalDateTime seenAt) {

@@ -1,5 +1,6 @@
 package com.server.share.domain;
 
+import com.server.common.support.ServerClock;
 import com.server.schedule.domain.Schedule;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -49,7 +50,7 @@ public class ShareLink {
         this.schedule = schedule;
         this.tokenHash = tokenHash;
         this.expiresAt = expiresAt;
-        this.createdAt = LocalDateTime.now();
+        this.createdAt = ServerClock.now();
     }
 
     public void revoke(LocalDateTime revokedAt) {

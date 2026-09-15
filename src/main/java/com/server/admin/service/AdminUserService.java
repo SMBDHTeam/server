@@ -8,6 +8,7 @@ import com.server.admin.dto.AdminUserResponse;
 import com.server.auth.service.RefreshTokenStore;
 import com.server.common.error.BusinessException;
 import com.server.common.error.ErrorCode;
+import com.server.common.support.ServerClock;
 import com.server.post.repository.PostRepository;
 import com.server.report.repository.ReportRepository;
 import com.server.user.domain.User;
@@ -94,6 +95,11 @@ public class AdminUserService {
                 .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
 
         UserRole before = user.getRole();
+        // 마지막 관리자가 내려가면 관리자 화면에 들어올 사람이 없고, 되돌리려면 DB 를 직접 고쳐야 한다.
+        if (before == UserRole.ADMIN && role != UserRole.ADMIN
+                && userRepository.countByRoleAndDeletedAtIsNull(UserRole.ADMIN) <= 1) {
+            throw new BusinessException(ErrorCode.CANNOT_DEMOTE_LAST_ADMIN);
+        }
         user.changeRole(role);
         log.info("User role changed. userId={}, from={}, to={}, adminId={}",
                 userId, before, role, adminId);
@@ -138,7 +144,7 @@ public class AdminUserService {
         }
 
         if (suspended) {
-            LocalDateTime until = days == null ? null : LocalDateTime.now().plusDays(days);
+            LocalDateTime until = days == null ? null : ServerClock.now().plusDays(days);
             user.suspend(until, reason);
             log.info("User suspended. userId={}, until={}", userId, until);
             adminActionRecorder.record(adminId, AdminActionType.USER_SUSPENDED,

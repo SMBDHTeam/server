@@ -109,13 +109,6 @@ public class AdminPlaceService {
                 placeRepository.countForAdmin(normalized, hidden));
     }
 
-    @Transactional(readOnly = true)
-    public List<AdminPlaceResponse> getHiddenPlaces() {
-        return placeRepository.findByHiddenAtIsNotNullOrderByHiddenAtDesc().stream()
-                .map(AdminPlaceResponse::from)
-                .toList();
-    }
-
     /**
      * 수동 적재.
      *

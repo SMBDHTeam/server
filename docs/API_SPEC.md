@@ -108,6 +108,31 @@
 | 알림 모두 읽음 | PATCH | `/notifications/read-all` | `200 OK` | 필수 |
 | 신고 | POST | `/reports` | `201 Created` | 필수 |
 
+### 관리자 엔드포인트
+
+계약 상세는 `관리자 계약`을 본다. 전부 `ADMIN` 역할이 필요하다. 토큰이 없으면 `401`, 역할이
+`USER`면 `403`이다.
+
+| 기능 | Method | URI | 성공 상태 |
+| --- | --- | --- | --- |
+| 신고 목록 | GET | `/admin/reports` | `200 OK` |
+| 신고 상세 | GET | `/admin/reports/{reportId}` | `200 OK` |
+| 신고 처리 상태 변경 | PATCH | `/admin/reports/{reportId}` | `200 OK` |
+| 게시물 삭제 (관리자) | DELETE | `/admin/posts/{postId}` | `204 No Content` |
+| 댓글 삭제 (관리자) | DELETE | `/admin/comments/{commentId}` | `204 No Content` |
+| 사용자 목록 | GET | `/admin/users` | `200 OK` |
+| 사용자 상세 | GET | `/admin/users/{userId}` | `200 OK` |
+| 사용자 정지·해제 | PATCH | `/admin/users/{userId}/status` | `200 OK` |
+| 역할 변경 | PATCH | `/admin/users/{userId}/role` | `200 OK` |
+| 등록된 장소 검색 | GET | `/admin/places` | `200 OK` |
+| 장소 숨김·해제 | PATCH | `/admin/places/{placeId}/hidden` | `200 OK` |
+| 적재 상태와 남은 예산 | GET | `/admin/places/ingestion` | `200 OK` |
+| 수동 적재 | POST | `/admin/places/ingestion` | `200 OK` |
+| 총계와 기간 증감 | GET | `/admin/stats/summary` | `200 OK` |
+| 일자별 추이 | GET | `/admin/stats/trend` | `200 OK` |
+| 인기 장소·카테고리 | GET | `/admin/stats/popular` | `200 OK` |
+| 조치 이력 | GET | `/admin/actions` | `200 OK` |
+
 ## 1. 사전 질문 조회
 
 `GET /api/v1/trip-questions`
@@ -1723,6 +1748,8 @@ Provider 응답의 `distanceMeters`가 누락되거나 0 이하이면 서버는 
 `COMMUNITY_POST_PURGE_ENABLED=true` 가 없으면 스케줄러가 등록되지 않아 정리가 한 번도 돌지
 않는다.** 그 상태에서는 지운 게시물이 계속 쌓이고 본문과 사진 URL 이 DB 에 남는다.
 
+관리자가 지운 게시물은 정리하지 않는다. 신고와 조치 이력이 원본을 가리키기 때문이다(관리자 계약 A-2).
+
 둘 다 작성자 본인이 아니면 `403 POST_ACCESS_DENIED`를 반환한다.
 
 **내가 지운 게시물** — `GET /api/v1/posts/me/deleted?page=0&size=20`
@@ -2085,7 +2112,7 @@ GET /api/v1/posts/popular?category=맛집      인기순
 }
 ```
 
-**접수만 한다. 신고를 확인하거나 처리 상태를 바꾸는 관리자 API는 아직 없다.**
+**여기서는 접수만 한다.** 신고 확인과 처리 상태 변경은 `관리자 계약`의 A-2가 맡는다.
 
 ### C-13. 카테고리가 가리키는 장소
 
@@ -2448,7 +2475,446 @@ files: (파일)
 | 항목 | 상태 |
 | --- | --- |
 | 사진 EXIF 좌표 추출 | 사용자가 사진마다 장소를 직접 고른다 |
-| 신고 처리 관리자 기능 | 없다 |
+| 신고 처리 관리자 기능 | `관리자 계약`으로 옮겼다 |
+
+## 관리자 계약
+
+신고를 처리하고, 사용자·장소 데이터를 관리하고, 서비스 지표를 보는 API다. 클라이언트의
+`/admin` 화면이 쓴다.
+
+### A-1. 공통 규칙
+
+**전부 `ADMIN` 역할이 필요하다.** `SecurityConfig`가 `/api/v1/admin/**`를 한 번에 막는다.
+
+| 상황 | 응답 |
+| --- | --- |
+| 토큰이 없거나 유효하지 않음 | `401 UNAUTHORIZED` |
+| 역할이 `USER` | `403 FORBIDDEN` |
+
+**역할은 액세스 토큰에 담긴다.** DB의 `users.role`을 바꿔도 이미 발급된 토큰에는 반영되지
+않는다. 역할 변경 API(A-3)는 대상의 리프레시 토큰을 폐기하므로, 대상이 다시 로그인해야 새
+역할이 적용된다.
+
+**목록은 페이지 번호 방식이다.** 커뮤니티의 커서 방식과 다르다. 관리자 화면은 특정 페이지로
+바로 이동하고 전체 페이지 수를 보여준다.
+
+| 파라미터 | 기본 | 범위 |
+| --- | --- | --- |
+| `page` | `0` | 0부터 센다. 음수면 `0` |
+| `size` | `20` | 최대 `100`. 0 이하면 `20` |
+
+```json
+{ "items": [], "totalCount": 37 }
+```
+
+`totalCount`는 조건에 맞는 전체 건수다.
+
+**범위를 벗어난 숫자는 오류 대신 기본값·최대값으로 맞춘다.** `page`, `size`, `days` 모두 같다.
+
+**상태를 바꾸는 요청은 조치 이력에 남는다(A-6).** 조치와 같은 트랜잭션에서 기록하므로 기록이
+실패하면 조치도 되돌아간다. 조회는 기록하지 않는다.
+
+**검증 실패는 `400 INVALID_ADMIN_REQUEST`다.** 요청 본문 검증 실패, 열거형에 없는 쿼리
+파라미터 값, 필수 쿼리 파라미터 누락이 여기에 해당한다. 원인은 `fieldErrors`로 본다.
+
+### A-2. 신고 처리
+
+`GET /api/v1/admin/reports?status=PENDING&targetType=POST&page=0&size=20`
+
+| 파라미터 | 필수 | 값 |
+| --- | :---: | --- |
+| `status` | X | `PENDING`, `REVIEWING`, `RESOLVED`, `REJECTED`. 생략하면 전부 |
+| `targetType` | X | `POST`, `COMMENT`, `USER`. 생략하면 전부 |
+
+**오래된 신고부터 나온다.**
+
+```json
+{
+  "items": [
+    {
+      "id": 12,
+      "reporter": { "id": 3, "nickname": "여행자" },
+      "targetType": "POST",
+      "targetId": 7,
+      "reason": "광고성 게시물입니다",
+      "status": "PENDING",
+      "createdAt": "2026-08-25T14:02:00",
+      "handledBy": null,
+      "handledAt": null
+    }
+  ],
+  "totalCount": 37
+}
+```
+
+`GET /api/v1/admin/reports/{reportId}`
+
+신고 내용만으로는 판단할 수 없어 대상 원본을 함께 준다.
+
+```json
+{
+  "report": { "id": 12, "targetType": "POST", "targetId": 7, "status": "PENDING" },
+  "target": {
+    "id": 7,
+    "author": { "id": 5, "nickname": "고구마" },
+    "content": "광안리 야경 보러 갔어요",
+    "deleted": false
+  }
+}
+```
+
+| `targetType` | `target.content` |
+| --- | --- |
+| `POST` | 게시물 본문 |
+| `COMMENT` | 댓글 본문 |
+| `USER` | 닉네임 |
+
+**지워진 대상도 읽는다.** 작성자가 지웠거나 탈퇴했으면 `deleted: true`다. 행 자체가 없으면
+`target`이 `null`이다. 더 볼 것이 없으므로 신고를 종결하면 된다.
+
+`PATCH /api/v1/admin/reports/{reportId}`
+
+```json
+{ "status": "RESOLVED" }
+```
+
+응답은 목록의 신고 한 건과 같다.
+
+**어느 상태로든 바꿀 수 있다.** 잘못 종결한 신고를 `PENDING`으로 되돌릴 수 있다. 바꿀 때마다
+`handledBy`·`handledAt`이 요청한 관리자와 그 시각으로 덮이며, `PENDING`으로 되돌려도 비워지지
+않는다.
+
+**상태만 바꾼다.** 게시물·댓글 삭제와 사용자 정지는 아래 API를 따로 부른다.
+
+| 동작 | 요청 | 성공 |
+| --- | --- | --- |
+| 게시물 삭제 | `DELETE /api/v1/admin/posts/{postId}` | `204 No Content` |
+| 댓글 삭제 | `DELETE /api/v1/admin/comments/{commentId}` | `204 No Content` |
+
+작성자를 확인하지 않고 지운다. 없거나 이미 지워졌으면 `404 POST_NOT_FOUND`,
+`404 COMMENT_NOT_FOUND`다.
+
+**관리자가 지운 게시물은 작성자가 복구할 수 없다.** `posts.deleted_by_admin`이 `true`로 남는다.
+작성자의 `GET /posts/me/deleted`에 나오지 않고, `POST /posts/{postId}/restore`는
+`403 POST_DELETED_BY_ADMIN`이다. 게시물 삭제는 카테고리 연결도 끊는다.
+
+댓글 삭제는 게시물의 댓글 수를 하나 줄인다. 댓글에는 복구 기능이 없어 관리자 삭제 표시를 두지
+않는다.
+
+**관리자가 지운 게시물은 복구 기한이 지나도 정리 배치가 지우지 않는다.** 지우면 신고 상세의
+`target`이 `null`이 되고 조치 이력의 `targetId`가 없는 게시물을 가리켜 조치를 되짚을 수 없다.
+dev 는 정리 배치가 켜져 있다(`COMMUNITY_POST_PURGE_ENABLED=true`).
+
+### A-3. 사용자 관리
+
+`GET /api/v1/admin/users?keyword=여행&status=SUSPENDED&page=0&size=20`
+
+| 파라미터 | 필수 | 값 |
+| --- | :---: | --- |
+| `keyword` | X | 닉네임 또는 이메일 부분 일치. 대소문자를 구분하지 않는다 |
+| `status` | X | `ACTIVE`, `SUSPENDED`, `WITHDRAWN`. 생략하면 전부 |
+
+**최근 가입순이다.** 탈퇴한 사용자도 나온다.
+
+```json
+{
+  "items": [
+    {
+      "id": 3,
+      "nickname": "여행자",
+      "email": "traveler@example.com",
+      "role": "USER",
+      "status": "SUSPENDED",
+      "suspendedUntil": "2026-09-21T14:02:00",
+      "suspendedReason": "광고성 게시물 반복 등록",
+      "writeBlocked": true,
+      "createdAt": "2026-08-25T14:38:55",
+      "deletedAt": null
+    }
+  ],
+  "totalCount": 128
+}
+```
+
+**정지 여부는 `writeBlocked`로 판단한다.** 만료를 되돌리는 배치가 없어 `suspendedUntil`이
+지나도 `status`는 `SUSPENDED`로 남는다. `writeBlocked`는 요청 시각 기준으로 계산한다.
+
+`GET /api/v1/admin/users/{userId}`
+
+```json
+{
+  "user": { "id": 5, "nickname": "고구마", "status": "ACTIVE" },
+  "postCount": 12,
+  "reportsFiled": 3,
+  "reportsReceived": 5
+}
+```
+
+`reportsReceived`는 이 사용자, 이 사용자의 게시물, 이 사용자의 댓글을 대상으로 접수된 신고를
+합한 수다. 목록과 달리 **탈퇴한 사용자도 `404`가 아니다.** 신고를 따라 들어왔을 때 이미
+탈퇴했다는 사실이 필요하다.
+
+`PATCH /api/v1/admin/users/{userId}/status`
+
+```json
+{ "suspended": true, "days": 7, "reason": "광고성 게시물 반복 등록" }
+```
+
+| 필드 | 필수 | 값 |
+| --- | :---: | --- |
+| `suspended` | O | `true`면 정지, `false`면 해제 |
+| `days` | X | `1~3650`. 생략하면 기한 없는 정지. 해제할 때는 무시한다 |
+| `reason` | 조건부 | 정지할 때 필수. 최대 500자 |
+
+응답은 목록의 사용자 한 건과 같다.
+
+- **정지는 쓰기만 막는다.** 읽기까지 막으면 자기 상태를 확인할 수 없다.
+- 정지하면 대상의 리프레시 토큰을 모두 폐기한다. 쓰기 차단은 DB의 정지 상태로 판단하므로 남은
+  액세스 토큰으로도 쓸 수 없다. 토큰 폐기가 실패해도 정지는 유지된다.
+- **관리자는 정지할 수 없다.** `400 CANNOT_SUSPEND_ADMIN`이다. 관리자끼리 서로 정지하면 풀 사람이
+  없어진다. 먼저 역할을 `USER`로 바꾼다.
+- 탈퇴한 사용자는 `404 USER_NOT_FOUND`다.
+
+`PATCH /api/v1/admin/users/{userId}/role`
+
+```json
+{ "role": "ADMIN" }
+```
+
+`role`은 `USER` 또는 `ADMIN`이며 필수다. 응답은 목록의 사용자 한 건과 같다.
+
+- 대상의 리프레시 토큰을 폐기한다. 대상이 다시 로그인해야 새 역할이 적용된다. 폐기하지 않으면
+  강등한 사람에게 액세스 토큰 수명(기본 30분)만큼 권한이 남는다.
+- 같은 역할로 바꿔도 오류가 아니며 이력이 남는다.
+- **마지막 관리자는 `USER`로 바꿀 수 없다.** `409 CANNOT_DEMOTE_LAST_ADMIN`이다. 관리자가 없으면
+  관리자 화면에 들어올 사람이 없고, 되돌리려면 DB를 직접 고쳐야 한다. 다른 관리자가 남아 있으면
+  자기 자신도 내릴 수 있다. 두 관리자가 동시에 서로를 내리는 경합은 막지 않는다.
+- 탈퇴한 사용자는 `404 USER_NOT_FOUND`다.
+
+### A-4. 장소 데이터 관리
+
+이미 등록된 장소를 찾아 잘못된 것을 가린다.
+
+`GET /api/v1/admin/places?keyword=해운대&hidden=true&page=0&size=20`
+
+| 파라미터 | 필수 | 값 |
+| --- | :---: | --- |
+| `keyword` | X | 이름 또는 주소 부분 일치. 대소문자를 구분하지 않는다 |
+| `hidden` | X | `true`면 가린 것만, `false`면 노출 중인 것만. 생략하면 전부 |
+
+**이름순이다.** 공개 장소 검색(`GET /places`)은 가린 장소를 빼고 이름만 보므로 관리에 쓸 수 없다.
+
+```json
+{
+  "items": [
+    {
+      "id": 42,
+      "name": "해운대해수욕장",
+      "address": "부산광역시 해운대구 우동",
+      "source": "TOUR_API",
+      "hidden": true,
+      "hiddenAt": "2026-09-14T07:33:00",
+      "hiddenReason": "좌표가 실제 위치와 다름"
+    }
+  ],
+  "totalCount": 475
+}
+```
+
+가린 장소만 보려면 `GET /api/v1/admin/places?hidden=true`를 쓴다. 따로 있던
+`GET /admin/places/hidden`은 기능이 겹쳐 없앴다.
+
+`PATCH /api/v1/admin/places/{placeId}/hidden`
+
+```json
+{ "hidden": true, "reason": "좌표가 실제 위치와 다름" }
+```
+
+| 필드 | 필수 | 값 |
+| --- | :---: | --- |
+| `hidden` | O | `true`면 가림, `false`면 해제 |
+| `reason` | 조건부 | 가릴 때 필수. 최대 500자. 해제하면 지워진다 |
+
+응답은 목록의 장소 한 건과 같다. 없는 장소는 `404 PLACE_NOT_FOUND`다.
+
+**지우지 않고 가린다.** 행을 지우면 다음 TourAPI 증분 적재가 같은 장소를 다시 만든다. 이미
+가린 장소를 다시 가리면 `hiddenAt`이 새 시각으로 바뀐다.
+
+| 가린 장소가 | 결과 |
+| --- | --- |
+| 공개 장소 검색 | 빠진다 |
+| 장소 상세 | `404 PLACE_NOT_FOUND` |
+| 위시리스트 목록, 인기 장소, 카테고리가 가리키는 장소 | 빠진다 |
+| 관리자 인기 장소 통계 | 빠진다 |
+
+**적재 상태와 수동 적재**
+
+`GET /api/v1/admin/places/ingestion`
+
+```json
+{
+  "statusCounts": { "PENDING": 12, "SYNCED": 475 },
+  "hiddenCount": 3,
+  "ingestionEnabled": true,
+  "enrichmentEnabled": true,
+  "quotaDate": "2026-09-14",
+  "requestsUsed": 412,
+  "dailyLimit": 900,
+  "requestsRemaining": 488
+}
+```
+
+`POST /api/v1/admin/places/ingestion`
+
+본문은 없다. 스케줄러와 같은 하루 예산(KST 기준일)을 쓴다.
+
+```json
+{
+  "fetched": 100,
+  "discovered": 4,
+  "enriched": 4,
+  "unchanged": 96,
+  "pending": 0,
+  "failed": 0,
+  "skipped": 0,
+  "apiRequests": 13,
+  "lockSkipped": false
+}
+```
+
+- 오늘 남은 예산이 없으면 시작하지 않고 `429 TOUR_API_QUOTA_EXHAUSTED`다.
+- **적재가 끝날 때까지 응답하지 않는다.** 오래 걸릴 수 있다. DB 트랜잭션은 걸지 않는다.
+- 다른 적재가 돌고 있으면 기다리지 않고 `lockSkipped: true`와 전부 `0`으로 돌아온다.
+- 조치 이력은 적재 전에 남긴다. 적재가 중간에 실패해도 누가 예산을 쓰는 실행을 걸었는지 남는다.
+
+### A-5. 통계
+
+`GET /api/v1/admin/stats/summary?days=7`
+
+`days`는 기본 `7`, 최대 `365`다. 기간은 오늘(KST)을 포함한 최근 `days`일이다.
+
+```json
+{
+  "days": 7,
+  "users": { "total": 128, "recent": 12 },
+  "posts": { "total": 530, "recent": 41 },
+  "schedules": { "total": 96, "recent": 9 },
+  "pendingReports": 4,
+  "suspendedUsers": 2,
+  "visiblePlaces": 475
+}
+```
+
+| 필드 | 세는 대상 |
+| --- | --- |
+| `users` | 탈퇴하지 않은 사용자 |
+| `posts` | 삭제하지 않은 게시물 |
+| `schedules` | 전체 일정 |
+| `pendingReports` | `PENDING`인 신고. `REVIEWING`은 넣지 않는다 |
+| `suspendedUsers` | `status`가 `SUSPENDED`이고 탈퇴하지 않은 사용자. 기한이 지난 정지도 센다 |
+| `visiblePlaces` | 가리지 않은 장소 |
+
+`GET /api/v1/admin/stats/trend?metric=POSTS&days=30`
+
+| 파라미터 | 필수 | 값 |
+| --- | :---: | --- |
+| `metric` | O | `USERS`, `POSTS`, `SCHEDULES` |
+| `days` | X | 기본 `7`, 최대 `365` |
+
+```json
+{
+  "metric": "POSTS",
+  "points": [
+    { "date": "2026-09-13", "count": 0 },
+    { "date": "2026-09-14", "count": 7 }
+  ]
+}
+```
+
+**값이 0인 날도 채운다.** `points`는 날짜 오름차순이며 길이가 `days`와 같다. 빈 날을 건너뛰면
+그래프가 실제보다 완만해 보인다. 요약과 달리 **이후에 탈퇴·삭제된 행도 만든 날에 센다.**
+
+`GET /api/v1/admin/stats/popular?type=PLACE&size=10`
+
+| 파라미터 | 필수 | 값 |
+| --- | :---: | --- |
+| `type` | O | `PLACE` 또는 `HASHTAG`. 대소문자를 구분하지 않는다. 그 밖의 값은 `400 INVALID_STATS_TYPE` |
+| `size` | X | 기본 `10`, 최대 `50` |
+
+```json
+{ "type": "PLACE", "items": [ { "id": 42, "name": "해운대해수욕장", "count": 37 } ] }
+```
+
+| `type` | `count` | `id` |
+| --- | --- | --- |
+| `PLACE` | 삭제하지 않은 게시물에 태그된 횟수. 가린 장소는 뺀다 | 장소 ID |
+| `HASHTAG` | 카테고리가 붙은 삭제하지 않은 게시물 수 | 항상 `null` |
+
+기간 제한이 없고, 동점이면 이름순이다. **공개 인기 장소(C-13-2)와 기준이 다르다.** 여기는 작성자
+수나 기간을 보지 않고 전체 태그 횟수를 센다.
+
+### A-6. 조치 이력
+
+`GET /api/v1/admin/actions?targetType=USER&targetId=5&page=0&size=20`
+
+| 파라미터 | 필수 | 값 |
+| --- | :---: | --- |
+| `targetType` | X | `REPORT`, `POST`, `COMMENT`, `USER`, `PLACE`, `SYSTEM` |
+| `targetId` | X | `targetType`과 함께 줄 때만 적용한다. 혼자 주면 무시한다 |
+
+**최신순이다.**
+
+```json
+{
+  "items": [
+    {
+      "id": 12,
+      "admin": { "id": 3, "nickname": "서동준" },
+      "action": "USER_SUSPENDED",
+      "targetType": "USER",
+      "targetId": 5,
+      "reason": "광고성 게시물 반복",
+      "detail": "만료 2026-09-21 14:02",
+      "createdAt": "2026-09-14T14:02:00"
+    }
+  ],
+  "totalCount": 37
+}
+```
+
+| `action` | `targetType` | `reason` | `detail` |
+| --- | --- | --- | --- |
+| `REPORT_STATUS_CHANGED` | `REPORT` | `null` | `-> RESOLVED` |
+| `POST_DELETED` | `POST` | `null` | `null` |
+| `COMMENT_DELETED` | `COMMENT` | `null` | `null` |
+| `USER_SUSPENDED` | `USER` | 정지 사유 | `만료 2026-09-21 14:02` 또는 `기한 없음` |
+| `USER_SUSPENSION_RELEASED` | `USER` | `null` | `null` |
+| `USER_ROLE_CHANGED` | `USER` | `null` | `USER -> ADMIN` |
+| `PLACE_HIDDEN` | `PLACE` | 가린 사유 | 장소 이름 |
+| `PLACE_UNHIDDEN` | `PLACE` | `null` | 장소 이름 |
+| `INGESTION_RUN` | `SYSTEM` | `null` | `요청 시점 잔여 488회`. `targetId`는 `null` |
+
+**이력을 고치거나 지우는 API는 없다.** 조치를 되돌리면 되돌린 조치가 새 줄로 쌓인다.
+`detail`은 사람이 읽는 문구다. 화면이 파싱하지 않는다.
+
+### A-7. 관리자 오류 코드
+
+| 코드 | 상태 | 발생 상황 |
+| --- | --- | --- |
+| `UNAUTHORIZED` | 401 | 토큰이 없거나 유효하지 않음 |
+| `FORBIDDEN` | 403 | 역할이 `ADMIN`이 아님 |
+| `REPORT_NOT_FOUND` | 404 | 신고가 없음 |
+| `POST_NOT_FOUND` | 404 | 게시물이 없거나 이미 삭제됨 |
+| `COMMENT_NOT_FOUND` | 404 | 댓글이 없거나 이미 삭제됨 |
+| `USER_NOT_FOUND` | 404 | 사용자가 없음. 상세 조회를 뺀 나머지는 탈퇴한 경우 포함 |
+| `PLACE_NOT_FOUND` | 404 | 장소가 없음 |
+| `CANNOT_SUSPEND_ADMIN` | 400 | 관리자를 정지하려 함 |
+| `INVALID_STATS_TYPE` | 400 | 인기 통계 `type`이 `PLACE`·`HASHTAG`가 아님 |
+| `INVALID_ADMIN_REQUEST` | 400 | 본문 검증 실패, 잘못된 쿼리 파라미터 (A-1) |
+| `CANNOT_DEMOTE_LAST_ADMIN` | 409 | 마지막 남은 관리자를 `USER`로 바꾸려 함 |
+| `TOUR_API_QUOTA_EXHAUSTED` | 429 | 오늘 TourAPI 예산을 다 씀 |
+
+작성자 쪽에는 `POST_DELETED_BY_ADMIN`(403)이 생겼다. 관리자가 지운 게시물을 복구하려 할 때다.
 
 ## 공통 오류 응답
 

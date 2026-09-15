@@ -70,6 +70,8 @@ public enum ErrorCode {
     CANNOT_SUSPEND_ADMIN(400, "관리자는 정지할 수 없습니다."),
     TOUR_API_QUOTA_EXHAUSTED(429, "오늘 TourAPI 호출 예산을 모두 썼습니다."),
     INVALID_STATS_TYPE(400, "지원하지 않는 통계 유형입니다."),
+    INVALID_ADMIN_REQUEST(400, "관리자 요청이 올바르지 않습니다."),
+    CANNOT_DEMOTE_LAST_ADMIN(409, "마지막 관리자는 일반 사용자로 바꿀 수 없습니다."),
     INVALID_GOOGLE_TOKEN(401, "구글 로그인 정보를 확인하지 못했습니다."),
     INVALID_TOKEN(401, "인증 정보가 올바르지 않습니다."),
     UNAUTHORIZED(401, "로그인이 필요합니다."),
