@@ -727,7 +727,7 @@ Content-Type: application/json
   "status": "CONFIRMED",
   "startDate": "2026-07-16",
   "endDate": "2026-07-18",
-  "styleSummary": "친구와 함께하는 음식·자연 중심 일정",
+  "styleSummary": "친구와 맛집 여유 일정",
   "planningAssumptions": {
     "timeZone": "Asia/Seoul",
     "lodgingMode": "UNDECIDED",
@@ -902,7 +902,7 @@ Preview의 사용자 수정 가능 충돌은 HTTP 오류가 아니라 `201 Creat
   "endDate": "2026-06-25",
   "dailyStartTime": "09:00",
   "dailyEndTime": "19:00",
-  "styleSummary": "부모님과 함께하는 로컬 중심 일정",
+  "styleSummary": "부모님과 쇼핑 알찬 일정",
   "days": [
     {
       "dayNo": 1,
@@ -1084,7 +1084,7 @@ Preview의 `endLocationSource=PLANNER_DECIDES`인 일차는 Planner가 방문 �
 | `id` | UUID | 일정 ID |
 | `status` | string | 일정 상태 |
 | `startDate` / `endDate` | date | 여행 시작일과 종료일 |
-| `styleSummary` | string | 일정 한 줄 요약 |
+| `styleSummary` | string | 일정 한 줄 요약. 계획 일정은 "동행 테마 여유/알찬 일정", 즉흥 일정은 "즉흥여행 · 목적지 · 테마" 형태다. 문구는 FastAPI가 만든다 |
 | `dayCount` | int | 총 일차 수 |
 | `stopCount` | int | 전체 방문지 수 |
 | `previewPlaceNames` | string[] | 카드 미리보기용 장소 이름. 방문 순서대로 최대 3개, 중복 제거 |
@@ -1097,7 +1097,7 @@ Preview의 `endLocationSource=PLANNER_DECIDES`인 일차는 Planner가 방문 �
       "status": "CONFIRMED",
       "startDate": "2026-06-23",
       "endDate": "2026-06-25",
-      "styleSummary": "부모님과 함께하는 로컬 중심 일정",
+      "styleSummary": "부모님과 쇼핑 알찬 일정",
       "dayCount": 3,
       "stopCount": 12,
       "previewPlaceNames": ["이송도전망대", "감천문화마을", "자갈치시장"]

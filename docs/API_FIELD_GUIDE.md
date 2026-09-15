@@ -381,7 +381,7 @@ V2 응답은 top-level `dailyStartTime`, `dailyEndTime`을 사용하지 않는�
 | `endDate` | string(date) | O | 여행 종료일 |
 | `dailyStartTime` | string(time) | O | 기본 일일 시작시각 |
 | `dailyEndTime` | string(time) | O | 기본 일일 종료시각 |
-| `styleSummary` | string | X | 답변 기반 여행 스타일 요약 |
+| `styleSummary` | string | X | 답변 기반 여행 스타일 요약. 계획 일정은 "동행 테마 여유/알찬 일정", 즉흥 일정은 "즉흥여행 · 목적지 · 테마" 형태다. 예: `친구와 맛집 여유 일정` |
 | `days` | array | O | 날짜별 일정 |
 | `days[].dayNo` | integer | O | 여행 일차 |
 | `days[].date` | string(date) | O | 실제 날짜 |
@@ -511,7 +511,7 @@ V2 응답은 top-level `dailyStartTime`, `dailyEndTime`을 사용하지 않는�
 | `items[].status` | string | O | 일정 상태 |
 | `items[].startDate` | string(date) | O | 시작일 |
 | `items[].endDate` | string(date) | O | 종료일 |
-| `items[].styleSummary` | string | X | 여행 스타일 요약 |
+| `items[].styleSummary` | string | X | 여행 스타일 요약. 형식은 일정 단건 조회와 같다 |
 | `items[].days` | array | O | 날짜별 일정 |
 
 ## 5. 일정 수정

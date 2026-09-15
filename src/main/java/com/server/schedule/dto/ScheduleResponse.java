@@ -17,7 +17,8 @@ public record ScheduleResponse(
         @Schema(example = "2026-09-21") LocalDate endDate,
         @JsonInclude(JsonInclude.Include.NON_NULL) LocalTime dailyStartTime,
         @JsonInclude(JsonInclude.Include.NON_NULL) LocalTime dailyEndTime,
-        @Schema(description = "선택한 답변을 요약한 문구", example = "친구와 함께하는 여유로운 자연 중심 일정")
+        @Schema(description = "선택한 답변을 요약한 문구. 계획 일정은 \"동행 테마 여유/알찬 일정\", 즉흥 일정은 \"즉흥여행 · 목적지 · 테마\" 형태다",
+                example = "친구와 맛집 여유 일정")
         String styleSummary,
         @Schema(description = "일차별 방문지와 이동. 목록 조회에서는 반환하지 않는다.")
         List<Day> days,
