@@ -24,10 +24,14 @@ public record PopularPlaceResponse(
         String primaryImageUrl,
         @Schema(description = "이 장소를 태그한 게시물 수", example = "27") long postCount,
         @Schema(description = "이 장소를 태그한 사람 수. 순위를 가르는 값이다", example = "19")
-        long authorCount
+        long authorCount,
+        @Schema(description = "요청자가 위시리스트에 담아 둔 장소인지. 화면이 하트를 채울지 "
+                + "정하는 데 쓴다. 로그인하지 않았으면 null 이다. 장소 상세와 같은 규칙이다.",
+                example = "true")
+        Boolean wishlisted
 ) {
 
-    public static PopularPlaceResponse from(PopularPlaceView view) {
+    public static PopularPlaceResponse from(PopularPlaceView view, Boolean wishlisted) {
         return new PopularPlaceResponse(
                 view.placeId(),
                 view.name(),
@@ -38,6 +42,7 @@ public record PopularPlaceResponse(
                 view.longitude(),
                 view.primaryImageUrl(),
                 view.postCount(),
-                view.authorCount());
+                view.authorCount(),
+                wishlisted);
     }
 }

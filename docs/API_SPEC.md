@@ -2217,7 +2217,8 @@ GET /api/v1/posts/popular?category=맛집      인기순
       "longitude": 129.11860000,
       "primaryImageUrl": null,
       "postCount": 27,
-      "authorCount": 19
+      "authorCount": 19,
+      "wishlisted": true
     }
   ]
 }
@@ -2256,6 +2257,11 @@ COMMUNITY_POPULAR_PLACE_MIN_AUTHORS=2
 `category` 에 분류코드(`A02030400`)가 들어 있어 그대로 보여주면 사람이 읽을 수 없다.
 장소 상세(`GET /places/{placeId}`)와 같은 규칙으로 라벨을 만들어 함께 보낸다.
 `C-13`·`C-13-1`·`C-13-2` 세 응답 모두 같다.
+
+**`wishlisted` 는 요청자가 담아 둔 장소인지다.** 화면이 하트를 채울지 정하는 데 쓴다.
+로그인하지 않았으면 `null` 이다. `false` 를 주면 "안 담았다"와 "모른다"가 구분되지 않아
+화면이 빈 하트를 그린다. 장소 상세(`GET /places/{placeId}`)와 같은 규칙이다.
+담긴 장소는 목록 길이와 무관하게 한 번에 읽는다.
 
 **`primaryImageUrl` 은 대부분 `null` 이다.** `places` 의 대표 이미지는 TourAPI 로 들어온
 장소에만 있고, 지도 검색으로 등록한 곳은 비어 있다. 화면에 무엇을 띄울지는 클라이언트가

@@ -38,6 +38,12 @@ class PopularPlaceTest {
     @Autowired
     private EntityManager entityManager;
 
+    @Autowired
+    private com.server.wishlist.service.PlaceWishlistService wishlistService;
+
+    @Autowired
+    private com.server.user.repository.UserRepository userRepository;
+
     private Place beach;
     private Place restaurant;
 
@@ -135,6 +141,46 @@ class PopularPlaceTest {
     }
 
     @Test
+    @DisplayName("담아 둔 장소는 wishlisted 가 true 다")
+    void marksWishlistedPlaces() {
+        taggedPost(user("가"), beach);
+        taggedPost(user("나"), beach);
+        User me = userRepository.save(new User("담은사람" + System.nanoTime(), null));
+        flush();
+        wishlistService.add(beach.getId(), me.getId());
+
+        assertThat(popularPlaceService.findPopularPlaces(20, me.getId()).items())
+                .singleElement()
+                .satisfies(place -> assertThat(place.wishlisted()).isTrue());
+    }
+
+    @Test
+    @DisplayName("로그인했는데 담지 않았으면 false 다")
+    void marksNotWishlisted() {
+        taggedPost(user("가"), beach);
+        taggedPost(user("나"), beach);
+        User me = userRepository.save(new User("안담은사람" + System.nanoTime(), null));
+        flush();
+
+        assertThat(popularPlaceService.findPopularPlaces(20, me.getId()).items())
+                .singleElement()
+                .satisfies(place -> assertThat(place.wishlisted()).isFalse());
+    }
+
+    @Test
+    @DisplayName("로그인하지 않으면 null 이다")
+    void marksUnknownWhenAnonymous() {
+        // false 를 주면 "안 담았다" 와 구분되지 않는다. 장소 상세와 같은 규칙이다.
+        taggedPost(user("가"), beach);
+        taggedPost(user("나"), beach);
+        flush();
+
+        assertThat(findPopular())
+                .singleElement()
+                .satisfies(place -> assertThat(place.wishlisted()).isNull());
+    }
+
+    @Test
     @DisplayName("가려 둔 장소는 빼고 준다")
     void ignoresHiddenPlace() {
         taggedPost(user("가"), beach);
@@ -145,8 +191,9 @@ class PopularPlaceTest {
         assertThat(findPopular()).isEmpty();
     }
 
+    /** 비로그인 조회. 요청자를 모르면 담긴 장소를 표시할 수 없다. */
     private List<PopularPlaceResponse> findPopular() {
-        return popularPlaceService.findPopularPlaces(20).items();
+        return popularPlaceService.findPopularPlaces(20, null).items();
     }
 
     private void taggedPost(User author, Place place) {
