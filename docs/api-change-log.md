@@ -2,6 +2,16 @@
 
 API 계약이 변경될 때마다 최신 항목을 위에 추가한다.
 
+## 2026-09-15 (외부 장소 분류 라벨 정리)
+
+- API: `categoryLabel`을 주는 장소 응답 전부 (장소 검색·상세·Resolve, 일정 방문지, 인기 장소, 위시리스트, 카테고리 장소)
+- 구분: 변경 (값)
+- 이전: 카카오·네이버로 등록한 장소는 `categoryLabel`에 분류 경로 전체(`여행 > 관광,명소 > 해수욕장,해변`)가 나갔다.
+- 이후: 경로의 마지막 단계 첫 이름(`해수욕장`)을 준다. TourAPI 분류코드 변환은 그대로다.
+- 유지: `category`는 저장된 원본 그대로
+- 호환성 파괴: 없음. 표시용 값이 짧아진다.
+- DB/ERD: 변경 없음
+
 ## 2026-09-14 (신고 사유 유형 추가)
 
 - API: `POST /api/v1/reports`, `GET /api/v1/admin/reports`, `GET /api/v1/admin/reports/{reportId}`, `PATCH /api/v1/admin/reports/{reportId}`

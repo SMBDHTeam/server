@@ -170,7 +170,7 @@ TMAP HTTP 429는 DATA의 `503 / detail: TMAP_QUOTA_EXCEEDED`를 거쳐 SERVER의
 | `items[].externalId` | string | O | 데이터 출처의 장소 ID |
 | `items[].name` | string | O | 장소명 |
 | `items[].category` | string/null | X | 표시용 분류 |
-| `items[].categoryLabel` | string | O | 카테고리 코드의 사용자 표시 문구 |
+| `items[].categoryLabel` | string | O | 화면에 보일 분류 이름. TourAPI 코드는 이름으로, 카카오·네이버 경로(`여행 > 관광,명소 > 해수욕장,해변`)는 마지막 단계의 첫 이름(`해수욕장`)으로 바꾼다 |
 | `items[].address` | string/null | X | 주소 |
 | `items[].longitude` | number | O | 경도 |
 | `items[].latitude` | number | O | 위도 |

@@ -22,10 +22,20 @@ class PlaceCategoryLabelResolverTest {
     }
 
     @Test
-    @DisplayName("외부 제공자의 자유 형식 카테고리는 그대로 쓴다")
-    void keepsFreeFormExternalCategory() {
-        assertThat(PlaceCategoryLabelResolver.resolve("음식점>한식>육류,고기요리", null))
-                .isEqualTo("음식점>한식>육류,고기요리");
+    @DisplayName("외부 제공자의 경로형 분류는 가장 구체적인 단계의 첫 이름만 쓴다")
+    void usesLeafOfExternalCategoryPath() {
+        // 경로 전체를 내보내면 화면 칩에 "여행 > 관광,명소 > 해수욕장,해변" 이 그대로 찍힌다.
+        assertThat(PlaceCategoryLabelResolver.resolve("여행 > 관광,명소 > 해수욕장,해변", null)).isEqualTo("해수욕장");
+        assertThat(PlaceCategoryLabelResolver.resolve("여행,명소>해수욕장,해변", "12")).isEqualTo("해수욕장");
+        assertThat(PlaceCategoryLabelResolver.resolve("음식점>카페", "39")).isEqualTo("카페");
+        assertThat(PlaceCategoryLabelResolver.resolve("음식점>한식>육류,고기요리", null)).isEqualTo("육류");
+    }
+
+    @Test
+    @DisplayName("경로가 아닌 외부 분류는 그대로 쓴다")
+    void keepsPlainExternalCategory() {
+        assertThat(PlaceCategoryLabelResolver.resolve("관광지", "12")).isEqualTo("관광지");
+        assertThat(PlaceCategoryLabelResolver.resolve(" 카페 ", null)).isEqualTo("카페");
     }
 
     @Test

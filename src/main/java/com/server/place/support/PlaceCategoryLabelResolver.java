@@ -22,8 +22,12 @@ public final class PlaceCategoryLabelResolver {
     }
 
     /**
-     * TourAPI 분류코드는 사람이 읽을 라벨로 바꾸고, 외부 제공자의 자유 형식 카테고리는
-     * 그대로 쓴다.
+     * TourAPI 분류코드는 사람이 읽을 라벨로 바꾸고, 외부 제공자의 경로형 분류는 가장 구체적인
+     * 항목만 쓴다.
+     *
+     * <p>카카오·네이버는 {@code "여행 > 관광,명소 > 해수욕장,해변"} 처럼 큰 분류부터 경로로 준다.
+     * 그대로 내보내면 화면 칩에 경로 전체가 찍힌다. 마지막 단계의 첫 이름({@code "해수욕장"})이
+     * 사람이 부르는 이름에 가장 가깝다.
      *
      * <p>TourAPI cat1은 A(관광지·문화·축제·레포츠) 외에 B(숙박), C(추천코스)도 쓴다.
      * 예전에는 A로 시작하는 코드만 라벨로 바꾸고 나머지는 원본을 반환해서, 숙박 장소의
@@ -31,13 +35,20 @@ public final class PlaceCategoryLabelResolver {
      */
     public static String resolve(String category, String contentTypeId) {
         if (category != null && !category.isBlank()) {
-            if (!isTourApiCategoryCode(category)) return category;
+            if (!isTourApiCategoryCode(category)) return externalLeaf(category);
             for (Map.Entry<String, String> entry : CATEGORY_PREFIX_LABELS.entrySet()) {
                 if (category.startsWith(entry.getKey())) return entry.getValue();
             }
         }
         if (contentTypeId == null) return DEFAULT_LABEL;
         return CONTENT_TYPE_LABELS.getOrDefault(contentTypeId, DEFAULT_LABEL);
+    }
+
+    private static String externalLeaf(String category) {
+        String[] steps = category.split(">");
+        String lastStep = steps[steps.length - 1].trim();
+        String firstName = lastStep.split(",")[0].trim();
+        return firstName.isEmpty() ? category.trim() : firstName;
     }
 
     private static boolean isTourApiCategoryCode(String category) {
