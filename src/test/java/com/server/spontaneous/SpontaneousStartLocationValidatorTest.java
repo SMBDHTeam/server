@@ -118,7 +118,7 @@ class SpontaneousStartLocationValidatorTest {
             assertThatThrownBy(() -> validator.validateBusan(coordinate))
                     .isInstanceOf(BusinessException.class)
                     .extracting("errorCode")
-                    .isEqualTo(ErrorCode.INVALID_SPONTANEOUS_TRIP_REQUEST);
+                    .isEqualTo(ErrorCode.SPONTANEOUS_START_LOCATION_REQUIRED);
         }
     }
 

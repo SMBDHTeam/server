@@ -8,6 +8,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
+import static org.hamcrest.Matchers.hasItem;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -81,7 +82,7 @@ class SpontaneousTripControllerTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("SPONTANEOUS_START_LOCATION_OUTSIDE_BUSAN"))
                 .andExpect(jsonPath("$.message")
-                        .value("즉흥여행 출발지는 부산광역시 내에서 선택해 주세요."));
+                        .value("부산 지역 안의 출발 위치를 선택해 주세요."));
 
         verifyNoInteractions(fastApiSpontaneousClient);
     }
@@ -97,6 +98,25 @@ class SpontaneousTripControllerTest {
                         .content(courseRequestJson(37.5665, 126.9780)))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("SPONTANEOUS_START_LOCATION_OUTSIDE_BUSAN"));
+
+        verifyNoInteractions(fastApiSpontaneousClient);
+    }
+
+    @ParameterizedTest
+    @MethodSource("invalidSpontaneousRequests")
+    @DisplayName("즉흥여행 DTO 오류는 수정할 조건과 실제 필드를 알려준다")
+    void invalidRequestReturnsActionableCodeAndField(
+            String body, String code, String message, String field
+    ) throws Exception {
+        mockMvc.perform(post("/api/v1/spontaneous-trips/destinations")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(code))
+                .andExpect(jsonPath("$.message").value(message))
+                .andExpect(jsonPath("$.fieldErrors[*].field").value(hasItem(field)))
+                .andExpect(jsonPath("$.fieldErrors[*].message").isNotEmpty())
+                .andExpect(jsonPath("$.traceId").isNotEmpty());
 
         verifyNoInteractions(fastApiSpontaneousClient);
     }
@@ -305,18 +325,44 @@ class SpontaneousTripControllerTest {
         return Stream.of(
                 Arguments.of(ErrorCode.INVALID_SPONTANEOUS_TRIP_REQUEST, 400,
                         "즉흥여행 요청 조건이 올바르지 않습니다."),
+                Arguments.of(ErrorCode.SPONTANEOUS_TIME_INVALID, 400,
+                        "출발 및 복귀 시간 정보를 확인해 주세요."),
+                Arguments.of(ErrorCode.SPONTANEOUS_TIMEZONE_REQUIRED, 400,
+                        "날짜와 시간 정보를 다시 선택해 주세요."),
+                Arguments.of(ErrorCode.SPONTANEOUS_START_DATE_NOT_TODAY, 400,
+                        "즉흥여행은 오늘 출발하는 일정만 만들 수 있습니다."),
+                Arguments.of(ErrorCode.SPONTANEOUS_START_TIME_IN_PAST, 400,
+                        "출발 시간이 현재 시각보다 이전입니다. 출발 시간을 다시 선택해 주세요."),
+                Arguments.of(ErrorCode.SPONTANEOUS_RETURN_TIME_BEFORE_START, 400,
+                        "복귀 시간은 출발 시간보다 늦어야 합니다."),
+                Arguments.of(ErrorCode.SPONTANEOUS_RETURN_TIME_TOO_LATE, 400,
+                        "복귀 시간은 출발일 기준 다음 날 오전 3시까지 설정할 수 있습니다."),
+                Arguments.of(ErrorCode.SPONTANEOUS_START_LOCATION_REQUIRED, 400,
+                        "출발 위치를 설정해 주세요."),
+                Arguments.of(ErrorCode.SPONTANEOUS_START_LOCATION_INVALID, 400,
+                        "출발 위치를 확인할 수 없습니다. 위치를 다시 설정해 주세요."),
+                Arguments.of(ErrorCode.SPONTANEOUS_START_LOCATION_OUTSIDE_BUSAN, 400,
+                        "부산 지역 안의 출발 위치를 선택해 주세요."),
+                Arguments.of(ErrorCode.SPONTANEOUS_TRANSPORT_MODE_REQUIRED, 400,
+                        "이동수단을 선택해 주세요."),
+                Arguments.of(ErrorCode.SPONTANEOUS_TRANSPORT_MODE_INVALID, 400,
+                        "지원하지 않는 이동수단입니다. 이동수단을 다시 선택해 주세요."),
+                Arguments.of(ErrorCode.SPONTANEOUS_THEME_INVALID, 400,
+                        "선택한 테마 정보를 확인해 주세요."),
+                Arguments.of(ErrorCode.SPONTANEOUS_THEME_LIMIT_EXCEEDED, 400,
+                        "테마는 최대 3개까지 선택할 수 있습니다."),
                 Arguments.of(ErrorCode.SPONTANEOUS_DESTINATION_NOT_FOUND, 404,
                         "선택한 즉흥여행 목적지를 찾을 수 없습니다."),
                 Arguments.of(ErrorCode.SPONTANEOUS_DESTINATIONS_NOT_FOUND, 404,
                         "현재 조건에 맞는 즉흥여행 목적지를 찾을 수 없습니다. 여행 시간이나 테마를 변경해 주세요."),
                 Arguments.of(ErrorCode.SPONTANEOUS_DESTINATION_ROUTE_NOT_FOUND, 404,
-                        "선택한 시간과 이동수단으로 왕복 가능한 경로가 없습니다."),
+                        "선택한 이동수단으로 갈 수 있는 목적지를 찾지 못했습니다. 이동수단을 변경해 주세요."),
                 Arguments.of(ErrorCode.SPONTANEOUS_DESTINATION_TIME_TOO_SHORT, 404,
-                        "왕복 이동시간과 최소 체류시간이 부족합니다. 복귀 시간을 늦춰주세요."),
+                        "현재 여행 가능 시간으로는 왕복 이동과 최소 체류시간을 확보하기 어렵습니다. 복귀 시간을 늦추거나 이동수단을 변경해 주세요."),
                 Arguments.of(ErrorCode.SPONTANEOUS_DESTINATION_TRANSPORT_CONSTRAINT, 404,
-                        "선택한 이동수단과 여행 시간으로 왕복 가능한 목적지가 없습니다. 시간이나 이동수단을 변경해주세요."),
+                        "선택한 이동수단과 남은 시간으로 다녀올 수 있는 목적지가 없습니다. 이동수단을 변경하거나 복귀 시간을 늦춰 주세요."),
                 Arguments.of(ErrorCode.SPONTANEOUS_DESTINATION_CANDIDATES_NOT_FOUND, 404,
-                        "선택한 테마에 맞는 추천 목적지가 없습니다. 테마를 변경하거나 선택을 줄여주세요."),
+                        "선택한 테마에 맞는 목적지를 찾지 못했습니다. 테마를 줄이거나 변경해 주세요."),
                 Arguments.of(ErrorCode.SPONTANEOUS_COURSE_NOT_FEASIBLE, 422,
                         "선택한 조건으로 가능한 즉흥여행 코스를 만들 수 없습니다. 여행 시간이나 테마를 변경해 주세요."),
                 Arguments.of(ErrorCode.SPONTANEOUS_COURSE_RETURN_TIME_EXCEEDED, 422,
@@ -327,10 +373,116 @@ class SpontaneousTripControllerTest {
                         "방문 예정 시간에 이용 가능한 장소가 부족합니다. 출발 시간을 변경하거나 다른 목적지를 선택해 주세요."),
                 Arguments.of(ErrorCode.SPONTANEOUS_ROUTE_NOT_FOUND, 422,
                         "선택한 조건으로 이동 가능한 경로를 찾을 수 없습니다."),
+                Arguments.of(ErrorCode.SPONTANEOUS_PROCESSING_ERROR, 502,
+                        "즉흥여행 정보를 처리하지 못했습니다. 잠시 후 다시 시도해 주세요."),
                 Arguments.of(ErrorCode.SPONTANEOUS_PROVIDER_ERROR, 502,
                         "여행 정보 제공 서비스 처리 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요."),
                 Arguments.of(ErrorCode.SPONTANEOUS_PROVIDER_UNAVAILABLE, 503,
-                        "여행 정보 제공 서비스를 현재 사용할 수 없습니다. 잠시 후 다시 시도해 주세요.")
+                        "여행 정보를 불러오는 서비스가 일시적으로 원활하지 않습니다. 잠시 후 다시 시도해 주세요.")
+        );
+    }
+
+    private static Stream<Arguments> invalidSpontaneousRequests() {
+        String times = """
+                  "startAt": "2026-09-16T23:26:00+09:00",
+                  "returnBy": "2026-09-17T03:00:00+09:00"
+                """;
+        return Stream.of(
+                Arguments.of("""
+                        {%s,
+                          "transportMode": "WALK",
+                          "desiredThemes": ["SEAFOOD", "WALK"]
+                        }
+                        """.formatted(times),
+                        "SPONTANEOUS_START_LOCATION_REQUIRED", "출발 위치를 설정해 주세요.",
+                        "startLocation"),
+                Arguments.of("""
+                        {"startLocation": {"longitude": 129.075},%s,
+                          "transportMode": "WALK",
+                          "desiredThemes": ["SEAFOOD", "WALK"]
+                        }
+                        """.formatted(times),
+                        "SPONTANEOUS_START_LOCATION_REQUIRED", "출발 위치를 설정해 주세요.",
+                        "startLocation.latitude"),
+                Arguments.of("""
+                        {"startLocation": {"latitude": 91, "longitude": 129.075},%s,
+                          "transportMode": "WALK",
+                          "desiredThemes": ["SEAFOOD", "WALK"]
+                        }
+                        """.formatted(times),
+                        "SPONTANEOUS_START_LOCATION_INVALID",
+                        "출발 위치를 확인할 수 없습니다. 위치를 다시 설정해 주세요.",
+                        "startLocation.latitude"),
+                Arguments.of("""
+                        {"startLocation": {"latitude": 35.1797, "longitude": 129.075},%s,
+                          "desiredThemes": ["SEAFOOD", "WALK"]
+                        }
+                        """.formatted(times),
+                        "SPONTANEOUS_TRANSPORT_MODE_REQUIRED", "이동수단을 선택해 주세요.",
+                        "transportMode"),
+                Arguments.of("""
+                        {"startLocation": {"latitude": 35.1797, "longitude": 129.075},%s,
+                          "transportMode": "FLY",
+                          "desiredThemes": ["SEAFOOD", "WALK"]
+                        }
+                        """.formatted(times),
+                        "SPONTANEOUS_TRANSPORT_MODE_INVALID",
+                        "지원하지 않는 이동수단입니다. 이동수단을 다시 선택해 주세요.",
+                        "transportMode"),
+                Arguments.of("""
+                        {"startLocation": {"latitude": 35.1797, "longitude": 129.075},%s,
+                          "transportMode": "WALK",
+                          "desiredThemes": ["SPACE"]
+                        }
+                        """.formatted(times),
+                        "SPONTANEOUS_THEME_INVALID", "선택한 테마 정보를 확인해 주세요.",
+                        "desiredThemes"),
+                Arguments.of("""
+                        {"startLocation": {"latitude": 35.1797, "longitude": 129.075},%s,
+                          "transportMode": "WALK",
+                          "desiredThemes": ["SEA", "SEAFOOD", "WALK", "NATURE"]
+                        }
+                        """.formatted(times),
+                        "SPONTANEOUS_THEME_LIMIT_EXCEEDED",
+                        "테마는 최대 3개까지 선택할 수 있습니다.", "desiredThemes"),
+                Arguments.of("""
+                        {"startLocation": {"latitude": 35.1797, "longitude": 129.075},%s,
+                          "transportMode": "WALK",
+                          "desiredThemes": ["SEAFOOD", null]
+                        }
+                        """.formatted(times),
+                        "SPONTANEOUS_THEME_INVALID", "선택한 테마 정보를 확인해 주세요.",
+                        "desiredThemes[1]"),
+                Arguments.of("""
+                        {"startLocation": {"latitude": 35.1797, "longitude": 129.075},
+                          "startAt": "2026-09-16T23:26:00+09:00",
+                          "returnBy": "2026-09-16T23:26:00+09:00",
+                          "transportMode": "WALK",
+                          "desiredThemes": ["SEAFOOD", "WALK"]
+                        }
+                        """,
+                        "SPONTANEOUS_RETURN_TIME_BEFORE_START",
+                        "복귀 시간은 출발 시간보다 늦어야 합니다.", "returnBy"),
+                Arguments.of("""
+                        {"startLocation": {"latitude": 35.1797, "longitude": 129.075},
+                          "startAt": "2026-09-16T23:26:00",
+                          "returnBy": "2026-09-17T03:00:00+09:00",
+                          "transportMode": "WALK",
+                          "desiredThemes": ["SEAFOOD", "WALK"]
+                        }
+                        """,
+                        "SPONTANEOUS_TIMEZONE_REQUIRED", "날짜와 시간 정보를 다시 선택해 주세요.",
+                        "startAt"),
+                Arguments.of("""
+                        {"startLocation": {"latitude": 35.1797, "longitude": 129.075},
+                          "startAt": "not-a-date",
+                          "returnBy": "2026-09-17T03:00:00+09:00",
+                          "transportMode": "WALK",
+                          "desiredThemes": ["SEAFOOD", "WALK"]
+                        }
+                        """,
+                        "SPONTANEOUS_TIME_INVALID", "출발 및 복귀 시간 정보를 확인해 주세요.",
+                        "startAt")
         );
     }
 

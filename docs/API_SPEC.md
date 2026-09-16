@@ -229,7 +229,37 @@ Provider 장애를 빈 배열이나 부분 검색 결과로 숨기지 않는다.
 부산 밖이면 기존 `400 SPONTANEOUS_START_LOCATION_OUTSIDE_BUSAN`, Provider 장애이면
 `503 SPONTANEOUS_PROVIDER_UNAVAILABLE` 계약을 유지한다.
 
-### 2-2. 즉흥여행 추천 Provider 오류
+### 2-2. 즉흥여행 조건 검증
+
+`POST /api/v1/spontaneous-trips/destinations`와 `POST /api/v1/spontaneous-trips/course`는
+다음 조건을 공통으로 검증한다. 성공 응답 구조는 변경하지 않는다.
+
+| 요청 필드 | 규칙 |
+| --- | --- |
+| `startLocation.latitude` / `longitude` | 필수, 각각 `-90..90` / `-180..180`, 부산광역시 행정구역 |
+| `startAt` | offset 필수, KST 기준 요청 당일, 현재 시각의 5분 전부터 허용 |
+| `returnBy` | `startAt`보다 늦고 출발일 다음 날 오전 3시 이내. 정확히 오전 3시는 허용 |
+| `transportMode` | `PUBLIC_TRANSIT`, `WALK`, `CAR` 중 하나 |
+| `desiredThemes` | 알려진 테마만 허용하며 최대 3개. 배열의 `null` 항목은 허용하지 않음 |
+
+필드 검증 실패는 `400`과 공통 오류 응답을 사용하며 `fieldErrors`에 실제 JSON 필드와 한국어 사유를 담는다.
+DATA의 시간 검증 detail은 SERVER에서 다음 공개 코드와 메시지로 변환한다.
+
+| 공개 코드 | 메시지 |
+| --- | --- |
+| `SPONTANEOUS_TIMEZONE_REQUIRED` | 날짜와 시간 정보를 다시 선택해 주세요. |
+| `SPONTANEOUS_START_DATE_NOT_TODAY` | 즉흥여행은 오늘 출발하는 일정만 만들 수 있습니다. |
+| `SPONTANEOUS_START_TIME_IN_PAST` | 출발 시간이 현재 시각보다 이전입니다. 출발 시간을 다시 선택해 주세요. |
+| `SPONTANEOUS_RETURN_TIME_BEFORE_START` | 복귀 시간은 출발 시간보다 늦어야 합니다. |
+| `SPONTANEOUS_RETURN_TIME_TOO_LATE` | 복귀 시간은 출발일 기준 다음 날 오전 3시까지 설정할 수 있습니다. |
+| `SPONTANEOUS_TIME_INVALID` | 출발 및 복귀 시간 정보를 확인해 주세요. (`INVALID_TIME_RANGE` 안전 fallback) |
+
+위치 입력은 `SPONTANEOUS_START_LOCATION_REQUIRED`, `SPONTANEOUS_START_LOCATION_INVALID`,
+`SPONTANEOUS_START_LOCATION_OUTSIDE_BUSAN`으로 구분한다. 이동수단은 누락과 미지원 값을 각각
+`SPONTANEOUS_TRANSPORT_MODE_REQUIRED`, `SPONTANEOUS_TRANSPORT_MODE_INVALID`로 구분한다.
+테마는 `SPONTANEOUS_THEME_INVALID`, `SPONTANEOUS_THEME_LIMIT_EXCEEDED`로 구분한다.
+
+### 2-3. 즉흥여행 추천 Provider 오류
 
 `POST /api/v1/spontaneous-trips/destinations` 및 `POST /api/v1/spontaneous-trips/course`에서
 TMAP 호출 한도 초과는 다음과 같이 변환한다.
@@ -237,7 +267,7 @@ TMAP 호출 한도 초과는 다음과 같이 변환한다.
 `TMAP HTTP 429 → DATA HTTP 503 / detail: TMAP_QUOTA_EXCEEDED → SERVER HTTP 503 / code: SPONTANEOUS_PROVIDER_UNAVAILABLE`
 
 공개 응답은 공통 오류 형식이며 `message`는
-"여행 정보 제공 서비스를 현재 사용할 수 없습니다. 잠시 후 다시 시도해 주세요."이다.
+"여행 정보를 불러오는 서비스가 일시적으로 원활하지 않습니다. 잠시 후 다시 시도해 주세요."이다.
 기존 `TOUR_API_NOT_CONFIGURED`, `ODSAY_AUTH_FAILED`, `ODSAY_QUOTA_EXCEEDED`의
 `503 SPONTANEOUS_PROVIDER_UNAVAILABLE` 매핑은 유지한다.
 
@@ -246,16 +276,20 @@ TMAP 호출 한도 초과는 다음과 같이 변환한다.
 
 | DATA detail / SERVER code | 사용자 메시지 |
 | --- | --- |
-| `SPONTANEOUS_DESTINATION_ROUTE_NOT_FOUND` | 선택한 시간과 이동수단으로 왕복 가능한 경로가 없습니다. |
-| `SPONTANEOUS_DESTINATION_TIME_TOO_SHORT` | 왕복 이동시간과 최소 체류시간이 부족합니다. 복귀 시간을 늦춰주세요. |
-| `SPONTANEOUS_DESTINATION_TRANSPORT_CONSTRAINT` | 선택한 이동수단과 여행 시간으로 왕복 가능한 목적지가 없습니다. 시간이나 이동수단을 변경해주세요. |
-| `SPONTANEOUS_DESTINATION_CANDIDATES_NOT_FOUND` | 선택한 테마에 맞는 추천 목적지가 없습니다. 테마를 변경하거나 선택을 줄여주세요. |
+| `SPONTANEOUS_DESTINATION_ROUTE_NOT_FOUND` | 선택한 이동수단으로 갈 수 있는 목적지를 찾지 못했습니다. 이동수단을 변경해 주세요. |
+| `SPONTANEOUS_DESTINATION_TIME_TOO_SHORT` | 현재 여행 가능 시간으로는 왕복 이동과 최소 체류시간을 확보하기 어렵습니다. 복귀 시간을 늦추거나 이동수단을 변경해 주세요. |
+| `SPONTANEOUS_DESTINATION_TRANSPORT_CONSTRAINT` | 선택한 이동수단과 남은 시간으로 다녀올 수 있는 목적지가 없습니다. 이동수단을 변경하거나 복귀 시간을 늦춰 주세요. |
+| `SPONTANEOUS_DESTINATION_CANDIDATES_NOT_FOUND` | 선택한 테마에 맞는 목적지를 찾지 못했습니다. 테마를 줄이거나 변경해 주세요. |
 
 라우팅 전에 장소·테마 조건을 만족하는 후보가 없을 때만
 `SPONTANEOUS_DESTINATION_CANDIDATES_NOT_FOUND`를 사용한다. TMAP·ODsay 오류가 포함된 전체 실패는
 위 추천 조건 오류보다 기존 Provider 오류 매핑을 우선한다.
+분류할 수 없는 DATA의 목적지 실패는 기존 `SPONTANEOUS_DESTINATIONS_NOT_FOUND`를 유지한다.
+알 수 없는 DATA `400/422` detail은 사용자 입력 오류로 단정하지 않고
+`502 SPONTANEOUS_PROCESSING_ERROR`로 반환한다. FastAPI 표준 필드 검증 배열은 기존
+`400 INVALID_SPONTANEOUS_TRIP_REQUEST` 호환성을 유지한다.
 
-### 2-3. 즉흥여행 코스 Preview와 명시적 저장
+### 2-4. 즉흥여행 코스 Preview와 명시적 저장
 
 `POST /api/v1/spontaneous-trips/course`는 Bearer 인증이 필요한 계산 전용 Preview API다.
 기존 코스 요청에 대해 실제 stop별 장소·진입 경로, 마지막 복귀 경로와 지도선을 반환하고,

@@ -2,6 +2,17 @@
 
 API 계약이 변경될 때마다 최신 항목을 위에 추가한다.
 
+## 2026-09-17 (즉흥여행 입력·목적지 실패 안내 구체화)
+
+- API: `POST /api/v1/spontaneous-trips/destinations`, `POST /api/v1/spontaneous-trips/course`
+- 구분: 입력 검증·외부 DATA 오류 코드 세분화. 성공 응답과 공통 오류 응답 필드는 변경 없음
+- 이전: DATA의 시간 오류와 SERVER DTO 오류, 알 수 없는 DATA 400/422가 대부분 `INVALID_SPONTANEOUS_TRIP_REQUEST`로 합쳐졌다.
+- 이후: 시간·위치·이동수단·테마를 행동 가능한 코드와 메시지로 구분하고 DTO 오류는 실제 필드와 한국어 사유를 `fieldErrors`에 담는다. 테마 최대 3개 정책을 SERVER에서도 검증한다.
+- 목적지: 경로 없음·시간 부족·두 제약의 혼합·테마 후보 없음 메시지를 실제 변경할 조건 중심으로 구체화한다. 분류 불가능한 후보 실패는 기존 일반 목적지 코드를 유지한다.
+- Provider/fallback: Provider 장애는 `SPONTANEOUS_PROVIDER_UNAVAILABLE`로 유지하고 메시지를 구체화했다. 알 수 없는 DATA 400/422는 사용자 탓으로 단정하지 않고 `502 SPONTANEOUS_PROCESSING_ERROR`로 처리한다.
+- 호환성 파괴: 오류 `code`가 세분화되며 알 수 없는 DATA 400/422의 SERVER HTTP 상태가 400에서 502로 바뀔 수 있다. 요청 필드·성공 응답·공통 오류 응답 구조는 그대로다.
+- DB/ERD: 변경 없음
+
 ## 2026-09-16 (즉흥여행 코스 실패 안내 구체화)
 
 - API: `POST /api/v1/spontaneous-trips/course`

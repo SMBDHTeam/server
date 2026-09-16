@@ -72,12 +72,33 @@
 `503 SPONTANEOUS_PROVIDER_UNAVAILABLE`이다. 기존 공용 검색에는 이 부산 필터를 적용하지 않는다.
 실제 `/destinations`, `/course` 요청의 `startLocation`은 검색 단계와 별도로 다시 부산 검증한다.
 
-### 2-2. 즉흥여행 추천 Provider 오류
+### 2-2. 즉흥여행 조건 필드
+
+`POST /api/v1/spontaneous-trips/destinations`, `POST /api/v1/spontaneous-trips/course`
+
+| 요청 필드 | 자료형 | 필수 | 의미 |
+| --- | --- | :---: | --- |
+| `startLocation` | object | O | 출발 위치. 누락 시 `SPONTANEOUS_START_LOCATION_REQUIRED` |
+| `startLocation.latitude` | number | O | 위도 `-90..90`. 누락은 위치 필수, 범위·형식 오류는 `SPONTANEOUS_START_LOCATION_INVALID` |
+| `startLocation.longitude` | number | O | 경도 `-180..180`. 부산 밖이면 `SPONTANEOUS_START_LOCATION_OUTSIDE_BUSAN` |
+| `startAt` | string(datetime) | O | offset 필수. KST 오늘, 현재 시각 기준 5분 전부터 허용 |
+| `returnBy` | string(datetime) | O | 출발보다 늦고 출발일 다음 날 03:00:00 KST 이하 |
+| `transportMode` | enum | O | `PUBLIC_TRANSIT`, `WALK`, `CAR` |
+| `desiredThemes` | array | X | 알려진 테마 최대 3개. `null` 항목 불가. 생략하면 빈 배열 |
+
+DTO 검증 오류의 `fieldErrors[].field`에는 `startLocation.latitude`, `transportMode`,
+`desiredThemes`, `returnBy` 같은 실제 요청 필드가 들어간다. 시간 정책 위반은
+`SPONTANEOUS_TIMEZONE_REQUIRED`, `SPONTANEOUS_START_DATE_NOT_TODAY`,
+`SPONTANEOUS_START_TIME_IN_PAST`, `SPONTANEOUS_RETURN_TIME_BEFORE_START`,
+`SPONTANEOUS_RETURN_TIME_TOO_LATE`로 구분한다. 안전하게 세분할 수 없는 `INVALID_TIME_RANGE`만
+`SPONTANEOUS_TIME_INVALID`로 변환한다.
+
+### 2-3. 즉흥여행 추천 Provider 오류
 
 `POST /api/v1/spontaneous-trips/destinations` 및 `POST /api/v1/spontaneous-trips/course`에서
 TMAP HTTP 429는 DATA의 `503 / detail: TMAP_QUOTA_EXCEEDED`를 거쳐 SERVER의
 `503 / code: SPONTANEOUS_PROVIDER_UNAVAILABLE`로 반환한다.
-`message`는 "여행 정보 제공 서비스를 현재 사용할 수 없습니다. 잠시 후 다시 시도해 주세요."이며,
+`message`는 "여행 정보를 불러오는 서비스가 일시적으로 원활하지 않습니다. 잠시 후 다시 시도해 주세요."이며,
 `fieldErrors=[]`와 `traceId`를 포함하는 공통 오류 형식을 유지한다. DATA의 `detail`은 공개 필드가 아니다.
 
 `/destinations`의 모든 실제 라우팅 후보가 실패하면 DATA detail과 SERVER의 공개 `code`는
@@ -88,8 +109,10 @@ TMAP HTTP 429는 DATA의 `503 / detail: TMAP_QUOTA_EXCEEDED`를 거쳐 SERVER의
 공통 오류 응답의 `message`로 사용자가 바꿀 수 있는 시간·이동수단·테마 조건을 안내한다.
 일부 후보가 성공하면 정상 `destinations` 응답을 반환하고, 외부 Provider 오류가 포함된 전체 실패는
 기존 502/503 매핑을 우선한다.
+알 수 없는 DATA `400/422` detail은 입력 오류로 합치지 않고 `502 SPONTANEOUS_PROCESSING_ERROR`로
+안전하게 처리한다. 분류 불가능한 목적지 후보 실패는 기존 `SPONTANEOUS_DESTINATIONS_NOT_FOUND`다.
 
-### 2-3. 즉흥 코스 Preview와 저장 필드
+### 2-4. 즉흥 코스 Preview와 저장 필드
 
 `POST /api/v1/spontaneous-trips/course`는 인증된 사용자의 저장 가능한 계산 결과를 반환한다.
 
