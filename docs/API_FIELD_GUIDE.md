@@ -106,6 +106,13 @@ TMAP HTTP 429는 DATA의 `503 / detail: TMAP_QUOTA_EXCEEDED`를 거쳐 SERVER의
 | `finalTransit` | object | O | 마지막 방문지에서 복귀 위치로 가는 실제 경로 |
 | `routeLines` | array | O | 진입·복귀 경로의 지도선. 경로/선 순서를 함께 포함 |
 
+코스 후보가 모두 실패한 경우에도 HTTP `422`와 공통 오류 응답 필드는 유지한다. DATA의
+`COURSE_RETURN_TIME_EXCEEDED`, `COURSE_THEME_NOT_FEASIBLE`, `COURSE_PLACES_CLOSED` detail은 각각
+SERVER의 `SPONTANEOUS_COURSE_RETURN_TIME_EXCEEDED`, `SPONTANEOUS_COURSE_THEME_NOT_FEASIBLE`,
+`SPONTANEOUS_COURSE_PLACES_CLOSED` code로 변환한다. `NO_ROUTE`는 기존
+`SPONTANEOUS_ROUTE_NOT_FOUND`를 유지하며, 후보별 공개 원인이 섞이거나 확정할 수 없으면
+`SPONTANEOUS_COURSE_NOT_FEASIBLE`을 반환한다.
+
 `POST /api/v1/spontaneous-trips/schedules` 요청은 Header `Idempotency-Key`와 Body
 `previewId`, `previewToken`이 모두 필수다. 성공 응답은 별도 즉흥 DTO가 아니라 공통
 `ScheduleResponse`다. 이미 저장된 Preview를 다른 키로 보내 받은

@@ -244,6 +244,12 @@ class FastApiSpontaneousClientTest {
     void fastApiBusinessDetailMapsToErrorCode() {
         assertCourseError("COURSE_NOT_FEASIBLE", HttpStatus.UNPROCESSABLE_ENTITY,
                 ErrorCode.SPONTANEOUS_COURSE_NOT_FEASIBLE);
+        assertCourseError("COURSE_RETURN_TIME_EXCEEDED", HttpStatus.UNPROCESSABLE_ENTITY,
+                ErrorCode.SPONTANEOUS_COURSE_RETURN_TIME_EXCEEDED);
+        assertCourseError("COURSE_THEME_NOT_FEASIBLE", HttpStatus.UNPROCESSABLE_ENTITY,
+                ErrorCode.SPONTANEOUS_COURSE_THEME_NOT_FEASIBLE);
+        assertCourseError("COURSE_PLACES_CLOSED", HttpStatus.UNPROCESSABLE_ENTITY,
+                ErrorCode.SPONTANEOUS_COURSE_PLACES_CLOSED);
         assertCourseError("NO_ROUTE", HttpStatus.UNPROCESSABLE_ENTITY,
                 ErrorCode.SPONTANEOUS_ROUTE_NOT_FOUND);
         assertCourseError("DESTINATION_NOT_FOUND", HttpStatus.NOT_FOUND,
