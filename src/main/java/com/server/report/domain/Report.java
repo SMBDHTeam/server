@@ -81,7 +81,7 @@ public class Report {
         this.reasonType = reasonType;
         this.reason = reason;
         this.status = ReportStatus.PENDING;
-        this.createdAt = LocalDateTime.now();
+        this.createdAt = ServerClock.now();
     }
 
     /**
