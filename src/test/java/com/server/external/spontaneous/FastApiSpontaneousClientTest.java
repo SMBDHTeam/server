@@ -257,8 +257,27 @@ class FastApiSpontaneousClientTest {
     }
 
     @Test
+    @DisplayName("time failure details map to actionable spontaneous ErrorCodes")
+    void timeFailureDetailsMapToDistinctErrorCodes() {
+        assertCourseError("INVALID_TIME_RANGE", HttpStatus.UNPROCESSABLE_ENTITY,
+                ErrorCode.SPONTANEOUS_TIME_INVALID);
+        assertCourseError("SPONTANEOUS_TIMEZONE_REQUIRED", HttpStatus.UNPROCESSABLE_ENTITY,
+                ErrorCode.SPONTANEOUS_TIMEZONE_REQUIRED);
+        assertCourseError("SPONTANEOUS_START_DATE_NOT_TODAY", HttpStatus.UNPROCESSABLE_ENTITY,
+                ErrorCode.SPONTANEOUS_START_DATE_NOT_TODAY);
+        assertCourseError("SPONTANEOUS_START_TIME_IN_PAST", HttpStatus.UNPROCESSABLE_ENTITY,
+                ErrorCode.SPONTANEOUS_START_TIME_IN_PAST);
+        assertCourseError("SPONTANEOUS_RETURN_TIME_BEFORE_START", HttpStatus.UNPROCESSABLE_ENTITY,
+                ErrorCode.SPONTANEOUS_RETURN_TIME_BEFORE_START);
+        assertCourseError("SPONTANEOUS_RETURN_TIME_TOO_LATE", HttpStatus.UNPROCESSABLE_ENTITY,
+                ErrorCode.SPONTANEOUS_RETURN_TIME_TOO_LATE);
+    }
+
+    @Test
     @DisplayName("destination failure details map to distinct spontaneous ErrorCodes")
     void destinationFailureDetailsMapToDistinctErrorCodes() {
+        assertDestinationError("DESTINATIONS_NOT_FOUND",
+                ErrorCode.SPONTANEOUS_DESTINATIONS_NOT_FOUND);
         assertDestinationError("SPONTANEOUS_DESTINATION_ROUTE_NOT_FOUND",
                 ErrorCode.SPONTANEOUS_DESTINATION_ROUTE_NOT_FOUND);
         assertDestinationError("SPONTANEOUS_DESTINATION_TIME_TOO_SHORT",
@@ -267,6 +286,15 @@ class FastApiSpontaneousClientTest {
                 ErrorCode.SPONTANEOUS_DESTINATION_TRANSPORT_CONSTRAINT);
         assertDestinationError("SPONTANEOUS_DESTINATION_CANDIDATES_NOT_FOUND",
                 ErrorCode.SPONTANEOUS_DESTINATION_CANDIDATES_NOT_FOUND);
+    }
+
+    @Test
+    @DisplayName("unknown 400 and 422 responses are not blamed on user input")
+    void unknownClientErrorsUseSafeProcessingFallback() {
+        assertCourseError("UNRECOGNIZED_DETAIL", HttpStatus.BAD_REQUEST,
+                ErrorCode.SPONTANEOUS_PROCESSING_ERROR);
+        assertCourseError("UNRECOGNIZED_DETAIL", HttpStatus.UNPROCESSABLE_ENTITY,
+                ErrorCode.SPONTANEOUS_PROCESSING_ERROR);
     }
 
     @Test
@@ -279,6 +307,8 @@ class FastApiSpontaneousClientTest {
         assertCourseError("ODSAY_QUOTA_EXCEEDED", HttpStatus.SERVICE_UNAVAILABLE,
                 ErrorCode.SPONTANEOUS_PROVIDER_UNAVAILABLE);
         assertCourseError("TOUR_API_ERROR", HttpStatus.BAD_GATEWAY,
+                ErrorCode.SPONTANEOUS_PROVIDER_ERROR);
+        assertCourseError("EXTERNAL_ROUTING_API_ERROR", HttpStatus.BAD_GATEWAY,
                 ErrorCode.SPONTANEOUS_PROVIDER_ERROR);
     }
 
