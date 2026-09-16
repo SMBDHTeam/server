@@ -2,6 +2,16 @@
 
 API 계약이 변경될 때마다 최신 항목을 위에 추가한다.
 
+## 2026-09-16 (즉흥여행 코스 실패 안내 구체화)
+
+- API: `POST /api/v1/spontaneous-trips/course`
+- 구분: 오류 코드 추가. 요청·성공 응답·HTTP 상태와 공통 오류 응답 구조는 변경 없음
+- 이전: 코스 후보가 모두 복귀 시간, 테마 구성, 영업시간 때문에 실패해도 대부분 `422 SPONTANEOUS_COURSE_NOT_FEASIBLE`로 합쳐졌다.
+- 이후: 모든 후보 실패가 같은 공개 원인일 때 `SPONTANEOUS_COURSE_RETURN_TIME_EXCEEDED`, `SPONTANEOUS_COURSE_THEME_NOT_FEASIBLE`, `SPONTANEOUS_COURSE_PLACES_CLOSED`로 구분한다. `NO_ROUTE`는 기존 `SPONTANEOUS_ROUTE_NOT_FOUND`, 혼합·불명확 원인은 기존 일반 코드를 유지한다.
+- 이유: 사용자가 이동수단·목적지·테마·출발 시간 중 실제로 바꿔야 할 조건을 알 수 있게 한다.
+- 호환성 파괴: 없음. 기존 `422`와 공통 오류 응답 필드를 유지하고 오류 코드만 세분화한다.
+- DB/ERD: 변경 없음
+
 ## 2026-09-15 (장소 카카오맵 주소 추가)
 
 - API: `GET /api/v1/places/{placeId}/kakao-link`

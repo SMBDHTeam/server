@@ -297,6 +297,17 @@ TMAP 호출 한도 초과는 다음과 같이 변환한다.
 - `previewToken`은 Preview ID, 만료시각, 인증 사용자와 계산 결과 전체를 HMAC으로 보호한다.
   클라이언트는 내용을 해석하거나 수정하지 않고 그대로 보관한다.
 
+코스 후보 탐색이 모두 실패하면 DATA가 시도별 실패 원인을 집계한다. 모든 실패가 같은 공개
+원인으로 분류될 때 SERVER는 다음 `422` 공통 오류를 반환한다. 원인이 섞이거나 확정할 수 없으면
+기존 `SPONTANEOUS_COURSE_NOT_FEASIBLE`을 유지한다.
+
+| DATA detail | SERVER code | 사용자 메시지 |
+| --- | --- | --- |
+| `COURSE_RETURN_TIME_EXCEEDED` | `SPONTANEOUS_COURSE_RETURN_TIME_EXCEEDED` | 선택한 이동수단으로는 설정한 복귀 시간 안에 돌아오기 어렵습니다. 이동수단을 변경하거나 더 가까운 목적지를 선택해 주세요. |
+| `COURSE_THEME_NOT_FEASIBLE` | `SPONTANEOUS_COURSE_THEME_NOT_FEASIBLE` | 선택한 지역에서는 요청한 테마를 모두 포함한 코스를 만들기 어렵습니다. 테마를 줄이거나 다른 목적지를 선택해 주세요. |
+| `COURSE_PLACES_CLOSED` | `SPONTANEOUS_COURSE_PLACES_CLOSED` | 방문 예정 시간에 이용 가능한 장소가 부족합니다. 출발 시간을 변경하거나 다른 목적지를 선택해 주세요. |
+| `NO_ROUTE` | `SPONTANEOUS_ROUTE_NOT_FOUND` | 선택한 조건으로 이동 가능한 경로를 찾을 수 없습니다. |
+
 사용자가 저장을 확정할 때만 `POST /api/v1/spontaneous-trips/schedules`를 호출한다.
 Bearer 인증과 `Idempotency-Key` 헤더가 필수다.
 
