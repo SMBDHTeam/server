@@ -1,6 +1,7 @@
 package com.server.post.service;
 
 import com.server.block.repository.BlockRepository;
+import com.server.common.support.Paging;
 import com.server.common.error.BusinessException;
 import com.server.common.error.ErrorCode;
 import com.server.notification.domain.NotificationTargetType;
@@ -31,8 +32,6 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class CommentService {
 
-    private static final int DEFAULT_PAGE_SIZE = 20;
-    private static final int MAX_PAGE_SIZE = 50;
     /** 오래된 순으로 읽으므로 첫 페이지는 어떤 댓글 ID보다 작은 값에서 시작한다. */
     private static final long FIRST_PAGE_CURSOR = 0L;
 
@@ -108,7 +107,7 @@ public class CommentService {
             throw new BusinessException(ErrorCode.POST_NOT_FOUND);
         }
 
-        int limit = resolvePageSize(size);
+        int limit = Paging.size(size);
         List<Comment> parents = commentRepository.findTopLevelComments(
                 postId,
                 cursor == null ? FIRST_PAGE_CURSOR : cursor,
@@ -167,6 +166,9 @@ public class CommentService {
     @Transactional
     public CommentLikeResponse unlike(Long postId, Long commentId, Long userId) {
         findComment(postId, commentId);
+        // 누르기와 같은 조건으로 막는다. 지울 행이 없어 결과는 같지만, 한 자원의 두 동작 중
+        // 하나만 탈퇴한 사용자를 통과시키면 나중에 규칙을 바꿀 때 빠진다.
+        activeUserReader.requireExists(userId);
         if (commentLikeRepository.deleteByCommentIdAndUserId(commentId, userId) > 0) {
             commentRepository.decreaseLikeCount(commentId);
         }
@@ -220,8 +222,7 @@ public class CommentService {
         return comment;
     }
 
-    /** 내용만 바꾼다. 답글 관계와 좋아요 수는 그대로 둔다. */
-    @Transactional
+    /** 요청자가 좋아요를 누른 댓글 ID. 부모와 답글을 한 번에 읽어 댓글 수만큼 조회하지 않는다. */
     private Set<Long> likedCommentIds(Long requesterId, List<Long> commentIds) {
         if (requesterId == null || commentIds.isEmpty()) {
             return Set.of();
@@ -256,10 +257,4 @@ public class CommentService {
         return parent;
     }
 
-    private int resolvePageSize(Integer size) {
-        if (size == null || size <= 0) {
-            return DEFAULT_PAGE_SIZE;
-        }
-        return Math.min(size, MAX_PAGE_SIZE);
-    }
 }

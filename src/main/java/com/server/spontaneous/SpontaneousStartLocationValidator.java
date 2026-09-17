@@ -27,7 +27,7 @@ public class SpontaneousStartLocationValidator {
 
     public boolean isBusan(Coordinate startLocation) {
         if (startLocation == null || startLocation.latitude() == null || startLocation.longitude() == null) {
-            throw new BusinessException(ErrorCode.INVALID_SPONTANEOUS_TRIP_REQUEST);
+            throw new BusinessException(ErrorCode.SPONTANEOUS_START_LOCATION_REQUIRED);
         }
 
         KakaoLocalRegionCodeResponse response = regionCodeResponse(startLocation);

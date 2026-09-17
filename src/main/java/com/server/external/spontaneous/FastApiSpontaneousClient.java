@@ -165,7 +165,15 @@ public class FastApiSpontaneousClient {
 
     private ErrorCode errorCodeFor(int statusCode, String detail) {
         return switch (detail) {
-            case "INVALID_TIME_RANGE" -> ErrorCode.INVALID_SPONTANEOUS_TRIP_REQUEST;
+            case "FASTAPI_VALIDATION_ERROR" -> ErrorCode.INVALID_SPONTANEOUS_TRIP_REQUEST;
+            case "INVALID_TIME_RANGE" -> ErrorCode.SPONTANEOUS_TIME_INVALID;
+            case "SPONTANEOUS_TIMEZONE_REQUIRED" -> ErrorCode.SPONTANEOUS_TIMEZONE_REQUIRED;
+            case "SPONTANEOUS_START_DATE_NOT_TODAY" -> ErrorCode.SPONTANEOUS_START_DATE_NOT_TODAY;
+            case "SPONTANEOUS_START_TIME_IN_PAST" -> ErrorCode.SPONTANEOUS_START_TIME_IN_PAST;
+            case "SPONTANEOUS_RETURN_TIME_BEFORE_START" ->
+                    ErrorCode.SPONTANEOUS_RETURN_TIME_BEFORE_START;
+            case "SPONTANEOUS_RETURN_TIME_TOO_LATE" ->
+                    ErrorCode.SPONTANEOUS_RETURN_TIME_TOO_LATE;
             case "DESTINATION_NOT_FOUND" -> ErrorCode.SPONTANEOUS_DESTINATION_NOT_FOUND;
             case "DESTINATIONS_NOT_FOUND" -> ErrorCode.SPONTANEOUS_DESTINATIONS_NOT_FOUND;
             case "SPONTANEOUS_DESTINATION_ROUTE_NOT_FOUND" ->
@@ -203,7 +211,7 @@ public class FastApiSpontaneousClient {
 
     private ErrorCode fallbackErrorCodeFor(int statusCode) {
         return switch (statusCode) {
-            case 400, 422 -> ErrorCode.INVALID_SPONTANEOUS_TRIP_REQUEST;
+            case 400, 422 -> ErrorCode.SPONTANEOUS_PROCESSING_ERROR;
             case 404 -> ErrorCode.SPONTANEOUS_DESTINATION_NOT_FOUND;
             case 502 -> ErrorCode.SPONTANEOUS_PROVIDER_ERROR;
             case 401, 429, 503 -> ErrorCode.SPONTANEOUS_PROVIDER_UNAVAILABLE;
@@ -221,6 +229,9 @@ public class FastApiSpontaneousClient {
             JsonNode detail = root.get("detail");
             if (detail != null && detail.isTextual()) {
                 return detail.asText();
+            }
+            if (detail != null && detail.isArray()) {
+                return "FASTAPI_VALIDATION_ERROR";
             }
         } catch (Exception exception) {
             log.warn("Failed to parse FastAPI spontaneous error body: {}", exception.getMessage());

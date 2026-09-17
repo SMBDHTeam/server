@@ -2,6 +2,8 @@ package com.server.common.error;
 
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolationException;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeParseException;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
@@ -53,15 +55,16 @@ public class GlobalExceptionHandler {
             MethodArgumentNotValidException exception,
             HttpServletRequest request
     ) {
-        List<ErrorResponse.FieldErrorResponse> fieldErrors = exception.getBindingResult()
-                .getFieldErrors()
+        List<FieldError> bindingErrors = exception.getBindingResult().getFieldErrors();
+        List<ErrorResponse.FieldErrorResponse> fieldErrors = bindingErrors
                 .stream()
-                .map(this::toFieldErrorResponse)
+                .map(fieldError -> toFieldErrorResponse(fieldError, request))
                 .toList();
 
         return ResponseEntity
                 .status(HttpStatus.BAD_REQUEST)
-                .body(ErrorResponse.of(validationErrorCode(request), fieldErrors, traceId(request)));
+                .body(ErrorResponse.of(
+                        validationErrorCode(request, bindingErrors), fieldErrors, traceId(request)));
     }
 
     @ExceptionHandler(HandlerMethodValidationException.class)
@@ -134,11 +137,12 @@ public class GlobalExceptionHandler {
             HttpMessageNotReadableException exception,
             HttpServletRequest request
     ) {
+        ErrorResponse.FieldErrorResponse fieldError = unreadableBodyFieldError(exception);
         return ResponseEntity
                 .status(HttpStatus.BAD_REQUEST)
                 .body(ErrorResponse.of(
-                        ErrorCode.MALFORMED_REQUEST,
-                        List.of(unreadableBodyFieldError(exception)),
+                        unreadableBodyErrorCode(request, fieldError.field(), exception),
+                        List.of(fieldError),
                         traceId(request)));
     }
 
@@ -291,8 +295,15 @@ public class GlobalExceptionHandler {
                 .body(ErrorResponse.of(ErrorCode.INTERNAL_ERROR, List.of(), traceId));
     }
 
-    private ErrorResponse.FieldErrorResponse toFieldErrorResponse(FieldError fieldError) {
-        return new ErrorResponse.FieldErrorResponse(fieldError.getField(), fieldError.getDefaultMessage());
+    private ErrorResponse.FieldErrorResponse toFieldErrorResponse(
+            FieldError fieldError,
+            HttpServletRequest request
+    ) {
+        String field = fieldError.getField();
+        if (isSpontaneousRequest(request) && "validTimeRange".equals(field)) {
+            field = "returnBy";
+        }
+        return new ErrorResponse.FieldErrorResponse(field, fieldError.getDefaultMessage());
     }
 
     /**
@@ -300,12 +311,19 @@ public class GlobalExceptionHandler {
      * INVALID_SCHEDULE_CONDITION("일정 조건이 올바르지 않습니다")이 나갔다.
      */
     private ErrorCode validationErrorCode(HttpServletRequest request) {
+        return validationErrorCode(request, List.of());
+    }
+
+    private ErrorCode validationErrorCode(
+            HttpServletRequest request,
+            List<FieldError> fieldErrors
+    ) {
         String uri = request.getRequestURI();
         if (uri.startsWith("/api/v1/schedule-previews")) {
             return ErrorCode.INVALID_SCHEDULE_PREVIEW_REQUEST;
         }
         if (uri.startsWith("/api/v1/spontaneous-trips")) {
-            return ErrorCode.INVALID_SPONTANEOUS_TRIP_REQUEST;
+            return spontaneousValidationErrorCode(fieldErrors);
         }
         if (uri.startsWith("/api/v1/places") || uri.startsWith("/api/v1/locations")) {
             return ErrorCode.INVALID_PLACE_SEARCH_REQUEST;
@@ -334,6 +352,93 @@ public class GlobalExceptionHandler {
             return ErrorCode.INVALID_TOKEN;
         }
         return ErrorCode.INVALID_SCHEDULE_CONDITION;
+    }
+
+    private ErrorCode spontaneousValidationErrorCode(List<FieldError> fieldErrors) {
+        if (hasField(fieldErrors, "validTimeRange")) {
+            return ErrorCode.SPONTANEOUS_RETURN_TIME_BEFORE_START;
+        }
+        if (hasFieldWithCode(fieldErrors, "startLocation", "NotNull")
+                || hasNestedFieldWithCode(fieldErrors, "startLocation.", "NotNull")) {
+            return ErrorCode.SPONTANEOUS_START_LOCATION_REQUIRED;
+        }
+        if (hasFieldPrefix(fieldErrors, "startLocation.")) {
+            return ErrorCode.SPONTANEOUS_START_LOCATION_INVALID;
+        }
+        if (hasFieldWithCode(fieldErrors, "transportMode", "NotNull")) {
+            return ErrorCode.SPONTANEOUS_TRANSPORT_MODE_REQUIRED;
+        }
+        if (hasFieldWithCode(fieldErrors, "desiredThemes", "Size")) {
+            return ErrorCode.SPONTANEOUS_THEME_LIMIT_EXCEEDED;
+        }
+        if (hasFieldPrefix(fieldErrors, "desiredThemes")) {
+            return ErrorCode.SPONTANEOUS_THEME_INVALID;
+        }
+        if (hasField(fieldErrors, "startAt") || hasField(fieldErrors, "returnBy")) {
+            return ErrorCode.SPONTANEOUS_TIME_INVALID;
+        }
+        return ErrorCode.INVALID_SPONTANEOUS_TRIP_REQUEST;
+    }
+
+    private ErrorCode unreadableBodyErrorCode(
+            HttpServletRequest request,
+            String field,
+            HttpMessageNotReadableException exception
+    ) {
+        if (!isSpontaneousRequest(request) || "body".equals(field)) {
+            return ErrorCode.MALFORMED_REQUEST;
+        }
+        if ("transportMode".equals(field)) {
+            return ErrorCode.SPONTANEOUS_TRANSPORT_MODE_INVALID;
+        }
+        if (field.startsWith("desiredThemes")) {
+            return ErrorCode.SPONTANEOUS_THEME_INVALID;
+        }
+        if ("startAt".equals(field) || "returnBy".equals(field)) {
+            if (hasLocalDateTimeWithoutOffset(exception)) {
+                return ErrorCode.SPONTANEOUS_TIMEZONE_REQUIRED;
+            }
+            return ErrorCode.SPONTANEOUS_TIME_INVALID;
+        }
+        if (field.startsWith("startLocation.")) {
+            return ErrorCode.SPONTANEOUS_START_LOCATION_INVALID;
+        }
+        return ErrorCode.MALFORMED_REQUEST;
+    }
+
+    private boolean hasLocalDateTimeWithoutOffset(HttpMessageNotReadableException exception) {
+        InvalidFormatException invalidFormat = findInvalidFormat(exception);
+        if (invalidFormat == null || !(invalidFormat.getValue() instanceof String value)) {
+            return false;
+        }
+        try {
+            LocalDateTime.parse(value);
+            return true;
+        } catch (DateTimeParseException ignored) {
+            return false;
+        }
+    }
+
+    private boolean isSpontaneousRequest(HttpServletRequest request) {
+        return request.getRequestURI().startsWith("/api/v1/spontaneous-trips");
+    }
+
+    private boolean hasField(List<FieldError> errors, String field) {
+        return errors.stream().anyMatch(error -> field.equals(error.getField()));
+    }
+
+    private boolean hasFieldPrefix(List<FieldError> errors, String prefix) {
+        return errors.stream().anyMatch(error -> error.getField().startsWith(prefix));
+    }
+
+    private boolean hasFieldWithCode(List<FieldError> errors, String field, String code) {
+        return errors.stream().anyMatch(error -> field.equals(error.getField())
+                && code.equals(error.getCode()));
+    }
+
+    private boolean hasNestedFieldWithCode(List<FieldError> errors, String prefix, String code) {
+        return errors.stream().anyMatch(error -> error.getField().startsWith(prefix)
+                && code.equals(error.getCode()));
     }
 
     private String traceId(HttpServletRequest request) {

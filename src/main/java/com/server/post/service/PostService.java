@@ -29,9 +29,12 @@ import com.server.user.service.ActiveUserReader;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.HashSet;
 import java.util.Objects;
+import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
@@ -222,16 +225,19 @@ public class PostService {
      * 보낸 항목만 바꾼다. 배열을 보내면 통째로 교체하므로, 사진 한 장을 빼려면 남길
      * 사진들을 보낸다.
      *
-     * <p>교체로 빠진 사진의 실제 파일은 지우지 않는다. 저장소가 아직 정해지지 않아 지울
-     * 수단이 없다. 저장소를 붙일 때 남은 파일을 정리하는 작업이 함께 필요하다.
+     * <p>교체로 빠진 사진의 파일도 저장소에서 지운다. 남겨 두면 아무 게시물도 가리키지
+     * 않는 파일이 계속 쌓이는데, 고아 파일 정리는 올려놓고 글을 쓰지 않은 파일만 보므로
+     * 한 번 붙었다 빠진 파일은 영영 남는다. 여기서는 지울 주소만 돌려주고, 실제 삭제는
+     * 트랜잭션이 끝난 뒤 {@code PostEditor} 가 한다.
      */
     @Transactional
-    public PostDetailResponse update(Long postId, Long userId, PostUpdateRequest request) {
+    public UpdateResult update(Long postId, Long userId, PostUpdateRequest request) {
         if (request.isEmpty()) {
             throw new BusinessException(ErrorCode.INVALID_POST_REQUEST, List.of(new FieldViolation(
                     "request", "본문, 사진, 장소 태그 중 하나는 보내야 합니다.")));
         }
         Post post = findWritablePost(postId, userId);
+        List<String> removedUrls = List.of();
 
         if (request.content() != null) {
             if (request.content().isBlank()) {
@@ -246,6 +252,8 @@ public class PostService {
                 : hashtagService.reattach(post, request.categories());
 
         if (request.mediaList() != null) {
+            // 교체로 빠지는 사진을 알아내려면 지우기 전에 읽어야 한다.
+            removedUrls = removedMediaUrls(postId, request.mediaList());
             // 장소는 사진에 붙으므로 사진을 지우기 전에 함께 지운다.
             postPlaceTagRepository.deleteByPostId(postId);
             postMediaRepository.deleteByPostId(postId);
@@ -253,13 +261,30 @@ public class PostService {
         }
 
         List<Long> postIds = List.of(postId);
-        return PostDetailResponse.from(
-                post,
-                postMediaRepository.findByPostId(postId),
-                postPlaceTagRepository.findViewsByPostId(postId),
-                categories,
-                !postSummaryAssembler.likedPostIds(userId, postIds).isEmpty(),
-                !postSummaryAssembler.bookmarkedPostIds(userId, postIds).isEmpty());
+        return new UpdateResult(
+                PostDetailResponse.from(
+                        post,
+                        postMediaRepository.findByPostId(postId),
+                        postPlaceTagRepository.findViewsByPostId(postId),
+                        categories,
+                        !postSummaryAssembler.likedPostIds(userId, postIds).isEmpty(),
+                        !postSummaryAssembler.bookmarkedPostIds(userId, postIds).isEmpty()),
+                removedUrls);
+    }
+
+    /**
+     * 수정 결과. 저장소에서 지울 파일 주소를 함께 돌려준다.
+     *
+     * <p>파일 삭제를 이 트랜잭션 안에서 하면 저장소를 기다리는 동안 DB 커넥션을 쥐고 있게
+     * 된다. 지울 주소만 넘기고 실제 삭제는 트랜잭션이 끝난 뒤 {@code PostEditor} 가 한다.
+     *
+     * @param removedMediaUrls 교체로 빠져 더는 쓰이지 않는 사진 주소. 없으면 빈 목록이다
+     */
+    public record UpdateResult(PostDetailResponse response, List<String> removedMediaUrls) {
+
+        public UpdateResult {
+            removedMediaUrls = removedMediaUrls == null ? List.of() : List.copyOf(removedMediaUrls);
+        }
     }
 
     /**
@@ -302,8 +327,9 @@ public class PostService {
     }
 
     /**
-     * 삭제를 되돌린다. 삭제할 때 해시태그 연결을 실제로 지웠으므로 본문에서 다시 뽑아
-     * 연결한다. 그러지 않으면 복구한 글이 태그 필터 피드에서 영영 빠진다.
+     * 삭제를 되돌린다. 삭제할 때 카테고리 연결은 남겨 두고 사용 수만 줄였으므로, 복구는
+     * 사용 수를 되돌리는 것으로 끝난다. 연결까지 지우면 복구한 글이 카테고리 필터 피드에서
+     * 영영 빠진다.
      */
     @Transactional
     public PostDetailResponse restore(Long postId, Long userId) {
@@ -332,6 +358,26 @@ public class PostService {
                 categories,
                 !postSummaryAssembler.likedPostIds(userId, postIds).isEmpty(),
                 !postSummaryAssembler.bookmarkedPostIds(userId, postIds).isEmpty());
+    }
+
+    /**
+     * 교체 뒤에 더는 쓰이지 않는 사진 주소. 같은 주소를 그대로 다시 보낸 사진은 제외한다.
+     * 순서만 바꾼 수정에서 파일을 지웠다가 다시 올릴 수는 없다.
+     *
+     * <p><b>축소본 주소도 남길 목록에 넣는다.</b> 딸린 파일 주소에는 원본과 축소본이 함께
+     * 들어오는데, 요청의 원본 주소만 맞대 보면 그대로 둔 사진의 축소본이 지워져 목록 사진이
+     * 깨진다.
+     */
+    private List<String> removedMediaUrls(Long postId, List<PostCreateRequest.Media> mediaList) {
+        Set<String> keeping = mediaList.stream()
+                .flatMap(media -> Stream.of(media.url(), media.thumbnailUrl()))
+                .filter(Objects::nonNull)
+                .collect(Collectors.toCollection(HashSet::new));
+        return postMediaRepository.findUrlsByPostIdIn(List.of(postId)).stream()
+                .filter(url -> url != null && !url.isBlank())
+                .filter(url -> !keeping.contains(url))
+                .distinct()
+                .toList();
     }
 
     private Post findWritablePost(Long postId, Long userId) {
@@ -373,6 +419,9 @@ public class PostService {
         if (!postRepository.existsByIdAndDeletedAtIsNull(postId)) {
             throw new BusinessException(ErrorCode.POST_NOT_FOUND);
         }
+        // 누르기와 같은 조건으로 막는다. 지울 행이 없어 결과는 같지만, 한 자원의 두 동작 중
+        // 하나만 탈퇴한 사용자를 통과시키면 나중에 규칙을 바꿀 때 빠진다.
+        activeUserReader.requireExists(userId);
         if (postLikeRepository.deleteByPostIdAndUserId(postId, userId) > 0) {
             postRepository.decreaseLikeCount(postId);
         }

@@ -16,9 +16,6 @@ import java.time.ZoneId;
  * 않았기 때문이다.
  *
  * <p>여기서 시간대를 정하면 어느 환경에서 돌든 같은 값이 저장된다.
- *
- * <p><b>아직 옮기지 못한 곳이 있다.</b> {@code Report} 의 접수 시각 한 곳이 {@code LocalDateTime.now()}
- * 를 그대로 쓴다. 배포 이미지가 한국 시각이라 지금은 같은 값이 나온다.
  */
 public final class ServerClock {
 

@@ -229,7 +229,37 @@ Provider 장애를 빈 배열이나 부분 검색 결과로 숨기지 않는다.
 부산 밖이면 기존 `400 SPONTANEOUS_START_LOCATION_OUTSIDE_BUSAN`, Provider 장애이면
 `503 SPONTANEOUS_PROVIDER_UNAVAILABLE` 계약을 유지한다.
 
-### 2-2. 즉흥여행 추천 Provider 오류
+### 2-2. 즉흥여행 조건 검증
+
+`POST /api/v1/spontaneous-trips/destinations`와 `POST /api/v1/spontaneous-trips/course`는
+다음 조건을 공통으로 검증한다. 성공 응답 구조는 변경하지 않는다.
+
+| 요청 필드 | 규칙 |
+| --- | --- |
+| `startLocation.latitude` / `longitude` | 필수, 각각 `-90..90` / `-180..180`, 부산광역시 행정구역 |
+| `startAt` | offset 필수, KST 기준 요청 당일, 현재 시각의 5분 전부터 허용 |
+| `returnBy` | `startAt`보다 늦고 출발일 다음 날 오전 3시 이내. 정확히 오전 3시는 허용 |
+| `transportMode` | `PUBLIC_TRANSIT`, `WALK`, `CAR` 중 하나 |
+| `desiredThemes` | 알려진 테마만 허용하며 최대 3개. 배열의 `null` 항목은 허용하지 않음 |
+
+필드 검증 실패는 `400`과 공통 오류 응답을 사용하며 `fieldErrors`에 실제 JSON 필드와 한국어 사유를 담는다.
+DATA의 시간 검증 detail은 SERVER에서 다음 공개 코드와 메시지로 변환한다.
+
+| 공개 코드 | 메시지 |
+| --- | --- |
+| `SPONTANEOUS_TIMEZONE_REQUIRED` | 날짜와 시간 정보를 다시 선택해 주세요. |
+| `SPONTANEOUS_START_DATE_NOT_TODAY` | 즉흥여행은 오늘 출발하는 일정만 만들 수 있습니다. |
+| `SPONTANEOUS_START_TIME_IN_PAST` | 출발 시간이 현재 시각보다 이전입니다. 출발 시간을 다시 선택해 주세요. |
+| `SPONTANEOUS_RETURN_TIME_BEFORE_START` | 복귀 시간은 출발 시간보다 늦어야 합니다. |
+| `SPONTANEOUS_RETURN_TIME_TOO_LATE` | 복귀 시간은 출발일 기준 다음 날 오전 3시까지 설정할 수 있습니다. |
+| `SPONTANEOUS_TIME_INVALID` | 출발 및 복귀 시간 정보를 확인해 주세요. (`INVALID_TIME_RANGE` 안전 fallback) |
+
+위치 입력은 `SPONTANEOUS_START_LOCATION_REQUIRED`, `SPONTANEOUS_START_LOCATION_INVALID`,
+`SPONTANEOUS_START_LOCATION_OUTSIDE_BUSAN`으로 구분한다. 이동수단은 누락과 미지원 값을 각각
+`SPONTANEOUS_TRANSPORT_MODE_REQUIRED`, `SPONTANEOUS_TRANSPORT_MODE_INVALID`로 구분한다.
+테마는 `SPONTANEOUS_THEME_INVALID`, `SPONTANEOUS_THEME_LIMIT_EXCEEDED`로 구분한다.
+
+### 2-3. 즉흥여행 추천 Provider 오류
 
 `POST /api/v1/spontaneous-trips/destinations` 및 `POST /api/v1/spontaneous-trips/course`에서
 TMAP 호출 한도 초과는 다음과 같이 변환한다.
@@ -237,7 +267,7 @@ TMAP 호출 한도 초과는 다음과 같이 변환한다.
 `TMAP HTTP 429 → DATA HTTP 503 / detail: TMAP_QUOTA_EXCEEDED → SERVER HTTP 503 / code: SPONTANEOUS_PROVIDER_UNAVAILABLE`
 
 공개 응답은 공통 오류 형식이며 `message`는
-"여행 정보 제공 서비스를 현재 사용할 수 없습니다. 잠시 후 다시 시도해 주세요."이다.
+"여행 정보를 불러오는 서비스가 일시적으로 원활하지 않습니다. 잠시 후 다시 시도해 주세요."이다.
 기존 `TOUR_API_NOT_CONFIGURED`, `ODSAY_AUTH_FAILED`, `ODSAY_QUOTA_EXCEEDED`의
 `503 SPONTANEOUS_PROVIDER_UNAVAILABLE` 매핑은 유지한다.
 
@@ -246,16 +276,20 @@ TMAP 호출 한도 초과는 다음과 같이 변환한다.
 
 | DATA detail / SERVER code | 사용자 메시지 |
 | --- | --- |
-| `SPONTANEOUS_DESTINATION_ROUTE_NOT_FOUND` | 선택한 시간과 이동수단으로 왕복 가능한 경로가 없습니다. |
-| `SPONTANEOUS_DESTINATION_TIME_TOO_SHORT` | 왕복 이동시간과 최소 체류시간이 부족합니다. 복귀 시간을 늦춰주세요. |
-| `SPONTANEOUS_DESTINATION_TRANSPORT_CONSTRAINT` | 선택한 이동수단과 여행 시간으로 왕복 가능한 목적지가 없습니다. 시간이나 이동수단을 변경해주세요. |
-| `SPONTANEOUS_DESTINATION_CANDIDATES_NOT_FOUND` | 선택한 테마에 맞는 추천 목적지가 없습니다. 테마를 변경하거나 선택을 줄여주세요. |
+| `SPONTANEOUS_DESTINATION_ROUTE_NOT_FOUND` | 선택한 이동수단으로 갈 수 있는 목적지를 찾지 못했습니다. 이동수단을 변경해 주세요. |
+| `SPONTANEOUS_DESTINATION_TIME_TOO_SHORT` | 현재 여행 가능 시간으로는 왕복 이동과 최소 체류시간을 확보하기 어렵습니다. 복귀 시간을 늦추거나 이동수단을 변경해 주세요. |
+| `SPONTANEOUS_DESTINATION_TRANSPORT_CONSTRAINT` | 선택한 이동수단과 남은 시간으로 다녀올 수 있는 목적지가 없습니다. 이동수단을 변경하거나 복귀 시간을 늦춰 주세요. |
+| `SPONTANEOUS_DESTINATION_CANDIDATES_NOT_FOUND` | 선택한 테마에 맞는 목적지를 찾지 못했습니다. 테마를 줄이거나 변경해 주세요. |
 
 라우팅 전에 장소·테마 조건을 만족하는 후보가 없을 때만
 `SPONTANEOUS_DESTINATION_CANDIDATES_NOT_FOUND`를 사용한다. TMAP·ODsay 오류가 포함된 전체 실패는
 위 추천 조건 오류보다 기존 Provider 오류 매핑을 우선한다.
+분류할 수 없는 DATA의 목적지 실패는 기존 `SPONTANEOUS_DESTINATIONS_NOT_FOUND`를 유지한다.
+알 수 없는 DATA `400/422` detail은 사용자 입력 오류로 단정하지 않고
+`502 SPONTANEOUS_PROCESSING_ERROR`로 반환한다. FastAPI 표준 필드 검증 배열은 기존
+`400 INVALID_SPONTANEOUS_TRIP_REQUEST` 호환성을 유지한다.
 
-### 2-3. 즉흥여행 코스 Preview와 명시적 저장
+### 2-4. 즉흥여행 코스 Preview와 명시적 저장
 
 `POST /api/v1/spontaneous-trips/course`는 Bearer 인증이 필요한 계산 전용 Preview API다.
 기존 코스 요청에 대해 실제 stop별 장소·진입 경로, 마지막 복귀 경로와 지도선을 반환하고,
@@ -1564,7 +1598,7 @@ Provider 응답의 `distanceMeters`가 누락되거나 0 이하이면 서버는 
 오프셋 방식은 정렬 기준이 증가하는 식별자가 아니어서 커서를 쓸 수 없는 곳에만 쓴다. 인기 피드는
 점수 기준, 나머지는 관계를 맺은 시각 기준이며 해당 테이블에 대리키가 없다.
 
-`size`는 1 이상 50 이하이며 기본값은 20이다. 해시태그 자동완성만 기본 10, 최대 30이다.
+`size`는 1 이상 50 이하이며 기본값은 20이다. 카테고리 자동완성만 기본 10, 최대 30이다.
 **상한을 넘기면 `400`이다.** 조용히 줄여서 응답하지 않는다. 그러면 요청한 만큼 못 받은 것인지
 데이터가 없는 것인지 클라이언트가 구분할 수 없다.
 
@@ -1591,9 +1625,11 @@ Provider 응답의 `distanceMeters`가 누락되거나 0 이하이면 서버는 
 
 게시물 본인 수정·삭제 경로는 요청자가 곧 작성자라 이 조건을 보지 않는다.
 
-**삭제한 게시물의 해시태그 연결은 물리 삭제한다.** 삭제된 글이 태그 사용 수와 태그 필터
-피드에 잡히면 안 되기 때문이다. 본문은 그대로 남으므로 복구할 때 본문에서 다시 뽑아
-연결한다. `POST /posts/{postId}/restore` 가 함께 처리한다.
+**삭제한 게시물의 카테고리 연결은 남기고 사용 수만 줄인다.** 삭제된 글이 사용 수와
+카테고리 필터 피드에 잡히면 안 되지만, 연결까지 지우면 사용자가 무엇을 골랐는지 되짚을
+근거가 사라져 복구할 수 없다. 조회는 모두 삭제된 글을 걸러 내므로 목록에는 나오지 않는다.
+복구는 사용 수를 되돌리는 것으로 끝나며 `POST /posts/{postId}/restore` 가 함께 처리한다.
+완전 삭제 때 연결도 함께 지운다.
 
 ### C-2. 게시물 작성
 
@@ -1612,7 +1648,7 @@ Provider 응답의 `distanceMeters`가 누락되거나 0 이하이면 서버는 
 
 | 필드 | 필수 | 설명 |
 | --- | --- | --- |
-| `content` | O | 본문. **최대 2000자.** 해시태그를 본문 안에 함께 적는다 |
+| `content` | O | 본문. **최대 2000자.** 카테고리는 본문이 아니라 `categories` 로 보낸다 |
 | `mediaList` | O | **한 건 이상 열 건 이하.** 사진·영상 기반 서비스라 빈 게시물을 허용하지 않는다 |
 | `mediaList[].url` | O | 최대 2048자 |
 | `mediaList[].thumbnailUrl` | X | 업로드 응답의 `thumbnailUrl` 을 그대로 넣는다. 목록 화면이 쓴다. 생략하면 목록도 원본을 쓴다 |
@@ -1677,7 +1713,7 @@ Provider 응답의 `distanceMeters`가 누락되거나 0 이하이면 서버는 
 | `size` | 1~50, 기본 20 |
 | `feed` | `following`이면 팔로우한 사람의 게시물만. 이때 로그인이 필요하다. 생략하면 전체다 |
 | `placeId` | 이 장소를 태그한 게시물만 |
-| `category` | 이 해시태그가 달린 게시물만. `#`은 빼고 보낸다 |
+| `category` | 이 카테고리가 붙은 게시물만. `GET /categories` 의 이름을 그대로 보낸다 |
 
 `feed`, `placeId`, `category`는 함께 쓸 수 있으며 모두 만족하는 게시물만 반환한다.
 요청자가 차단한 사용자의 게시물은 제외한다.
@@ -1797,17 +1833,19 @@ Provider 응답의 `distanceMeters`가 누락되거나 0 이하이면 서버는 
 변경이 모두 같은 방식이라 별도 파라미터를 두지 않았다. `mediaList`는 빈 배열로 보낼 수 없다.
 사진 없는 게시물을 허용하지 않기 때문이다.
 
-`content`를 보내면 해시태그를 다시 계산한다. 보내지 않으면 기존 태그를 그대로 둔다.
+카테고리는 본문과 무관하다. `categories` 를 보낸 경우에만 교체하며, `content` 만 고치면
+고른 카테고리는 그대로 남는다.
 
-**교체로 빠진 사진의 실제 파일은 그 자리에서 지우지 않는다.** 하루 뒤 정리가 가져간다.
-`C-17`에 적었다.
+**교체로 빠진 사진의 실제 파일은 저장소에서도 지운다.** 수정이 끝난 뒤에 지우므로 삭제가
+실패해도 수정은 그대로 성공한다. 다만 삭제를 기다렸다 응답하므로, 사진을 여러 장 빼면 그만큼
+응답이 늦다. 같은 `url` 을 다시 보낸 사진은 남긴다. `C-17`에 적었다.
 
 `DELETE /api/v1/posts/{postId}` — `204 No Content`
 
 바로 지우지 않고 삭제 표시만 남긴다. **30일 안에는 되돌릴 수 있고, 그 뒤에는 실제로 지워진다.**
 
 정리는 매일 04:30(KST) 스케줄러가 한다. 게시물과 함께 미디어, 장소 태그, 댓글, 댓글 좋아요,
-좋아요, 저장, 해시태그 연결을 지우고 해시태그 사용 수도 되돌린다. 한 번에 100건씩 지우며
+좋아요, 저장, 카테고리 연결을 지우고 카테고리 사용 수도 되돌린다. 한 번에 100건씩 지우며
 남은 분량이 없을 때까지 이어서 처리한다.
 
 기간과 실행 여부는 `app.community.post-purge`로 바꾼다. **배포 환경에 
@@ -1825,8 +1863,8 @@ Provider 응답의 `distanceMeters`가 누락되거나 0 이하이면 서버는 
 
 **복구** — `POST /api/v1/posts/{postId}/restore`
 
-응답은 게시물 상세와 같다. 삭제할 때 해시태그 연결을 실제로 지우므로, 복구할 때 본문에서
-다시 뽑아 연결한다. 그러지 않으면 되살린 글이 태그 필터 피드에서 영영 빠진다.
+응답은 게시물 상세와 같다. 삭제할 때 카테고리 연결은 남기고 사용 수만 줄이므로, 복구는
+사용 수를 되돌리는 것으로 끝난다. 고른 카테고리가 그대로 살아난다.
 
 | 상황 | 응답 |
 | --- | --- |
@@ -2091,7 +2129,7 @@ GET /api/v1/posts/popular?category=맛집      인기순
 | 요청 | 본문 | 설명 |
 | --- | --- | --- |
 | `PATCH /users/me/nickname` | `{ "nickname": "감자" }` | 최대 10자. 중복이면 `409` |
-| `PATCH /users/me/profile-image` | `{ "profileImageUrl": "https://..." }` | 이미 업로드된 URL |
+| `PATCH /users/me/profile-image` | `{ "profileImageUrl": "https://..." }` | 이미 업로드된 URL. 최대 2048자 |
 | `DELETE /users/me/profile-image` | — | 사진 제거 |
 
 사진 변경과 제거를 나눈 이유는, 한 요청으로는 "사진을 지운다"와 "사진은 그대로 두고 다른 값만
@@ -2256,7 +2294,7 @@ GET /api/v1/posts/popular?category=맛집      인기순
 
 | 조건 | 이유 |
 | --- | --- |
-| 장소를 하나만 태그한 게시물만 센다 | 해시태그는 장소가 아니라 글에 붙는다. "해운대 갔다가 국밥집" 처럼 여러 곳을 태그한 글은 태그가 어디를 가리키는지 알 수 없다 |
+| 장소를 하나만 태그한 게시물만 센다 | 카테고리는 장소가 아니라 글에 붙는다. "해운대 갔다가 국밥집" 처럼 여러 곳을 태그한 글은 태그가 어디를 가리키는지 알 수 없다 |
 | 서로 다른 사람 3명 이상 | 한 사람이 여러 번 태그해도 순위가 오르지 않고, 혼자 잘못 붙인 태그는 목록에 뜨지 않는다 |
 
 **3명은 신뢰할 만한 기준이 아니라 데이터가 없어서 낮춰 둔 값이다.** 한 장소에 열 명이 같은
@@ -2583,6 +2621,10 @@ KB~수 MB 라, 스무 건을 한 번에 부르는 목록이 원본을 쓰면 첫
 
 우리 버킷 주소가 아닌 `url` 은 건드리지 않는다. 업로드 API 가 생기기 전에 만든 게시물에는
 외부 주소가 들어 있다.
+
+**게시물 수정으로 빠진 파일은 그 자리에서 지운다.** 사진을 교체하면 더는 쓰이지 않는 파일을
+바로 없앤다. 아래 고아 파일 정리는 한 번도 게시물에 붙은 적 없는 파일만 보므로, 붙었다 빠진
+파일은 여기서 지우지 않으면 영영 남는다.
 
 **올려놓고 게시물을 만들지 않은 파일도 지운다.** 사진을 골랐다가 바꾸거나 작성을 그만두면
 파일만 저장소에 남는다. 매일 새벽 저장소를 훑어 게시물에 붙지 않은 것을 지우며, **올라온 지
