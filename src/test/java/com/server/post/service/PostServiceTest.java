@@ -227,6 +227,26 @@ class PostServiceTest {
     }
 
     @Test
+    @DisplayName("교체로 빠진 사진만 저장소에서 지우고 그대로 남긴 사진은 두다")
+    void updateRemovesOnlyDroppedFiles() {
+        givenPostWrittenBy(AUTHOR_ID);
+        when(postMediaRepository.findByPostId(POST_ID)).thenReturn(List.of());
+        when(postPlaceTagRepository.findViewsByPostId(POST_ID)).thenReturn(List.of());
+        when(postMediaRepository.findUrlsByPostIdIn(List.of(POST_ID)))
+                .thenReturn(List.of("https://e.com/a.jpg", "https://e.com/b.jpg"));
+        // a 는 그대로 두고 b 를 빼면서 c 를 새로 붙인다.
+        List<PostCreateRequest.Media> media = List.of(
+                new PostCreateRequest.Media("https://e.com/a.jpg", MediaType.IMAGE, 0, null),
+                new PostCreateRequest.Media("https://e.com/c.jpg", MediaType.IMAGE, 1, null));
+
+        PostService.UpdateResult result =
+                postService.update(POST_ID, AUTHOR_ID, new PostUpdateRequest(null, media, null));
+
+        // 삭제는 트랜잭션 밖에서 하므로 여기서는 지울 주소만 돌려준다.
+        assertThat(result.removedMediaUrls()).containsExactly("https://e.com/b.jpg");
+    }
+
+    @Test
     @DisplayName("바꿀 항목을 하나도 보내지 않으면 거절한다")
     void updateRejectsEmptyRequest() {
         assertThatThrownBy(() ->
