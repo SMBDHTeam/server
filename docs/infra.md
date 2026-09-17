@@ -69,7 +69,7 @@ TOUR_API_MAX_REQUESTS_PER_DAY=900 \
 
 장소 적재는 매일 전체 상세정보를 다시 저장하지 않는다. 먼저 `areaBasedList2`의 `modifiedtime`과 기본정보를 확인하고 신규·변경·재시도 시각이 도래한 실패 장소만 `detailCommon2`, `detailIntro2`, `detailImage2`로 보강한다. 변경 없는 장소는 `last_seen_at`만 갱신한다. 상세 동기화 실패는 1일, 2일, 4일, 최대 7일 간격으로 재시도한다. 날짜별 요청 사용량은 DB에 원자적으로 예약하므로 같은 날 재시작하거나 작업이 재실행되어도 설정된 한도를 넘지 않는다.
 
-개발 서버는 시작 시 적재인 `TOUR_API_PLACE_INGESTION_ENABLED`를 끄고, `TOUR_API_INGESTION_SCHEDULER_ENABLED=true`로 매일 04:00 KST 증분 동기화만 실행한다. 시작 시 적재를 켜면 배포할 때마다 일일 예산을 사용할 수 있으므로 개발 배포에서는 사용하지 않는다.
+개발 서버는 시작 시 적재인 `TOUR_API_PLACE_INGESTION_ENABLED`를 끄고, `TOUR_API_INGESTION_SCHEDULER_ENABLED=true`로 매일 04:40 KST 증분 동기화만 실행한다. 공사가 국문 관광정보를 04:30 에 동기화하므로 그 이후에 받는다. 시작 시 적재를 켜면 배포할 때마다 일일 예산을 사용할 수 있으므로 개발 배포에서는 사용하지 않는다.
 
 ## TourAPI 공급자 계약
 

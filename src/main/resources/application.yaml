@@ -86,7 +86,10 @@ app:
       enrichment-enabled: ${TOUR_API_ENRICHMENT_ENABLED:true}
       scheduler:
         enabled: ${TOUR_API_INGESTION_SCHEDULER_ENABLED:false}
-        cron: "${TOUR_API_INGESTION_CRON:0 0 4 * * *}"
+        # 공사는 국문 관광정보를 매일 04:30 에 동기화한다. 그 전에 받으면 하루 지난
+        # 수정분을 가져오므로 이후 시각인 04:40 에 돈다. 다른 서비스(고캠핑·두루누비 등)를
+        # 쓰게 되면 그쪽 동기화 시각인 07:30 이후로 옮겨야 한다.
+        cron: "${TOUR_API_INGESTION_CRON:0 40 4 * * *}"
     #---------------
   community:
     # 해시태그가 가리키는 장소를 집계할 때 필요한 최소 인원.

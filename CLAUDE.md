@@ -198,7 +198,7 @@ V2 제품 계약: `docs/schedule-generation-v2-spec.md`
 
 | Provider | 쓰는 곳 | 주의 |
 | --- | --- | --- |
-| TourAPI | **Spring** 장소 증분 적재 | 일일 예산 900회. 개발 서버는 매일 04:00 KST |
+| TourAPI | **Spring** 장소 증분 적재 | 일일 예산 900회. 개발 서버는 매일 04:40 KST (공사 동기화 04:30 이후) |
 | Kakao Local | **Spring** 위치 검색, 외부 장소, 주변 편의시설 | 선택한 외부 장소만 내부 DB에 resolve |
 | ODsay | **FastAPI** 대중교통 경로 | Spring에는 더 이상 클라이언트가 없다 |
 | TMAP | **FastAPI** 보행 경로 | 〃 |
