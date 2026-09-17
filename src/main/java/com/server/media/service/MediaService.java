@@ -7,12 +7,15 @@ import com.server.media.config.MediaProperties;
 import com.server.media.domain.MediaFormat;
 import com.server.media.dto.MediaUploadListResponse;
 import com.server.media.dto.MediaUploadResponse;
+import com.server.post.domain.MediaType;
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -30,10 +33,16 @@ public class MediaService {
 
     private final ObjectProvider<MediaStorage> storageProvider;
     private final MediaProperties properties;
+    private final ThumbnailGenerator thumbnailGenerator;
 
-    public MediaService(ObjectProvider<MediaStorage> storageProvider, MediaProperties properties) {
+    public MediaService(
+            ObjectProvider<MediaStorage> storageProvider,
+            MediaProperties properties,
+            ThumbnailGenerator thumbnailGenerator
+    ) {
         this.storageProvider = storageProvider;
         this.properties = properties;
+        this.thumbnailGenerator = thumbnailGenerator;
     }
 
     /**
@@ -50,9 +59,10 @@ public class MediaService {
         for (int index = 0; index < files.size(); index++) {
             MultipartFile file = files.get(index);
             MediaFormat format = formats.get(index);
+            String key = key(format);
             try (InputStream content = file.getInputStream()) {
-                String url = storage.upload(key(format), format.getContentType(), content, file.getSize());
-                uploaded.add(new MediaUploadResponse(url, format.getMediaType()));
+                String url = storage.upload(key, format.getContentType(), content, file.getSize());
+                uploaded.add(new MediaUploadResponse(url, thumbnailUrl(storage, key, format, file), format.getMediaType()));
             } catch (IOException exception) {
                 throw new BusinessException(ErrorCode.INVALID_MEDIA_FILE, exception);
             }
@@ -60,6 +70,41 @@ public class MediaService {
         // 버킷에 남은 파일을 올린 사람과 잇는 유일한 단서다. 게시물에 붙지 않은 파일도 생긴다.
         log.info("미디어 업로드 완료 userId={} count={}", userId, uploaded.size());
         return new MediaUploadListResponse(List.copyOf(uploaded));
+    }
+
+    /**
+     * 목록용 축소본을 올린다. 키는 원본 옆에 {@code _thumb.jpg} 로 둔다. 원본에서 규칙으로
+     * 얻을 수 있어야 나중에 원본을 지울 때 사본도 같이 지울 수 있다.
+     *
+     * <p><b>실패해도 업로드를 되돌리지 않는다.</b> 축소본이 없으면 화면이 원본을 쓸 뿐이다.
+     * 사진을 다 올려놓고 사본 하나 때문에 전부 실패로 돌리는 편이 사용자에게 더 나쁘다.
+     *
+     * @return 올린 사본 URL, 만들지 못했으면 {@code null}
+     */
+    private String thumbnailUrl(MediaStorage storage, String key, MediaFormat format, MultipartFile file) {
+        if (format.getMediaType() != MediaType.IMAGE) {
+            return null;
+        }
+        try {
+            Optional<byte[]> thumbnail = thumbnailGenerator.generate(file.getBytes());
+            if (thumbnail.isEmpty()) {
+                return null;
+            }
+            byte[] bytes = thumbnail.get();
+            return storage.upload(
+                    thumbnailKey(key), ThumbnailGenerator.CONTENT_TYPE,
+                    new ByteArrayInputStream(bytes), bytes.length);
+        } catch (IOException | RuntimeException exception) {
+            log.warn("축소본을 올리지 못했다. 원본만 쓴다. key={}", key, exception);
+            return null;
+        }
+    }
+
+    /** {@code posts/2026/09/uuid.png} 에서 {@code posts/2026/09/uuid_thumb.jpg} 를 만든다. */
+    public static String thumbnailKey(String key) {
+        int dot = key.lastIndexOf('.');
+        String base = dot < 0 ? key : key.substring(0, dot);
+        return "%s_thumb.%s".formatted(base, ThumbnailGenerator.EXTENSION);
     }
 
     /** 업로드가 꺼진 환경에서도 서버는 떠야 한다. 나머지 위임 계층과 같이 503 으로 알린다. */

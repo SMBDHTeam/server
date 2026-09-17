@@ -41,6 +41,11 @@ public record PostCreateRequest(
                     example = "https://example.com/media/gwangalli-night.jpg")
             @NotBlank @Size(max = MAX_URL_LENGTH) String url,
 
+            @Schema(description = "업로드가 함께 돌려준 목록용 축소본 URL. 업로드 응답의 "
+                    + "thumbnailUrl 을 그대로 넣는다. 없으면 생략한다.",
+                    example = "https://example.com/media/gwangalli-night_thumb.jpg")
+            @Size(max = MAX_URL_LENGTH) String thumbnailUrl,
+
             @Schema(description = "미디어 종류", example = "IMAGE")
             @NotNull MediaType mediaType,
 

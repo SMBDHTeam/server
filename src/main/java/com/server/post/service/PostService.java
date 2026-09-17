@@ -384,7 +384,8 @@ public class PostService {
             return List.of();
         }
         List<PostMedia> saved = postMediaRepository.saveAll(requests.stream()
-                .map(media -> new PostMedia(post, media.mediaType(), media.url(), media.sortOrder()))
+                .map(media -> new PostMedia(
+                        post, media.mediaType(), media.url(), media.thumbnailUrl(), media.sortOrder()))
                 .toList());
         savePlaceTags(post, requests, saved);
         return saved;

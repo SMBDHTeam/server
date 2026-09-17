@@ -56,6 +56,9 @@ public record PostDetailResponse(
     public record Media(
             @Schema(example = "3") Long id,
             @Schema(example = "https://example.com/media/gwangalli-night.jpg") String url,
+            @Schema(description = "목록용 축소본. 없으면 null 이고 이때는 url 을 쓴다.",
+                    example = "https://example.com/media/gwangalli-night_thumb.jpg")
+            String thumbnailUrl,
             @Schema(example = "IMAGE") MediaType mediaType,
             @Schema(example = "0") int sortOrder,
             @Schema(description = "이 사진에서 다녀온 장소. 붙이지 않았으면 null 이다.",
@@ -119,6 +122,7 @@ public record PostDetailResponse(
                             return new Media(
                                     media.getId(),
                                     media.getUrl(),
+                                    media.getThumbnailUrl(),
                                     media.getMediaType(),
                                     media.getSortOrder(),
                                     tag == null ? null : tag.placeId(),

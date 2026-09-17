@@ -2,6 +2,16 @@
 
 API 계약이 변경될 때마다 최신 항목을 위에 추가한다.
 
+## 2026-09-16 (목록용 축소본 추가)
+
+- API: `POST /api/v1/media`, `POST /api/v1/posts`, `PATCH /api/v1/posts/{postId}`, `GET /api/v1/posts/{postId}`
+- 구분: 추가 (응답·요청 필드)
+- 이전: 목록의 `thumbnailUrl` 이 첫 사진의 **원본** 주소였다. 휴대폰 사진이 장당 0.7MB 라 피드 첫 화면에서 10MB 가까이 내려받았다.
+- 이후: 업로드가 긴 변 480px JPEG 사본을 함께 만들어 `thumbnailUrl` 로 주고, 게시물 작성·수정이 그 값을 받아 저장한다. 목록 응답은 저장된 사본을 쓰고, 없으면 원본으로 돌아간다. 게시물 상세의 `mediaList[]` 에도 `thumbnailUrl` 이 함께 나간다.
+- 이유: 목록에 실제로 그려지는 크기는 한 변 200px 안팎이라 원본 화질이 필요 없다.
+- 호환성 파괴: 없음. 요청 필드는 선택이고, 예전 사진은 원본으로 돌아간다.
+- DB/ERD: `post_media.thumbnail_url` 추가 (V22)
+
 ## 2026-09-16 (즉흥여행 코스 실패 안내 구체화)
 
 - API: `POST /api/v1/spontaneous-trips/course`

@@ -48,9 +48,10 @@ public record PostSummaryResponse(
             boolean liked,
             boolean bookmarked
     ) {
+        // 목록은 축소본을 쓴다. 없는 사진은 원본으로 돌아간다.
         String thumbnailUrl = mediaList.stream()
                 .min(Comparator.comparingInt(PostMedia::getSortOrder))
-                .map(PostMedia::getUrl)
+                .map(PostMedia::getListImageUrl)
                 .orElse(null);
         String placeName = placeTags.stream()
                 .findFirst()

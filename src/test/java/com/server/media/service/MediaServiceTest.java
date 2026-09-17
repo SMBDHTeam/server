@@ -38,7 +38,7 @@ class MediaServiceTest {
     @BeforeEach
     void setUp() {
         storage = new RecordingStorage();
-        mediaService = new MediaService(providerOf(storage), properties());
+        mediaService = new MediaService(providerOf(storage), properties(), new ThumbnailGenerator());
     }
 
     @Test
@@ -171,7 +171,7 @@ class MediaServiceTest {
     @Test
     @DisplayName("업로드가 꺼져 있으면 503 으로 알린다")
     void storageDisabled() {
-        MediaService disabled = new MediaService(providerOf(null), properties());
+        MediaService disabled = new MediaService(providerOf(null), properties(), new ThumbnailGenerator());
 
         assertThatThrownBy(() -> disabled.upload(USER_ID, List.of(jpeg("photo.jpg"))))
                 .isInstanceOf(BusinessException.class)

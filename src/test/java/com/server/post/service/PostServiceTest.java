@@ -214,7 +214,7 @@ class PostServiceTest {
         when(postMediaRepository.findByPostId(POST_ID)).thenReturn(List.of());
         when(postPlaceTagRepository.findViewsByPostId(POST_ID)).thenReturn(List.of());
         List<PostCreateRequest.Media> media = List.of(
-                new PostCreateRequest.Media("https://e.com/b.jpg", MediaType.IMAGE, 0, null));
+                new PostCreateRequest.Media("https://e.com/b.jpg", null, MediaType.IMAGE, 0, null));
 
         postService.update(POST_ID, AUTHOR_ID, new PostUpdateRequest(null, media, null));
 
@@ -370,8 +370,8 @@ class PostServiceTest {
         postService.create(authorId, new PostCreateRequest(
                 "두 곳을 다녀왔다",
                 List.of(
-                        new PostCreateRequest.Media("first.jpg", MediaType.IMAGE, 0, 42L),
-                        new PostCreateRequest.Media("second.jpg", MediaType.IMAGE, 1, 77L)),
+                        new PostCreateRequest.Media("first.jpg", null, MediaType.IMAGE, 0, 42L),
+                        new PostCreateRequest.Media("second.jpg", null, MediaType.IMAGE, 1, 77L)),
                 List.of()));
 
         // 저장된 사진에 붙어야 한다. 새로 만든 PostMedia 를 붙이면 ID 가 없어 외래키에 걸린다.
@@ -407,8 +407,8 @@ class PostServiceTest {
         postService.create(authorId, new PostCreateRequest(
                 "한 장만 장소를 붙였다",
                 List.of(
-                        new PostCreateRequest.Media("first.jpg", MediaType.IMAGE, 0, null),
-                        new PostCreateRequest.Media("second.jpg", MediaType.IMAGE, 1, 77L)),
+                        new PostCreateRequest.Media("first.jpg", null, MediaType.IMAGE, 0, null),
+                        new PostCreateRequest.Media("second.jpg", null, MediaType.IMAGE, 1, 77L)),
                 List.of()));
 
         ArgumentCaptor<List<PostPlaceTag>> tags = ArgumentCaptor.forClass(List.class);

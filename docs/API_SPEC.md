@@ -1603,8 +1603,8 @@ Provider 응답의 `distanceMeters`가 누락되거나 0 이하이면 서버는 
 {
   "content": "광안리 야경 보러 갔는데 날씨가 좋았어요 #야경 #맛집",
   "mediaList": [
-    { "url": "https://example.com/media/1.jpg", "mediaType": "IMAGE", "sortOrder": 0 },
-    { "url": "https://example.com/media/2.jpg", "mediaType": "IMAGE", "sortOrder": 1 }
+    { "url": "https://example.com/media/1.jpg", "thumbnailUrl": "https://example.com/media/1_thumb.jpg", "mediaType": "IMAGE", "sortOrder": 0 },
+    { "url": "https://example.com/media/2.jpg", "thumbnailUrl": "https://example.com/media/2_thumb.jpg", "mediaType": "IMAGE", "sortOrder": 1 }
   ],
   "categories": ["야경", "맛집"]
 }
@@ -1615,6 +1615,7 @@ Provider 응답의 `distanceMeters`가 누락되거나 0 이하이면 서버는 
 | `content` | O | 본문. **최대 2000자.** 해시태그를 본문 안에 함께 적는다 |
 | `mediaList` | O | **한 건 이상 열 건 이하.** 사진·영상 기반 서비스라 빈 게시물을 허용하지 않는다 |
 | `mediaList[].url` | O | 최대 2048자 |
+| `mediaList[].thumbnailUrl` | X | 업로드 응답의 `thumbnailUrl` 을 그대로 넣는다. 목록 화면이 쓴다. 생략하면 목록도 원본을 쓴다 |
 | `mediaList[].mediaType` | O | `IMAGE`, `VIDEO` 둘 중 하나. 다른 값은 `MALFORMED_REQUEST` |
 | `mediaList[].sortOrder` | O | 표시 순서. 0 이상 |
 | `mediaList[].placeId` | X | 이 사진에서 다녀온 장소. 붙이지 않으려면 생략한다 |
@@ -1629,6 +1630,9 @@ Provider 응답의 `distanceMeters`가 누락되거나 0 이하이면 서버는 
 본문 상한을 두는 이유는 `content` 컬럼이 `text`라 DB가 길이를 막지 않기 때문이다. 상한이
 없으면 수 MB 본문이 저장되고 그 글이 실린 피드 응답이 전부 부풀어 오른다. 화면에서 긴 본문을
 접는 처리는 클라이언트가 한다. 서버는 항상 본문 전체를 보낸다.
+
+**`thumbnailUrl` 도 업로드 응답의 값을 그대로 넘긴다.** 서버가 다시 만들지 않는다. 업로드
+때 이미 만들어 두었고, 원본에서 규칙으로 유추하면 사본이 없는 사진에서 깨진 이미지가 된다.
 
 **`url` 은 `POST /api/v1/media` 가 돌려준 값을 그대로 넣는다.** 업로드와 게시물 작성은
 호출이 나뉘어 있다. 사용자가 사진을 고른 직후 올려 두면, 글을 쓰는 동안 업로드가 끝나 있어
@@ -2521,8 +2525,8 @@ iOS 는 홈 화면 추가가 전제다. 알림이 몇십 초 늦게 뜨는 것�
 
 `POST /api/v1/media`
 
-게시물을 만들기 전에 파일을 먼저 올린다. 응답의 `url` 과 `mediaType` 을 `C-2` 의
-`mediaList` 에 그대로 넣는다.
+게시물을 만들기 전에 파일을 먼저 올린다. 응답의 `url`, `thumbnailUrl`, `mediaType` 을
+`C-2` 의 `mediaList` 에 그대로 넣는다.
 
 ```
 Content-Type: multipart/form-data
@@ -2544,6 +2548,7 @@ files: (파일)
   "mediaList": [
     {
       "url": "https://smbdh-community-media-372641920957-ap-northeast-2-an.s3.ap-northeast-2.amazonaws.com/posts/2026/08/9f2c....jpg",
+      "thumbnailUrl": "https://smbdh-community-media-372641920957-ap-northeast-2-an.s3.ap-northeast-2.amazonaws.com/posts/2026/08/9f2c..._thumb.jpg",
       "mediaType": "IMAGE"
     }
   ]
@@ -2553,6 +2558,14 @@ files: (파일)
 응답의 `mediaList` 는 **보낸 순서 그대로**다. 클라이언트가 정렬을 다시 맞출 필요가 없고,
 `sortOrder` 는 이 순서를 그대로 쓰면 된다.
 
+**목록용 축소본을 함께 만든다.** 사진은 긴 변 480px JPEG 사본을 원본 옆에
+`..._thumb.jpg` 로 올리고 그 주소를 `thumbnailUrl` 로 준다. 휴대폰 사진 한 장이 수백
+KB~수 MB 라, 스무 건을 한 번에 부르는 목록이 원본을 쓰면 첫 화면에서만 10MB 가까이 내려간다.
+
+`thumbnailUrl` 이 `null` 인 경우는 세 가지다. 영상, ImageIO 가 읽지 못하는 `webp`,
+그리고 이미 480px 보다 작은 사진이다. **오류가 아니다.** 이때 화면은 원본을 쓴다.
+축소에 실패해도 업로드는 성공한다. 사본 하나 때문에 올린 사진을 전부 되돌리지 않는다.
+
 **하나라도 규칙에 어긋나면 아무것도 올라가지 않는다.** 절반만 성공하면 클라이언트가 어디까지
 됐는지 알 수 없고, 쓰이지 않는 파일이 저장소에 남는다.
 
@@ -2561,6 +2574,9 @@ files: (파일)
 
 **올린 파일 이름은 쓰지 않는다.** 저장 경로는 `posts/연도/월/임의값.확장자` 다. 같은 이름이
 서로를 덮어쓰는 것과, 한글·공백이 섞인 이름으로 URL 이 깨지는 것을 막는다.
+
+**축소본은 원본과 함께 지워진다.** 게시물이 완전히 지워질 때도, 글에 붙지 않은 파일을
+정리할 때도 두 객체를 같이 다룬다.
 
 **지운 게시물의 파일은 30일 뒤 함께 사라진다.** 삭제한 게시물이 복구 기한을 넘겨 완전히
 지워질 때 저장소의 파일도 지운다. 그전까지는 복구할 수 있어야 하므로 남겨 둔다.
