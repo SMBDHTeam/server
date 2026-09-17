@@ -7,6 +7,7 @@ import com.server.common.error.BusinessException;
 import com.server.common.error.ErrorCode;
 import com.server.common.error.FieldViolation;
 import com.server.hashtag.service.HashtagService;
+import com.server.media.service.MediaFileRemover;
 import com.server.notification.domain.NotificationTargetType;
 import com.server.notification.domain.NotificationType;
 import com.server.notification.service.NotificationService;
@@ -29,7 +30,9 @@ import com.server.user.service.ActiveUserReader;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.HashSet;
 import java.util.Objects;
+import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import org.springframework.beans.factory.annotation.Value;
@@ -54,6 +57,7 @@ public class PostService {
     private final PostSummaryAssembler postSummaryAssembler;
     private final HashtagService hashtagService;
     private final NotificationService notificationService;
+    private final MediaFileRemover mediaFileRemover;
     /**
      * 삭제한 게시물을 되돌릴 수 있는 기간. 정리 스케줄러의 보관 기간과 같은 값을 써야
      * 한다. 복구 기한이 보관 기간보다 길면 아직 되돌릴 수 있는 글이 먼저 지워진다.
@@ -71,6 +75,7 @@ public class PostService {
             PostSummaryAssembler postSummaryAssembler,
             HashtagService hashtagService,
             NotificationService notificationService,
+            MediaFileRemover mediaFileRemover,
             @Value("${app.community.post-purge.retention-days}") int restoreWindowDays
     ) {
         this.postRepository = postRepository;
@@ -83,6 +88,7 @@ public class PostService {
         this.postSummaryAssembler = postSummaryAssembler;
         this.hashtagService = hashtagService;
         this.notificationService = notificationService;
+        this.mediaFileRemover = mediaFileRemover;
         this.restoreWindowDays = restoreWindowDays;
     }
 
@@ -222,8 +228,9 @@ public class PostService {
      * 보낸 항목만 바꾼다. 배열을 보내면 통째로 교체하므로, 사진 한 장을 빼려면 남길
      * 사진들을 보낸다.
      *
-     * <p>교체로 빠진 사진의 실제 파일은 지우지 않는다. 저장소가 아직 정해지지 않아 지울
-     * 수단이 없다. 저장소를 붙일 때 남은 파일을 정리하는 작업이 함께 필요하다.
+     * <p>교체로 빠진 사진의 파일은 저장소에서도 지운다. 남겨 두면 아무 게시물도 가리키지
+     * 않는 파일이 계속 쌓이는데, 고아 파일 정리는 올려놓고 글을 쓰지 않은 파일만 보므로
+     * 한 번 붙었다 빠진 파일은 영영 남는다. 삭제는 커밋된 뒤에 한다.
      */
     @Transactional
     public PostDetailResponse update(Long postId, Long userId, PostUpdateRequest request) {
@@ -246,10 +253,13 @@ public class PostService {
                 : hashtagService.reattach(post, request.categories());
 
         if (request.mediaList() != null) {
+            // 교체로 빠지는 사진을 알아내려면 지우기 전에 읽어야 한다.
+            List<String> removedUrls = removedMediaUrls(postId, request.mediaList());
             // 장소는 사진에 붙으므로 사진을 지우기 전에 함께 지운다.
             postPlaceTagRepository.deleteByPostId(postId);
             postMediaRepository.deleteByPostId(postId);
             saveMedia(post, request.mediaList());
+            mediaFileRemover.removeAfterCommit(removedUrls);
         }
 
         List<Long> postIds = List.of(postId);
@@ -302,8 +312,9 @@ public class PostService {
     }
 
     /**
-     * 삭제를 되돌린다. 삭제할 때 해시태그 연결을 실제로 지웠으므로 본문에서 다시 뽑아
-     * 연결한다. 그러지 않으면 복구한 글이 태그 필터 피드에서 영영 빠진다.
+     * 삭제를 되돌린다. 삭제할 때 카테고리 연결은 남겨 두고 사용 수만 줄였으므로, 복구는
+     * 사용 수를 되돌리는 것으로 끝난다. 연결까지 지우면 복구한 글이 카테고리 필터 피드에서
+     * 영영 빠진다.
      */
     @Transactional
     public PostDetailResponse restore(Long postId, Long userId) {
@@ -332,6 +343,22 @@ public class PostService {
                 categories,
                 !postSummaryAssembler.likedPostIds(userId, postIds).isEmpty(),
                 !postSummaryAssembler.bookmarkedPostIds(userId, postIds).isEmpty());
+    }
+
+    /**
+     * 교체 뒤에 더는 쓰이지 않는 사진 주소. 같은 주소를 그대로 다시 보낸 사진은 제외한다.
+     * 순서만 바꾼 수정에서 파일을 지웠다가 다시 올릴 수는 없다.
+     */
+    private List<String> removedMediaUrls(Long postId, List<PostCreateRequest.Media> mediaList) {
+        Set<String> keeping = mediaList.stream()
+                .map(PostCreateRequest.Media::url)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toCollection(HashSet::new));
+        return postMediaRepository.findUrlsByPostIdIn(List.of(postId)).stream()
+                .filter(url -> url != null && !url.isBlank())
+                .filter(url -> !keeping.contains(url))
+                .distinct()
+                .toList();
     }
 
     private Post findWritablePost(Long postId, Long userId) {
@@ -373,6 +400,9 @@ public class PostService {
         if (!postRepository.existsByIdAndDeletedAtIsNull(postId)) {
             throw new BusinessException(ErrorCode.POST_NOT_FOUND);
         }
+        // 누르기와 같은 조건으로 막는다. 지울 행이 없어 결과는 같지만, 한 자원의 두 동작 중
+        // 하나만 탈퇴한 사용자를 통과시키면 나중에 규칙을 바꿀 때 빠진다.
+        activeUserReader.requireExists(userId);
         if (postLikeRepository.deleteByPostIdAndUserId(postId, userId) > 0) {
             postRepository.decreaseLikeCount(postId);
         }

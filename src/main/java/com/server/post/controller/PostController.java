@@ -157,7 +157,7 @@ public class PostController {
     public PostSummaryListResponse getMyDeletedPosts(
             @AuthenticationPrincipal AuthenticatedUser loginUser,
             @Parameter(example = "0") @RequestParam(required = false) Integer page,
-            @Parameter(example = "20") @RequestParam(required = false) Integer size
+            @Parameter(example = "20") @RequestParam(required = false) @Min(1) @Max(50) Integer size
     ) {
         Long userId = LoginUser.require(loginUser);
         return postService.getMyDeletedPosts(userId, page, size);

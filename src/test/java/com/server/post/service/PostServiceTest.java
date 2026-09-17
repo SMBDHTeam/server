@@ -31,6 +31,7 @@ import com.server.post.repository.PostLikeRepository;
 import com.server.post.repository.PostMediaRepository;
 import com.server.post.repository.PostPlaceTagRepository;
 import com.server.post.repository.PostRepository;
+import com.server.media.service.MediaFileRemover;
 import com.server.user.domain.User;
 import com.server.user.service.ActiveUserReader;
 import java.time.LocalDateTime;
@@ -66,6 +67,7 @@ class PostServiceTest {
     private final HashtagService hashtagService = Mockito.mock(HashtagService.class);
     private final NotificationService notificationService =
             Mockito.mock(NotificationService.class);
+    private final MediaFileRemover mediaFileRemover = Mockito.mock(MediaFileRemover.class);
 
     private final PostService postService = new PostService(
             postRepository,
@@ -78,6 +80,7 @@ class PostServiceTest {
             postSummaryAssembler,
             hashtagService,
             notificationService,
+            mediaFileRemover,
             RESTORE_WINDOW_DAYS);
 
     @Test
@@ -224,6 +227,24 @@ class PostServiceTest {
         verify(postMediaRepository).saveAll(any());
         // 카테고리를 안 보냈으므로 기존 연결을 건드리지 않는다.
         verify(hashtagService, never()).reattach(eq(post), any());
+    }
+
+    @Test
+    @DisplayName("교체로 빠진 사진만 저장소에서 지우고 그대로 남긴 사진은 두다")
+    void updateRemovesOnlyDroppedFiles() {
+        givenPostWrittenBy(AUTHOR_ID);
+        when(postMediaRepository.findByPostId(POST_ID)).thenReturn(List.of());
+        when(postPlaceTagRepository.findViewsByPostId(POST_ID)).thenReturn(List.of());
+        when(postMediaRepository.findUrlsByPostIdIn(List.of(POST_ID)))
+                .thenReturn(List.of("https://e.com/a.jpg", "https://e.com/b.jpg"));
+        // a 는 그대로 두고 b 를 빼면서 c 를 새로 붙인다.
+        List<PostCreateRequest.Media> media = List.of(
+                new PostCreateRequest.Media("https://e.com/a.jpg", MediaType.IMAGE, 0, null),
+                new PostCreateRequest.Media("https://e.com/c.jpg", MediaType.IMAGE, 1, null));
+
+        postService.update(POST_ID, AUTHOR_ID, new PostUpdateRequest(null, media, null));
+
+        verify(mediaFileRemover).removeAfterCommit(List.of("https://e.com/b.jpg"));
     }
 
     @Test

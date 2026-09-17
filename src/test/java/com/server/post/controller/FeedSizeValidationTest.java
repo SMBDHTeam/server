@@ -63,6 +63,17 @@ class FeedSizeValidationTest {
                 .andExpect(status().isOk());
     }
 
+    @Test
+    @DisplayName("지운 게시물 목록도 같은 상한을 지킨다")
+    void deletedPostsShareTheSameBound() throws Exception {
+        mockMvc.perform(get("/api/v1/posts/me/deleted").param("size", "1000")
+                        .with(authentication(loggedIn())))
+                .andExpect(status().isBadRequest());
+        mockMvc.perform(get("/api/v1/posts/me/deleted").param("size", "0")
+                        .with(authentication(loggedIn())))
+                .andExpect(status().isBadRequest());
+    }
+
     /** 피드 목록은 로그인해야 열린다. size 검증까지 도달하려면 인증을 통과해야 한다. */
     private static Authentication loggedIn() {
         return new UsernamePasswordAuthenticationToken(
