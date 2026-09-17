@@ -8,6 +8,7 @@ import com.server.post.dto.PostDetailResponse;
 import com.server.post.dto.PostLikeResponse;
 import com.server.post.dto.PostSummaryListResponse;
 import com.server.post.dto.PostUpdateRequest;
+import com.server.post.service.PostEditor;
 import com.server.post.service.PostService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -36,9 +37,11 @@ import org.springframework.web.bind.annotation.RestController;
 public class PostController {
 
     private final PostService postService;
+    private final PostEditor postEditor;
 
-    public PostController(PostService postService) {
+    public PostController(PostService postService, PostEditor postEditor) {
         this.postService = postService;
+        this.postEditor = postEditor;
     }
 
     @PostMapping
@@ -131,7 +134,7 @@ public class PostController {
             @Valid @RequestBody PostUpdateRequest request
     ) {
         Long userId = LoginUser.require(loginUser);
-        return postService.update(postId, userId, request);
+        return postEditor.update(postId, userId, request);
     }
 
     @DeleteMapping("/{postId}")

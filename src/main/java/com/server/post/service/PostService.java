@@ -7,7 +7,6 @@ import com.server.common.error.BusinessException;
 import com.server.common.error.ErrorCode;
 import com.server.common.error.FieldViolation;
 import com.server.hashtag.service.HashtagService;
-import com.server.media.service.MediaFileRemover;
 import com.server.notification.domain.NotificationTargetType;
 import com.server.notification.domain.NotificationType;
 import com.server.notification.service.NotificationService;
@@ -57,7 +56,6 @@ public class PostService {
     private final PostSummaryAssembler postSummaryAssembler;
     private final HashtagService hashtagService;
     private final NotificationService notificationService;
-    private final MediaFileRemover mediaFileRemover;
     /**
      * 삭제한 게시물을 되돌릴 수 있는 기간. 정리 스케줄러의 보관 기간과 같은 값을 써야
      * 한다. 복구 기한이 보관 기간보다 길면 아직 되돌릴 수 있는 글이 먼저 지워진다.
@@ -75,7 +73,6 @@ public class PostService {
             PostSummaryAssembler postSummaryAssembler,
             HashtagService hashtagService,
             NotificationService notificationService,
-            MediaFileRemover mediaFileRemover,
             @Value("${app.community.post-purge.retention-days}") int restoreWindowDays
     ) {
         this.postRepository = postRepository;
@@ -88,7 +85,6 @@ public class PostService {
         this.postSummaryAssembler = postSummaryAssembler;
         this.hashtagService = hashtagService;
         this.notificationService = notificationService;
-        this.mediaFileRemover = mediaFileRemover;
         this.restoreWindowDays = restoreWindowDays;
     }
 
@@ -228,17 +224,19 @@ public class PostService {
      * 보낸 항목만 바꾼다. 배열을 보내면 통째로 교체하므로, 사진 한 장을 빼려면 남길
      * 사진들을 보낸다.
      *
-     * <p>교체로 빠진 사진의 파일은 저장소에서도 지운다. 남겨 두면 아무 게시물도 가리키지
+     * <p>교체로 빠진 사진의 파일도 저장소에서 지운다. 남겨 두면 아무 게시물도 가리키지
      * 않는 파일이 계속 쌓이는데, 고아 파일 정리는 올려놓고 글을 쓰지 않은 파일만 보므로
-     * 한 번 붙었다 빠진 파일은 영영 남는다. 삭제는 커밋된 뒤에 한다.
+     * 한 번 붙었다 빠진 파일은 영영 남는다. 여기서는 지울 주소만 돌려주고, 실제 삭제는
+     * 트랜잭션이 끝난 뒤 {@code PostEditor} 가 한다.
      */
     @Transactional
-    public PostDetailResponse update(Long postId, Long userId, PostUpdateRequest request) {
+    public UpdateResult update(Long postId, Long userId, PostUpdateRequest request) {
         if (request.isEmpty()) {
             throw new BusinessException(ErrorCode.INVALID_POST_REQUEST, List.of(new FieldViolation(
                     "request", "본문, 사진, 장소 태그 중 하나는 보내야 합니다.")));
         }
         Post post = findWritablePost(postId, userId);
+        List<String> removedUrls = List.of();
 
         if (request.content() != null) {
             if (request.content().isBlank()) {
@@ -254,22 +252,38 @@ public class PostService {
 
         if (request.mediaList() != null) {
             // 교체로 빠지는 사진을 알아내려면 지우기 전에 읽어야 한다.
-            List<String> removedUrls = removedMediaUrls(postId, request.mediaList());
+            removedUrls = removedMediaUrls(postId, request.mediaList());
             // 장소는 사진에 붙으므로 사진을 지우기 전에 함께 지운다.
             postPlaceTagRepository.deleteByPostId(postId);
             postMediaRepository.deleteByPostId(postId);
             saveMedia(post, request.mediaList());
-            mediaFileRemover.removeAfterCommit(removedUrls);
         }
 
         List<Long> postIds = List.of(postId);
-        return PostDetailResponse.from(
-                post,
-                postMediaRepository.findByPostId(postId),
-                postPlaceTagRepository.findViewsByPostId(postId),
-                categories,
-                !postSummaryAssembler.likedPostIds(userId, postIds).isEmpty(),
-                !postSummaryAssembler.bookmarkedPostIds(userId, postIds).isEmpty());
+        return new UpdateResult(
+                PostDetailResponse.from(
+                        post,
+                        postMediaRepository.findByPostId(postId),
+                        postPlaceTagRepository.findViewsByPostId(postId),
+                        categories,
+                        !postSummaryAssembler.likedPostIds(userId, postIds).isEmpty(),
+                        !postSummaryAssembler.bookmarkedPostIds(userId, postIds).isEmpty()),
+                removedUrls);
+    }
+
+    /**
+     * 수정 결과. 저장소에서 지울 파일 주소를 함께 돌려준다.
+     *
+     * <p>파일 삭제를 이 트랜잭션 안에서 하면 저장소를 기다리는 동안 DB 커넥션을 쥐고 있게
+     * 된다. 지울 주소만 넘기고 실제 삭제는 트랜잭션이 끝난 뒤 {@code PostEditor} 가 한다.
+     *
+     * @param removedMediaUrls 교체로 빠져 더는 쓰이지 않는 사진 주소. 없으면 빈 목록이다
+     */
+    public record UpdateResult(PostDetailResponse response, List<String> removedMediaUrls) {
+
+        public UpdateResult {
+            removedMediaUrls = removedMediaUrls == null ? List.of() : List.copyOf(removedMediaUrls);
+        }
     }
 
     /**
