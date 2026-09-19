@@ -131,12 +131,31 @@ class OrphanMediaCleanupServiceTest {
         assertThat(storage.deleted).hasSize(5).doesNotContain(used);
     }
 
+    @Test
+    @DisplayName("게시물에 붙은 축소본은 지우지 않는다")
+    void keepsThumbnailOfUsedMedia() {
+        // 축소본은 원본과 별개의 객체라 저장소 목록에 따로 잡힌다. 원본 주소만 맞대 보면
+        // 쓰이고 있는 축소본을 고아로 보고 지워, 목록의 사진이 전부 깨진다.
+        String original = BASE + "used.jpg";
+        String thumbnail = BASE + "used_thumb.jpg";
+        givenPostWithMedia(original, thumbnail);
+        storage.put(original, daysAgo(3));
+        storage.put(thumbnail, daysAgo(3));
+
+        assertThat(cleanupService.deleteOrphans(storage, MIN_AGE)).isZero();
+        assertThat(storage.deleted).isEmpty();
+    }
+
     private void givenPostWithMedia(String url) {
+        givenPostWithMedia(url, null);
+    }
+
+    private void givenPostWithMedia(String url, String thumbnailUrl) {
         User author = new User("작성자", null);
         entityManager.persist(author);
         Post post = new Post(author, "사진 있는 글");
         entityManager.persist(post);
-        postMediaRepository.save(new PostMedia(post, MediaType.IMAGE, url, 0));
+        postMediaRepository.save(new PostMedia(post, MediaType.IMAGE, url, thumbnailUrl, 0));
         entityManager.flush();
     }
 

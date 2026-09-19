@@ -214,7 +214,7 @@ class PostServiceTest {
         when(postMediaRepository.findByPostId(POST_ID)).thenReturn(List.of());
         when(postPlaceTagRepository.findViewsByPostId(POST_ID)).thenReturn(List.of());
         List<PostCreateRequest.Media> media = List.of(
-                new PostCreateRequest.Media("https://e.com/b.jpg", MediaType.IMAGE, 0, null));
+                new PostCreateRequest.Media("https://e.com/b.jpg", null, MediaType.IMAGE, 0, null));
 
         postService.update(POST_ID, AUTHOR_ID, new PostUpdateRequest(null, media, null));
 
@@ -236,14 +236,37 @@ class PostServiceTest {
                 .thenReturn(List.of("https://e.com/a.jpg", "https://e.com/b.jpg"));
         // a 는 그대로 두고 b 를 빼면서 c 를 새로 붙인다.
         List<PostCreateRequest.Media> media = List.of(
-                new PostCreateRequest.Media("https://e.com/a.jpg", MediaType.IMAGE, 0, null),
-                new PostCreateRequest.Media("https://e.com/c.jpg", MediaType.IMAGE, 1, null));
+                new PostCreateRequest.Media("https://e.com/a.jpg", null, MediaType.IMAGE, 0, null),
+                new PostCreateRequest.Media("https://e.com/c.jpg", null, MediaType.IMAGE, 1, null));
 
         PostService.UpdateResult result =
                 postService.update(POST_ID, AUTHOR_ID, new PostUpdateRequest(null, media, null));
 
         // 삭제는 트랜잭션 밖에서 하므로 여기서는 지울 주소만 돌려준다.
         assertThat(result.removedMediaUrls()).containsExactly("https://e.com/b.jpg");
+    }
+
+    @Test
+    @DisplayName("그대로 남긴 사진의 축소본은 지우지 않는다")
+    void updateKeepsThumbnailOfKeptMedia() {
+        givenPostWrittenBy(AUTHOR_ID);
+        when(postMediaRepository.findByPostId(POST_ID)).thenReturn(List.of());
+        when(postPlaceTagRepository.findViewsByPostId(POST_ID)).thenReturn(List.of());
+        // 딸린 파일 주소에는 원본과 축소본이 함께 들어온다.
+        when(postMediaRepository.findUrlsByPostIdIn(List.of(POST_ID)))
+                .thenReturn(List.of(
+                        "https://e.com/a.jpg", "https://e.com/a_thumb.jpg",
+                        "https://e.com/b.jpg", "https://e.com/b_thumb.jpg"));
+        // a 는 축소본까지 그대로 다시 보내고 b 를 뺀다. 요청의 원본 주소만 보면
+        // 그대로 둔 a 의 축소본이 지워져 목록 사진이 깨진다.
+        List<PostCreateRequest.Media> media = List.of(new PostCreateRequest.Media(
+                "https://e.com/a.jpg", "https://e.com/a_thumb.jpg", MediaType.IMAGE, 0, null));
+
+        PostService.UpdateResult result =
+                postService.update(POST_ID, AUTHOR_ID, new PostUpdateRequest(null, media, null));
+
+        assertThat(result.removedMediaUrls())
+                .containsExactlyInAnyOrder("https://e.com/b.jpg", "https://e.com/b_thumb.jpg");
     }
 
     @Test
@@ -390,8 +413,8 @@ class PostServiceTest {
         postService.create(authorId, new PostCreateRequest(
                 "두 곳을 다녀왔다",
                 List.of(
-                        new PostCreateRequest.Media("first.jpg", MediaType.IMAGE, 0, 42L),
-                        new PostCreateRequest.Media("second.jpg", MediaType.IMAGE, 1, 77L)),
+                        new PostCreateRequest.Media("first.jpg", null, MediaType.IMAGE, 0, 42L),
+                        new PostCreateRequest.Media("second.jpg", null, MediaType.IMAGE, 1, 77L)),
                 List.of()));
 
         // 저장된 사진에 붙어야 한다. 새로 만든 PostMedia 를 붙이면 ID 가 없어 외래키에 걸린다.
@@ -427,8 +450,8 @@ class PostServiceTest {
         postService.create(authorId, new PostCreateRequest(
                 "한 장만 장소를 붙였다",
                 List.of(
-                        new PostCreateRequest.Media("first.jpg", MediaType.IMAGE, 0, null),
-                        new PostCreateRequest.Media("second.jpg", MediaType.IMAGE, 1, 77L)),
+                        new PostCreateRequest.Media("first.jpg", null, MediaType.IMAGE, 0, null),
+                        new PostCreateRequest.Media("second.jpg", null, MediaType.IMAGE, 1, 77L)),
                 List.of()));
 
         ArgumentCaptor<List<PostPlaceTag>> tags = ArgumentCaptor.forClass(List.class);

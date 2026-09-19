@@ -51,12 +51,15 @@ class MediaControllerTest {
         login(1L);
         when(mediaService.upload(eq(1L), any())).thenReturn(new MediaUploadListResponse(
                 List.of(new MediaUploadResponse("https://bucket.s3.ap-northeast-2.amazonaws.com/posts/a.png",
+                        "https://bucket.s3.ap-northeast-2.amazonaws.com/posts/a_thumb.jpg",
                         MediaType.IMAGE))));
 
         mockMvc.perform(multipart("/api/v1/media")
                         .file(new MockMultipartFile("files", "a.png", "image/png", new byte[] {1})))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.mediaList[0].mediaType").value("IMAGE"));
+                .andExpect(jsonPath("$.mediaList[0].mediaType").value("IMAGE"))
+                .andExpect(jsonPath("$.mediaList[0].thumbnailUrl")
+                        .value("https://bucket.s3.ap-northeast-2.amazonaws.com/posts/a_thumb.jpg"));
     }
 
     @Test

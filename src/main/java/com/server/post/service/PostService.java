@@ -34,6 +34,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
@@ -362,10 +363,14 @@ public class PostService {
     /**
      * 교체 뒤에 더는 쓰이지 않는 사진 주소. 같은 주소를 그대로 다시 보낸 사진은 제외한다.
      * 순서만 바꾼 수정에서 파일을 지웠다가 다시 올릴 수는 없다.
+     *
+     * <p><b>축소본 주소도 남길 목록에 넣는다.</b> 딸린 파일 주소에는 원본과 축소본이 함께
+     * 들어오는데, 요청의 원본 주소만 맞대 보면 그대로 둔 사진의 축소본이 지워져 목록 사진이
+     * 깨진다.
      */
     private List<String> removedMediaUrls(Long postId, List<PostCreateRequest.Media> mediaList) {
         Set<String> keeping = mediaList.stream()
-                .map(PostCreateRequest.Media::url)
+                .flatMap(media -> Stream.of(media.url(), media.thumbnailUrl()))
                 .filter(Objects::nonNull)
                 .collect(Collectors.toCollection(HashSet::new));
         return postMediaRepository.findUrlsByPostIdIn(List.of(postId)).stream()
@@ -428,7 +433,8 @@ public class PostService {
             return List.of();
         }
         List<PostMedia> saved = postMediaRepository.saveAll(requests.stream()
-                .map(media -> new PostMedia(post, media.mediaType(), media.url(), media.sortOrder()))
+                .map(media -> new PostMedia(
+                        post, media.mediaType(), media.url(), media.thumbnailUrl(), media.sortOrder()))
                 .toList());
         savePlaceTags(post, requests, saved);
         return saved;
