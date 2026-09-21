@@ -198,6 +198,30 @@ public class FastApiScheduleClient {
         }
     }
 
+    public void deleteSchedule(UUID scheduleId, Long ownerId) {
+        try {
+            executeWithLogging(
+                    "deleteSchedule",
+                    "scheduleId=%s, ownerId=%s".formatted(scheduleId, ownerId),
+                    () -> {
+                        var request = restClient.delete()
+                                .uri("/api/v1/schedules/{scheduleId}", scheduleId);
+                        if (ownerId != null) {
+                            request.header(OWNER_HEADER, String.valueOf(ownerId));
+                        }
+                        request.retrieve().toBodilessEntity();
+                        return null;
+                    }
+            );
+        } catch (RestClientResponseException exception) {
+            throw mapScheduleError(exception);
+        } catch (ResourceAccessException exception) {
+            log.warn("FastAPI deleteSchedule access failure. scheduleId={}, reason={}",
+                    scheduleId, exception.getMessage());
+            throw new BusinessException(ErrorCode.EXTERNAL_PROVIDER_UNAVAILABLE, exception);
+        }
+    }
+
     public ScheduleResponse updateSchedule(UUID scheduleId, ScheduleUpdateRequest request) {
         try {
             return executeWithLogging(
