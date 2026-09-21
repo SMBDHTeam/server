@@ -49,6 +49,10 @@ public class ScheduleService {
         return requireFastApiScheduleClient().updateSchedule(scheduleId, request);
     }
 
+    public void delete(UUID scheduleId) {
+        requireFastApiScheduleClient().deleteSchedule(scheduleId, CurrentUser.idOrNull());
+    }
+
     @Transactional(readOnly = true)
     public ScheduleMapResponse getMap(UUID scheduleId, Integer dayNo) {
         return requireFastApiScheduleClient().getScheduleMap(scheduleId, dayNo);

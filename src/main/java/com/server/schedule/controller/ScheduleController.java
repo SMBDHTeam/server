@@ -18,6 +18,7 @@ import jakarta.validation.Valid;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -158,6 +159,17 @@ public class ScheduleController {
             @Valid @RequestBody ScheduleUpdateRequest request
     ) {
         return scheduleService.update(scheduleId, request);
+    }
+
+    @DeleteMapping("/{scheduleId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    @Operation(summary = "일정 삭제", description = "로그인한 사용자의 일정을 삭제한다.")
+    public void delete(
+            @Parameter(description = "일정 생성 응답의 id",
+                    example = "f2536c52-69d1-4e6c-8ab6-2ede45dba2cd")
+            @PathVariable UUID scheduleId
+    ) {
+        scheduleService.delete(scheduleId);
     }
 
     @GetMapping("/{scheduleId}/map")
